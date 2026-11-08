@@ -419,12 +419,12 @@ static HRESULT __stdcall hk_Present(void *dev, const RECT *src, const RECT *dst,
         rel(pBackBuffer);
     }
 
-    if (g_present_calls == 1 || (g_present_calls % 60) == 0) {
+    if (g_present_calls == 1 || (g_present_calls % 300) == 0) {
         log_msg("[VT4-Mod] Present frame %u: clears=%u (last_col=0x%08lx) draws=%u beginScenes=%u caller=%p last_rt=%p",
                 g_present_calls, g_clear_calls, (unsigned long)g_last_clear_color, g_draw_calls, g_begin_scene_calls,
                 __builtin_return_address(0), g_last_draw_target);
     }
-    if (g_present_calls == 1 || ((g_present_calls % 60) == 0 && g_present_calls <= 1800) || g_present_calls == 365) {
+    if (g_present_calls == 1 || g_present_calls == 60) {
         char path[MAX_PATH];
         snprintf(path, sizeof(path), "c:\\Users\\acorr\\Documents\\tenis\\game\\vt4_present_%u.png", g_present_calls);
         capture_d3d9_screenshot(dev, path);
@@ -461,32 +461,6 @@ static void capture_d3d9_screenshot(void *dev, const char *png_path) {
         typedef ULONG (__stdcall *Release_t)(void *);
         Release_t rel = (Release_t)svtbl[2];
         rel(pSurface);
-    } else {
-        log_msg("[VT4-Mod] GetBackBuffer failed: hr=%08lx", (unsigned long)hr);
-    }
-
-    // Also capture current RenderTarget(0)
-    typedef HRESULT (__stdcall *GetRenderTarget_t)(void *, DWORD, void **);
-    GetRenderTarget_t get_rt = (GetRenderTarget_t)vtbl[38];
-    void *pRT = NULL;
-    if (get_rt && get_rt(dev, 0, &pRT) >= 0 && pRT) {
-        char rt_path[MAX_PATH];
-        snprintf(rt_path, sizeof(rt_path), "c:\\Users\\acorr\\Documents\\tenis\\game\\vt4_rt0_frame%u.png", g_present_calls);
-        g_d3dx_save(rt_path, 3, pRT, NULL, NULL);
-        void **svtbl = *(void ***)pRT;
-        typedef ULONG (__stdcall *Release_t)(void *);
-        Release_t rel = (Release_t)svtbl[2];
-        rel(pRT);
-    }
-
-    // Also capture all tracked render targets
-    for (int i = 0; i < g_num_tracked_targets; i++) {
-        if (g_tracked_targets[i]) {
-            char t_path[MAX_PATH];
-            snprintf(t_path, sizeof(t_path), "c:\\Users\\acorr\\Documents\\tenis\\game\\vt4_target_%d_frame%u.png", i, g_present_calls);
-            hr = g_d3dx_save(t_path, 3, g_tracked_targets[i], NULL, NULL);
-            log_msg("[VT4-Mod] Saved target %d (%p) to %s (hr=%08lx)", i, g_tracked_targets[i], t_path, (unsigned long)hr);
-        }
     }
 }
 
@@ -1031,6 +1005,16 @@ static void install_jmp(uint32_t addr, void *target, size_t total_len) {
     patch_bytes(addr, buf, total_len);
 }
 
+static void *make_trampoline(uint32_t src, size_t len) {
+    uint8_t *tramp = (uint8_t *)VirtualAlloc(NULL, len + 5, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READWRITE);
+    if (!tramp) return NULL;
+    memcpy(tramp, (void *)src, len);
+    tramp[len] = 0xE9; // JMP rel32
+    uint32_t rel = (src + len) - ((uint32_t)(uintptr_t)tramp + len + 5);
+    memcpy(&tramp[len + 1], &rel, 4);
+    return tramp;
+}
+
 static void __attribute__((naked)) hk_Safe6280b0(void) {
     __asm__(
         "test %ecx, %ecx\n"
@@ -1404,6 +1388,8 @@ static int is_mapped_button_down(int button) {
         case VK_RIGHT:
             return is_key_down(VK_RIGHT) || is_key_down('D');
         default:
+            if (button >= 'A' && button <= 'Z') return is_key_down(button);
+            if (button >= '0' && button <= '9') return is_key_down(button);
             return 0;
     }
 }
@@ -1522,6 +1508,135 @@ static int __thiscall hk_ActionDown(void *self)   { return hk_CheckAction_62d830
 static int __thiscall hk_ActionLeft(void *self)   { return hk_CheckAction_62d830(NULL, 0x4C656674, -1); }
 static int __thiscall hk_ActionRight(void *self)  { return hk_CheckAction_62d830(NULL, 0x52696774, -1); }
 static int __thiscall hk_ActionDecide(void *self) { return hk_CheckAction_62d830(NULL, 0x44656369, -1); }
+
+// ----------------------------------------------------------------------------
+// Central Menu Navigation System (0x00455180, 0x004551E0, 0x00455240, 0x004552A0, 0x00455300, 0x00455440)
+// Universal across all menus, difficulty select, EditPlayer, pause and sliders
+// ----------------------------------------------------------------------------
+typedef int (__thiscall *MenuInputFn_t)(void *self, int user);
+
+static uint32_t g_nav_last_frame[6] = {0};
+static uint32_t g_nav_hold[6] = {0};
+static int      g_nav_val[6] = {0};
+
+static inline int eval_nav_key(int slot, int active, uint32_t delay, uint32_t rate) {
+    if (g_nav_last_frame[slot] != g_present_calls) {
+        g_nav_last_frame[slot] = g_present_calls;
+        if (active) {
+            g_nav_hold[slot]++;
+            if (g_nav_hold[slot] == 1) {
+                g_nav_val[slot] = 1;
+            } else if (g_nav_hold[slot] > delay && ((g_nav_hold[slot] - delay) % rate) == 0) {
+                g_nav_val[slot] = 1;
+            } else {
+                g_nav_val[slot] = 0;
+            }
+        } else {
+            g_nav_hold[slot] = 0;
+            g_nav_val[slot] = 0;
+        }
+    }
+    return g_nav_val[slot];
+}
+
+static inline int original_menu_input_offset(void *self, int user, int offset) {
+    if (!self) return 0;
+    uint8_t *ctrl = *(uint8_t **)((char *)self + 0x0c);
+    if (!ctrl || (uintptr_t)ctrl < 0x10000) return 0;
+    if (user == -1) {
+        for (int u = 0; u < 4; u++) {
+            uint8_t *slot = ctrl + (u << 8) + offset;
+            if (slot[0x1d]) return 1;
+        }
+        return 0;
+    }
+    if (user >= 0 && user < 4) {
+        uint8_t *slot = ctrl + (user << 8) + offset;
+        return slot[0x1d] != 0;
+    }
+    return 0;
+}
+
+// 0x00455180: Menu / Slider Left
+static int __thiscall hk_MenuInput_Left(void *self, int user) {
+    int active = is_key_down(VK_LEFT) || is_key_down('A');
+    if (eval_nav_key(0, active, 14, 4)) {
+        log_msg("[VT4-Mod] Menu Left triggered at frame %u (user=%d)", g_present_calls, user);
+        return 1;
+    }
+    return original_menu_input_offset(self, user, 0x08);
+}
+
+// 0x004551E0: Menu / Slider Right
+static int __thiscall hk_MenuInput_Right(void *self, int user) {
+    int active = is_key_down(VK_RIGHT) || is_key_down('D');
+    if (eval_nav_key(1, active, 14, 4)) {
+        log_msg("[VT4-Mod] Menu Right triggered at frame %u (user=%d)", g_present_calls, user);
+        return 1;
+    }
+    return original_menu_input_offset(self, user, 0x28);
+}
+
+// 0x00455240: Menu Up
+static int __thiscall hk_MenuInput_Up(void *self, int user) {
+    int active = is_key_down(VK_UP) || is_key_down('W');
+    if (eval_nav_key(2, active, 18, 6)) {
+        log_msg("[VT4-Mod] Menu Up triggered at frame %u (user=%d)", g_present_calls, user);
+        return 1;
+    }
+    return original_menu_input_offset(self, user, 0x48);
+}
+
+// 0x004552A0: Menu Down
+static int __thiscall hk_MenuInput_Down(void *self, int user) {
+    int active = is_key_down(VK_DOWN) || is_key_down('S');
+    if (eval_nav_key(3, active, 18, 6)) {
+        log_msg("[VT4-Mod] Menu Down triggered at frame %u (user=%d)", g_present_calls, user);
+        return 1;
+    }
+    return original_menu_input_offset(self, user, 0x68);
+}
+
+// 0x00455300: Menu Decide / Enter
+static MenuInputFn_t g_real_menu_decide = NULL;
+static int __thiscall hk_MenuInput_Decide(void *self, int user) {
+    int active = is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || is_key_down('C');
+    if (eval_nav_key(4, active, 30, 20)) {
+        log_msg("[VT4-Mod] Menu Decide triggered at frame %u (user=%d)", g_present_calls, user);
+        return 1;
+    }
+    if (g_real_menu_decide) {
+        return g_real_menu_decide(self, user);
+    }
+    return 0;
+}
+
+// 0x00455440: Menu Cancel / Escape
+static MenuInputFn_t g_real_menu_cancel = NULL;
+static int __thiscall hk_MenuInput_Cancel(void *self, int user) {
+    int active = is_key_down(VK_ESCAPE) || is_key_down('Z') || is_key_down(VK_BACK);
+    if (eval_nav_key(5, active, 30, 20)) {
+        log_msg("[VT4-Mod] Menu Cancel triggered at frame %u (user=%d)", g_present_calls, user);
+        return 1;
+    }
+    if (g_real_menu_cancel) {
+        return g_real_menu_cancel(self, user);
+    }
+    return 0;
+}
+
+// 0x00455080 (Analog X) & 0x00454F80 (Analog Y) stick hooks
+static float __thiscall hk_AnalogX(void *self, int user) {
+    if (is_key_down(VK_LEFT) || is_key_down('A')) return -1.0f;
+    if (is_key_down(VK_RIGHT) || is_key_down('D')) return 1.0f;
+    return 0.0f;
+}
+
+static float __thiscall hk_AnalogY(void *self, int user) {
+    if (is_key_down(VK_UP) || is_key_down('W')) return 1.0f;
+    if (is_key_down(VK_DOWN) || is_key_down('S')) return -1.0f;
+    return 0.0f;
+}
 
 static void __attribute__((naked)) hk_Safe45a920(void) {
     __asm__(
@@ -1771,21 +1886,38 @@ static void apply_vt4_patches(void) {
     patch_bytes(0x00406977, nops2, 2);
     log_msg("[VT4-Mod] GetKeyboardState hook and window focus bypass installed");
 
-    // 24. Action System hooks (0x0062D830, 0x00633A20-0x00633AA0) for Arrow & WASD menu/slider controls
+    // 24. Central Menu Navigation & Slider hooks (0x455180, 0x4551E0, 0x455240, 0x4552A0, 0x455300, 0x455440)
+    install_jmp(0x00455180, (void *)hk_MenuInput_Left, 5);
+    install_jmp(0x004551E0, (void *)hk_MenuInput_Right, 5);
+    install_jmp(0x00455240, (void *)hk_MenuInput_Up, 5);
+    install_jmp(0x004552A0, (void *)hk_MenuInput_Down, 5);
+
+    g_real_menu_decide = (MenuInputFn_t)make_trampoline(0x00455300, 7);
+    install_jmp(0x00455300, (void *)hk_MenuInput_Decide, 7);
+
+    g_real_menu_cancel = (MenuInputFn_t)make_trampoline(0x00455440, 7);
+    install_jmp(0x00455440, (void *)hk_MenuInput_Cancel, 7);
+
+    // 25. Analog stick hooks for sliders / smooth movement (0x00454F80 Analog Y, 0x00455080 Analog X)
+    install_jmp(0x00454F80, (void *)hk_AnalogY, 6);
+    install_jmp(0x00455080, (void *)hk_AnalogX, 6);
+
+    log_msg("[VT4-Mod] Central Menu Navigation & Analog hooks installed (Up, Down, Left, Right, Decide, Cancel)");
+
+    // 26. Action System hooks (0x0062D830, 0x00633A20-0x00633AA0) for Arrow & WASD menu/slider controls
     install_jmp(0x0062D830, (void *)hk_CheckAction_62d830, 10);
     install_jmp(0x00633A20, (void *)hk_ActionUp, 8);
     install_jmp(0x00633A40, (void *)hk_ActionDown, 8);
     install_jmp(0x00633A60, (void *)hk_ActionLeft, 8);
     install_jmp(0x00633A80, (void *)hk_ActionRight, 8);
     install_jmp(0x00633AA0, (void *)hk_ActionDecide, 8);
-    log_msg("[VT4-Mod] Action System hooks (0x62D830, 0x633A20-0x633AA0) installed for Arrow & WASD");
 
-    // 25. Neutralize focus loss / blanking: force IsWindowFocused (0x00404dc0) to ALWAYS return TRUE
+    // 27. Neutralize focus loss / blanking: force IsWindowFocused (0x00404dc0) to ALWAYS return TRUE
     const uint8_t ret_true3_focus[3] = { 0xB0, 0x01, 0xC3 }; // mov al, 1; ret
     patch_bytes(0x00404dc0, ret_true3_focus, 3);
     log_msg("[VT4-Mod] Window focus protection installed: IsWindowFocused (0x00404dc0) forced to TRUE");
 
-    // 26. Install custom CRT invalid parameter handler to neutralize 0xc0000417 aborts
+    // 28. Install custom CRT invalid parameter handler to neutralize 0xc0000417 aborts
     HMODULE hCRT = GetModuleHandleA("msvcr90.dll");
     if (!hCRT) hCRT = LoadLibraryA("msvcr90.dll");
     if (hCRT) {
