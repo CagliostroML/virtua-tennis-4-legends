@@ -78,12 +78,18 @@ static HWND g_game_hwnd = NULL;
 static void *g_d3d_device = NULL;
 static WNDPROC g_orig_wndproc = NULL;
 static uint8_t g_keys_down[256] = {0};
+static uint32_t g_btn_hold[256] = {0};
+static uint32_t g_nav_hold[6] = {0};
 static int g_is_fullscreen = 0;
 static RECT g_windowed_rect = {0};
 static DWORD g_windowed_style = 0;
 
 static inline int is_key_down(int vk) {
     if (vk < 0 || vk >= 256) return 0;
+    if (g_game_hwnd) {
+        HWND fg = GetForegroundWindow();
+        if (fg && fg != g_game_hwnd) return 0;
+    }
     return (g_keys_down[vk] != 0) || ((GetAsyncKeyState(vk) & 0x8000) != 0);
 }
 
@@ -141,8 +147,32 @@ static void toggle_fullscreen(HWND hwnd) {
 
 static LRESULT CALLBACK hk_GameWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
-        case WM_ACTIVATE:
+        case WM_ACTIVATE: {
+            WORD active_state = LOWORD(wParam);
+            memset(g_keys_down, 0, sizeof(g_keys_down));
+            memset(g_nav_hold, 0, sizeof(g_nav_hold));
+            memset(g_btn_hold, 0, sizeof(g_btn_hold));
+            uintptr_t wm = *(uintptr_t *)0x00a75ad0;
+            if (active_state == WA_INACTIVE) {
+                if (wm) {
+                    *(uint8_t *)(wm + 0x0A) = 0;
+                }
+            } else {
+                if (wm) {
+                    *(uint8_t *)(wm + 0x09) = 1;
+                    *(uint8_t *)(wm + 0x0A) = 1;
+                    *(uint8_t *)(wm + 0x1D) = 1;
+                    *(uint8_t *)(wm + 0x1E) = 0;
+                }
+                *(uint8_t *)0x00835eb0 = 1;
+                *(uint8_t *)0x00835eb1 = 1;
+            }
+            break;
+        }
         case WM_SETFOCUS: {
+            memset(g_keys_down, 0, sizeof(g_keys_down));
+            memset(g_nav_hold, 0, sizeof(g_nav_hold));
+            memset(g_btn_hold, 0, sizeof(g_btn_hold));
             uintptr_t wm = *(uintptr_t *)0x00a75ad0;
             if (wm) {
                 *(uint8_t *)(wm + 0x09) = 1;
@@ -156,10 +186,19 @@ static LRESULT CALLBACK hk_GameWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
         }
         case WM_KILLFOCUS: {
             memset(g_keys_down, 0, sizeof(g_keys_down));
+            memset(g_nav_hold, 0, sizeof(g_nav_hold));
+            memset(g_btn_hold, 0, sizeof(g_btn_hold));
+            break;
+        }
+        case WM_SYSCOMMAND: {
+            // Intercept SC_KEYMENU so tapping Alt or Alt-Tab never freezes the window into Windows modal menu mode!
+            if ((wParam & 0xFFF0) == SC_KEYMENU) {
+                return 0;
+            }
             break;
         }
         case WM_SYSKEYDOWN: {
-            if (wParam == VK_RETURN) { // Alt + Enter toggle
+            if (wParam == VK_RETURN && ((GetKeyState(VK_MENU) & 0x8000) || (GetAsyncKeyState(VK_MENU) & 0x8000))) {
                 toggle_fullscreen(hwnd);
                 return 0;
             }
@@ -835,8 +874,10 @@ static void __fastcall hk_MainMenu_Update(void *self) {
         log_msg("[VT4-Mod] MainMenu::Update frame %u: state=%u subtask=%d", g_present_calls, *pState, (int)subtask);
     }
 
-    // Fallback: If still in State 1 after frame 260, call InitButtons (0x0043e730) properly
-    if (*pState == 1 && g_present_calls > 260) {
+    // Fallback: If still in State 1 after frame 260 on boot, call InitButtons (0x0043e730) properly
+    static int g_menu_inited_once = 0;
+    if (!g_menu_inited_once && *pState == 1 && g_present_calls > 260 && g_present_calls < 400) {
+        g_menu_inited_once = 1;
         log_msg("[VT4-Mod] Fallback: invoking MainMenu::InitButtons (0x0043e730) at frame %u...", g_present_calls);
         typedef void (__thiscall *InitButtons_t)(void *self, uint32_t sel, uint32_t flag);
         InitButtons_t init_btn = (InitButtons_t)0x0043e730;
@@ -1013,6 +1054,46 @@ static void *make_trampoline(uint32_t src, size_t len) {
     uint32_t rel = (src + len) - ((uint32_t)(uintptr_t)tramp + len + 5);
     memcpy(&tramp[len + 1], &rel, 4);
     return tramp;
+}
+
+// 0x006284E0 (fwHashTable::Find - Universal key lookup crash guard)
+static void __attribute__((naked)) hk_Safe6284e0(void) {
+    __asm__(
+        "test %ecx, %ecx\n"
+        "jz 1f\n"
+        "cmp $0x10000, %ecx\n"
+        "jb 1f\n"
+        "movzwl 0xa(%ecx), %eax\n"
+        "test %eax, %eax\n"
+        "jz 1f\n"
+        "cmpl $0, 4(%ecx)\n"
+        "jz 1f\n"
+        "push %esi\n"
+        "push %edi\n"
+        "mov 0xc(%esp), %edi\n"
+        "push $0x006284E6\n"
+        "ret\n"
+        "1:\n"
+        "xor %eax, %eax\n"
+        "ret $4\n"
+    );
+}
+
+// 0x00628610 (fwFormat::FindChild - Exhibition / Arcade / Party Match Type crash fix)
+static void __attribute__((naked)) hk_Safe628610(void) {
+    __asm__(
+        "test %ecx, %ecx\n"
+        "jz 1f\n"
+        "cmp $0x10000, %ecx\n"
+        "jb 1f\n"
+        "push $0xffffffff\n"
+        "push $0x00773108\n"
+        "push $0x00628617\n"
+        "ret\n"
+        "1:\n"
+        "xor %eax, %eax\n"
+        "ret $8\n"
+    );
 }
 
 static void __attribute__((naked)) hk_Safe6280b0(void) {
@@ -1399,8 +1480,6 @@ static int __thiscall hk_IsButtonDown(void *self, int button) {
     return original_IsButtonDown(self, button);
 }
 
-static uint32_t g_btn_hold[256] = {0};
-
 static int __thiscall hk_IsButtonPressed(void *self, int button) {
     if (button >= 0 && button < 256) {
         if (is_mapped_button_down(button)) {
@@ -1516,7 +1595,6 @@ static int __thiscall hk_ActionDecide(void *self) { return hk_CheckAction_62d830
 typedef int (__thiscall *MenuInputFn_t)(void *self, int user);
 
 static uint32_t g_nav_last_frame[6] = {0};
-static uint32_t g_nav_hold[6] = {0};
 static int      g_nav_val[6] = {0};
 
 static inline int eval_nav_key(int slot, int active, uint32_t delay, uint32_t rate) {
@@ -1855,6 +1933,8 @@ static void apply_vt4_patches(void) {
     log_msg("[VT4-Mod] Patched 0x0045A8D0: Sound/Fade null-pointer crash guard installed");
 
     // 21. Protect ALL fwFormat null node dereferences with safe stack-balanced trampolines
+    install_jmp(0x006284E0, (void *)hk_Safe6284e0, 6); // fwHashTable::Find crash fix
+    install_jmp(0x00628610, (void *)hk_Safe628610, 7); // fwFormat::FindChild Exhibition/Arcade/Party crash fix
     install_jmp(0x006280B0, (void *)hk_Safe6280b0, 9);
     install_jmp(0x00628E00, (void *)hk_Safe628e00, 8);
     install_jmp(0x00628E60, (void *)hk_Safe628e60, 8);
@@ -1867,7 +1947,7 @@ static void apply_vt4_patches(void) {
     install_jmp(0x00629230, (void *)hk_Safe629230, 7);
     install_jmp(0x00629290, (void *)hk_Safe629290, 7);
     install_jmp(0x006292F0, (void *)hk_Safe6292f0, 7);
-    log_msg("[VT4-Mod] Patched 12 fwFormat methods with clean stack crash guards");
+    log_msg("[VT4-Mod] Patched 14 fwFormat methods with clean stack crash guards");
 
     // 22. Hook IsButtonDown (0x00415500) and IsButtonPressed (0x00415530) for 100% responsive keyboard
     install_jmp(0x00415500, (void *)hk_IsButtonDown, 8);
@@ -2307,6 +2387,28 @@ static LONG WINAPI CrashHandler(PEXCEPTION_POINTERS ep) {
     if (ep->ContextRecord->Eip >= 0x00628000 && ep->ContextRecord->Eip <= 0x0062A500) {
         log_msg("[VT4-Mod] VEH intercepted unhooked fwFormat crash at %p (ECX=%p)!",
                 (void *)ep->ContextRecord->Eip, (void *)ep->ContextRecord->Ecx);
+        // If crash happened in fwHashTable::Find (0x006284E0..0x0062853C)
+        if (ep->ContextRecord->Eip >= 0x006284E0 && ep->ContextRecord->Eip <= 0x0062853C) {
+            uintptr_t *s = (uintptr_t *)ep->ContextRecord->Esp;
+            ep->ContextRecord->Edi = s[0];
+            ep->ContextRecord->Esi = s[1];
+            ep->ContextRecord->Eip = s[2];
+            ep->ContextRecord->Esp += 16; // pop edi, esi, ret_addr + 4 (ret 4)
+            ep->ContextRecord->Eax = 0;   // return NULL
+            log_msg("[VT4-Mod] VEH recovered safely from fwHashTable::Find crash to %p!", (void *)ep->ContextRecord->Eip);
+            return EXCEPTION_CONTINUE_EXECUTION;
+        }
+        // General fwFormat stack unwinding fallback
+        uintptr_t *s = (uintptr_t *)ep->ContextRecord->Esp;
+        for (int i = 0; i < 16; i++) {
+            if (s[i] >= 0x00401000 && (s[i] < 0x00628000 || s[i] > 0x0062A500) && s[i] < 0x00788000) {
+                ep->ContextRecord->Eip = s[i];
+                ep->ContextRecord->Esp += (i + 1) * sizeof(uintptr_t);
+                ep->ContextRecord->Eax = 0;
+                log_msg("[VT4-Mod] VEH recovered safely from general fwFormat crash to caller %p!", (void *)ep->ContextRecord->Eip);
+                return EXCEPTION_CONTINUE_EXECUTION;
+            }
+        }
     }
 
     // Automatic crash recovery for sound/fade notification crash
