@@ -34,7 +34,8 @@ XBOX = "00000002-0000-0000-0000-000000000000"
 # AnalogueUpDown: Type=0, Idx=255
 # AnalogueLeftRight: Type=0, Idx=255
 # DigitalAxis: Type=2 (Keyboard arrows), Idx = 38 (Up), 40 (Down), 37 (Left), 39 (Right)
-KBD_MAP_LINE = "90 88 67 86 100 102 103 105 83 32 0 255 0 255 2 38 40 37 39"
+# NOTE: VT4 FUN_00403310 parses all 19 tokens using find(' '), requiring a trailing space!
+KBD_MAP_LINE = "90 88 67 86 100 102 103 105 83 32 0 255 0 255 2 38 40 37 39 "
 
 lines = [
     "LegendsMod", "LegendsMod", "", "(#0)", "",

@@ -925,6 +925,20 @@ static void __attribute__((naked)) hk_Safe629100(void) {
     );
 }
 
+static void my_invalid_parameter_handler(
+    const wchar_t *expression,
+    const wchar_t *function,
+    const wchar_t *file,
+    unsigned int line,
+    uintptr_t pReserved)
+{
+    log_msg("[VT4-Mod] CRT Invalid Parameter caught: Expr='%ls' Func='%ls' File='%ls' Line=%u",
+            expression ? expression : L"null",
+            function ? function : L"null",
+            file ? file : L"null",
+            line);
+}
+
 typedef BOOL (WINAPI *GetKeyboardState_t)(PBYTE);
 static GetKeyboardState_t g_real_getkeyboardstate = NULL;
 
@@ -1227,6 +1241,19 @@ static void apply_vt4_patches(void) {
     const uint8_t nops2[2] = { 0x90, 0x90 };
     patch_bytes(0x00406977, nops2, 2);
     log_msg("[VT4-Mod] GetKeyboardState hook and window focus bypass installed");
+
+    // 24. Install custom CRT invalid parameter handler to neutralize 0xc0000417 aborts
+    HMODULE hCRT = GetModuleHandleA("msvcr90.dll");
+    if (!hCRT) hCRT = LoadLibraryA("msvcr90.dll");
+    if (hCRT) {
+        typedef void (*_invalid_parameter_handler_t)(const wchar_t *, const wchar_t *, const wchar_t *, unsigned int, uintptr_t);
+        typedef _invalid_parameter_handler_t (*set_iph_t)(_invalid_parameter_handler_t);
+        set_iph_t set_iph = (set_iph_t)GetProcAddress(hCRT, "_set_invalid_parameter_handler");
+        if (set_iph) {
+            set_iph(my_invalid_parameter_handler);
+            log_msg("[VT4-Mod] Custom CRT _invalid_parameter_handler registered");
+        }
+    }
 
     log_msg("[VT4-Mod] Startup patches applied cleanly.");
 }
