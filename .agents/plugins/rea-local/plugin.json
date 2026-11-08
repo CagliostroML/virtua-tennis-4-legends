@@ -1,0 +1,6 @@
+{
+  "name": "rea-local",
+  "displayName": "REA (Reverse Engineer Anything - Local)",
+  "version": "6.8.0",
+  "description": "Local project-scoped Reverse Engineer Anything (REA) MCP server with portable Ghidra 12.1.4 and JDK 21 for Virtua Tennis 4 reverse engineering."
+}

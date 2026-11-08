@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "rea-local": {
+      "command": "c:\\Users\\acorr\\Documents\\tenis\\tools\\node24\\node.exe",
+      "args": [
+        "c:\\Users\\acorr\\Documents\\tenis\\tools\\rea\\node_modules\\rea-agents\\scripts\\rea.mjs",
+        "--mcp"
+      ],
+      "env": {
+        "GHIDRA_INSTALL_DIR": "c:\\Users\\acorr\\Documents\\tenis\\tools\\ghidra_12.1.4_PUBLIC",
+        "JAVA_HOME": "c:\\Users\\acorr\\Documents\\tenis\\tools\\jdk21"
+      }
+    }
+  }
+}

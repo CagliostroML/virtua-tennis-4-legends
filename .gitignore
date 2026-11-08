@@ -1,0 +1,48 @@
+# ==============================================================================
+# Virtua Tennis 4: Legends & Next-Gen Edition - Git Ignore
+# Exclude heavy binaries, ISOs, proprietary assets, and third-party toolchains
+# ==============================================================================
+
+# ISOs and large packages
+*.iso
+*.rar
+*.zip
+*.7z
+*.msi
+*.cab
+
+# Game executable and proprietary game data
+game/
+sr-vt4.iso
+extracted/
+
+# Third-party precompiled toolchains in tools/
+tools/ghidra*/
+tools/jdk*/
+tools/node*/
+tools/zig*/
+tools/universal-modder/
+tools/gfwl_cab/
+tools/Gfwlivesetup.exe
+tools/*.exe
+tools/*.pdb
+node_modules/
+tools/rea/node_modules/
+
+# Python caches and artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.bin
+*.log
+
+# Test screenshots and dump images
+*.png
+*.bmp
+*.jpg
+*.jpeg
+
+# OS metadata
+.DS_Store
+Thumbs.db
+desktop.ini
