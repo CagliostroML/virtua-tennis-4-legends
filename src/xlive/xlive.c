@@ -76,6 +76,118 @@ typedef HRESULT (__stdcall *Direct3DCreate9Ex_t)(UINT, void **);
 static Direct3DCreate9Ex_t g_d3dcreate9ex = NULL;
 static HWND g_game_hwnd = NULL;
 static void *g_d3d_device = NULL;
+static WNDPROC g_orig_wndproc = NULL;
+static uint8_t g_keys_down[256] = {0};
+static int g_is_fullscreen = 0;
+static RECT g_windowed_rect = {0};
+static DWORD g_windowed_style = 0;
+
+static inline int is_key_down(int vk) {
+    if (vk < 0 || vk >= 256) return 0;
+    return (g_keys_down[vk] != 0) || ((GetAsyncKeyState(vk) & 0x8000) != 0);
+}
+
+static void toggle_fullscreen(HWND hwnd) {
+    if (!hwnd) hwnd = g_game_hwnd;
+    if (!hwnd) return;
+
+    if (!g_is_fullscreen) {
+        GetWindowRect(hwnd, &g_windowed_rect);
+        g_windowed_style = GetWindowLongA(hwnd, GWL_STYLE);
+
+        int scr_w = GetSystemMetrics(SM_CXSCREEN);
+        int scr_h = GetSystemMetrics(SM_CYSCREEN);
+
+        SetWindowLongA(hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+        SetWindowPos(hwnd, HWND_TOP, 0, 0, scr_w, scr_h, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+        ShowWindow(hwnd, SW_SHOWMAXIMIZED);
+        UpdateWindow(hwnd);
+        SetForegroundWindow(hwnd);
+
+        g_is_fullscreen = 1;
+        uintptr_t wm = *(uintptr_t *)0x00a75ad0;
+        if (wm) {
+            *(uint8_t *)(wm + 0x08) = 1;
+        }
+        log_msg("[VT4-Mod] Fullscreen enabled: %dx%d (borderless)", scr_w, scr_h);
+    } else {
+        int w = g_windowed_rect.right - g_windowed_rect.left;
+        int h = g_windowed_rect.bottom - g_windowed_rect.top;
+        if (w <= 0 || h <= 0) { w = 1296; h = 759; }
+        int x = g_windowed_rect.left;
+        int y = g_windowed_rect.top;
+        if (x < 0 || y < 0) {
+            int scr_w = GetSystemMetrics(SM_CXSCREEN);
+            int scr_h = GetSystemMetrics(SM_CYSCREEN);
+            x = (scr_w > w) ? (scr_w - w) / 2 : 50;
+            y = (scr_h > h) ? (scr_h - h) / 2 : 50;
+        }
+
+        DWORD style = g_windowed_style ? g_windowed_style : (WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE);
+        SetWindowLongA(hwnd, GWL_STYLE, style);
+        SetWindowPos(hwnd, HWND_NOTOPMOST, x, y, w, h, SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+        ShowWindow(hwnd, SW_SHOWNORMAL);
+        UpdateWindow(hwnd);
+        SetForegroundWindow(hwnd);
+
+        g_is_fullscreen = 0;
+        uintptr_t wm = *(uintptr_t *)0x00a75ad0;
+        if (wm) {
+            *(uint8_t *)(wm + 0x08) = 0;
+        }
+        log_msg("[VT4-Mod] Fullscreen disabled: %dx%d pos=(%d,%d)", w, h, x, y);
+    }
+}
+
+static LRESULT CALLBACK hk_GameWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
+    switch (uMsg) {
+        case WM_ACTIVATE:
+        case WM_SETFOCUS: {
+            uintptr_t wm = *(uintptr_t *)0x00a75ad0;
+            if (wm) {
+                *(uint8_t *)(wm + 0x09) = 1;
+                *(uint8_t *)(wm + 0x0A) = 1;
+                *(uint8_t *)(wm + 0x1D) = 1;
+                *(uint8_t *)(wm + 0x1E) = 0;
+            }
+            *(uint8_t *)0x00835eb0 = 1;
+            *(uint8_t *)0x00835eb1 = 1;
+            break;
+        }
+        case WM_KILLFOCUS: {
+            memset(g_keys_down, 0, sizeof(g_keys_down));
+            break;
+        }
+        case WM_SYSKEYDOWN: {
+            if (wParam == VK_RETURN) { // Alt + Enter toggle
+                toggle_fullscreen(hwnd);
+                return 0;
+            }
+            if (wParam < 256) g_keys_down[wParam] = 1;
+            break;
+        }
+        case WM_SYSKEYUP: {
+            if (wParam < 256) g_keys_down[wParam] = 0;
+            break;
+        }
+        case WM_KEYDOWN: {
+            if (wParam == VK_F11) { // F11 toggle
+                toggle_fullscreen(hwnd);
+                return 0;
+            }
+            if (wParam < 256) g_keys_down[wParam] = 1;
+            break;
+        }
+        case WM_KEYUP: {
+            if (wParam < 256) g_keys_down[wParam] = 0;
+            break;
+        }
+    }
+    if (g_orig_wndproc) {
+        return CallWindowProcA(g_orig_wndproc, hwnd, uMsg, wParam, lParam);
+    }
+    return DefWindowProcA(hwnd, uMsg, wParam, lParam);
+}
 
 typedef HRESULT (__stdcall *D3DXSaveSurfaceToFileA_t)(const char *, int, void *, const void *, const RECT *);
 static D3DXSaveSurfaceToFileA_t g_d3dx_save = NULL;
@@ -498,6 +610,11 @@ static HRESULT __stdcall hk_CreateDevice(void *self, UINT adapter, DWORD devtype
                 *(uint8_t *)(wm + 0xa) = 1;
                 *(uint32_t *)(wm + 0x4c) = 1280;
                 *(uint32_t *)(wm + 0x50) = 720;
+            }
+
+            if (g_game_hwnd && !g_orig_wndproc) {
+                g_orig_wndproc = (WNDPROC)(uintptr_t)SetWindowLongA(g_game_hwnd, GWL_WNDPROC, (LONG)(uintptr_t)hk_GameWndProc);
+                log_msg("[VT4-Mod] Subclassed game window procedure (orig=%p)", g_orig_wndproc);
             }
 
             void **dev_vtbl = *(void ***)(*ppdev);
@@ -1139,7 +1256,7 @@ static BOOL WINAPI hk_GetKeyboardState(PBYTE lpKeyState) {
     }
 
     #define SYNC_KEY(vk, target) do { \
-        if (GetAsyncKeyState(vk) & 0x8000) { \
+        if (is_key_down(vk)) { \
             lpKeyState[target] |= 0x80; \
         } \
     } while(0)
@@ -1158,32 +1275,32 @@ static BOOL WINAPI hk_GetKeyboardState(PBYTE lpKeyState) {
 
     // Map physical inputs to VT4 internal virtual button codes:
     // 0x94 = Menu Up, 0x90 = D-pad Up, 0x8E = Analog Up
-    if ((GetAsyncKeyState(VK_UP) & 0x8000) || (GetAsyncKeyState('W') & 0x8000)) {
+    if (is_key_down(VK_UP) || is_key_down('W')) {
         lpKeyState[0x94] |= 0x80;
         lpKeyState[0x90] |= 0x80;
         lpKeyState[0x8E] |= 0x80;
     }
     // 0x95 = Menu Down, 0x91 = D-pad Down, 0x8F = Analog Down
-    if ((GetAsyncKeyState(VK_DOWN) & 0x8000) || (GetAsyncKeyState('S') & 0x8000)) {
+    if (is_key_down(VK_DOWN) || is_key_down('S')) {
         lpKeyState[0x95] |= 0x80;
         lpKeyState[0x91] |= 0x80;
         lpKeyState[0x8F] |= 0x80;
     }
     // 0x96 = Menu Left, 0x92 = D-pad Left, 0x8C = Analog Left
-    if ((GetAsyncKeyState(VK_LEFT) & 0x8000) || (GetAsyncKeyState('A') & 0x8000)) {
+    if (is_key_down(VK_LEFT) || is_key_down('A')) {
         lpKeyState[0x96] |= 0x80;
         lpKeyState[0x92] |= 0x80;
         lpKeyState[0x8C] |= 0x80;
     }
     // 0x97 = Menu Right, 0x93 = D-pad Right, 0x8D = Analog Right
-    if ((GetAsyncKeyState(VK_RIGHT) & 0x8000) || (GetAsyncKeyState('D') & 0x8000)) {
+    if (is_key_down(VK_RIGHT) || is_key_down('D')) {
         lpKeyState[0x97] |= 0x80;
         lpKeyState[0x93] |= 0x80;
         lpKeyState[0x8D] |= 0x80;
     }
 
     // Confirm / Select / A button: Enter, Space, 'C'
-    if ((GetAsyncKeyState(VK_RETURN) & 0x8000) || (GetAsyncKeyState(VK_SPACE) & 0x8000) || (GetAsyncKeyState('C') & 0x8000)) {
+    if (is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || is_key_down('C')) {
         lpKeyState[VK_RETURN] |= 0x80;
         lpKeyState[VK_SPACE] |= 0x80;
         lpKeyState['C'] |= 0x80;
@@ -1192,27 +1309,27 @@ static BOOL WINAPI hk_GetKeyboardState(PBYTE lpKeyState) {
     }
 
     // Cancel / Back / B button: Escape, 'Z', Backspace
-    if ((GetAsyncKeyState(VK_ESCAPE) & 0x8000) || (GetAsyncKeyState('Z') & 0x8000) || (GetAsyncKeyState(VK_BACK) & 0x8000)) {
+    if (is_key_down(VK_ESCAPE) || is_key_down('Z') || is_key_down(VK_BACK)) {
         lpKeyState[VK_ESCAPE] |= 0x80;
         lpKeyState['Z'] |= 0x80;
         lpKeyState[0x80] |= 0x80; // Button B
     }
 
     // Button X: 'X'
-    if (GetAsyncKeyState('X') & 0x8000) {
+    if (is_key_down('X')) {
         lpKeyState['X'] |= 0x80;
         lpKeyState[0x82] |= 0x80;
     }
 
     // Button Y: 'V'
-    if (GetAsyncKeyState('V') & 0x8000) {
+    if (is_key_down('V')) {
         lpKeyState['V'] |= 0x80;
         lpKeyState[0x83] |= 0x80;
     }
 
     // LB / RB: Q / E
-    if (GetAsyncKeyState('Q') & 0x8000) lpKeyState[0x84] |= 0x80;
-    if (GetAsyncKeyState('E') & 0x8000) lpKeyState[0x85] |= 0x80;
+    if (is_key_down('Q')) lpKeyState[0x84] |= 0x80;
+    if (is_key_down('E')) lpKeyState[0x85] |= 0x80;
 
     #undef SYNC_KEY
 
@@ -1247,51 +1364,45 @@ static int is_mapped_button_down(int button) {
     switch (button) {
         // Directions (Up, Down, Left, Right)
         case 0x94: case 0x90: case 0x8E: // Up
-            return (GetAsyncKeyState(VK_UP) & 0x8000) != 0 || (GetAsyncKeyState('W') & 0x8000) != 0;
+            return is_key_down(VK_UP) || is_key_down('W');
         case 0x95: case 0x91: case 0x8F: // Down
-            return (GetAsyncKeyState(VK_DOWN) & 0x8000) != 0 || (GetAsyncKeyState('S') & 0x8000) != 0;
+            return is_key_down(VK_DOWN) || is_key_down('S');
         case 0x96: case 0x92: case 0x8C: // Left
-            return (GetAsyncKeyState(VK_LEFT) & 0x8000) != 0 || (GetAsyncKeyState('A') & 0x8000) != 0;
+            return is_key_down(VK_LEFT) || is_key_down('A');
         case 0x97: case 0x93: case 0x8D: // Right
-            return (GetAsyncKeyState(VK_RIGHT) & 0x8000) != 0 || (GetAsyncKeyState('D') & 0x8000) != 0;
+            return is_key_down(VK_RIGHT) || is_key_down('D');
 
         // Action Buttons
         case 0x81: // Confirm / A Button / Topspin
-            return (GetAsyncKeyState(VK_RETURN) & 0x8000) != 0 ||
-                   (GetAsyncKeyState(VK_SPACE) & 0x8000) != 0 ||
-                   (GetAsyncKeyState('C') & 0x8000) != 0;
+            return is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || is_key_down('C');
         case 0x80: // Cancel / Back / B Button / Lob
-            return (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0 ||
-                   (GetAsyncKeyState('Z') & 0x8000) != 0 ||
-                   (GetAsyncKeyState(VK_BACK) & 0x8000) != 0;
+            return is_key_down(VK_ESCAPE) || is_key_down('Z') || is_key_down(VK_BACK);
         case 0x82: // X Button / Slice
-            return (GetAsyncKeyState('X') & 0x8000) != 0;
+            return is_key_down('X');
         case 0x83: // Y Button / Dropshot
-            return (GetAsyncKeyState('V') & 0x8000) != 0;
+            return is_key_down('V');
         case 0x84: // LB
-            return (GetAsyncKeyState('Q') & 0x8000) != 0;
+            return is_key_down('Q');
         case 0x85: // RB
-            return (GetAsyncKeyState('E') & 0x8000) != 0;
+            return is_key_down('E');
         case 0x50: // Start / Pause
-            return (GetAsyncKeyState(VK_RETURN) & 0x8000) != 0 ||
-                   (GetAsyncKeyState(VK_SPACE) & 0x8000) != 0 ||
-                   (GetAsyncKeyState('P') & 0x8000) != 0;
+            return is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || is_key_down('P');
 
         // Pass-through for standard VK codes if checked directly
         case VK_RETURN:
-            return (GetAsyncKeyState(VK_RETURN) & 0x8000) != 0;
+            return is_key_down(VK_RETURN);
         case VK_SPACE:
-            return (GetAsyncKeyState(VK_SPACE) & 0x8000) != 0;
+            return is_key_down(VK_SPACE);
         case VK_ESCAPE:
-            return (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
+            return is_key_down(VK_ESCAPE);
         case VK_UP:
-            return (GetAsyncKeyState(VK_UP) & 0x8000) != 0 || (GetAsyncKeyState('W') & 0x8000) != 0;
+            return is_key_down(VK_UP) || is_key_down('W');
         case VK_DOWN:
-            return (GetAsyncKeyState(VK_DOWN) & 0x8000) != 0 || (GetAsyncKeyState('S') & 0x8000) != 0;
+            return is_key_down(VK_DOWN) || is_key_down('S');
         case VK_LEFT:
-            return (GetAsyncKeyState(VK_LEFT) & 0x8000) != 0 || (GetAsyncKeyState('A') & 0x8000) != 0;
+            return is_key_down(VK_LEFT) || is_key_down('A');
         case VK_RIGHT:
-            return (GetAsyncKeyState(VK_RIGHT) & 0x8000) != 0 || (GetAsyncKeyState('D') & 0x8000) != 0;
+            return is_key_down(VK_RIGHT) || is_key_down('D');
         default:
             return 0;
     }
@@ -1325,6 +1436,92 @@ static int __thiscall hk_IsButtonPressed(void *self, int button) {
     }
     return original_IsButtonPressed(self, button);
 }
+
+// ----------------------------------------------------------------------------
+// Action System Handlers (0x0062D830 & 0x00633A20-0x00633AA0)
+// Universal menu navigation, sliders, and options for Arrows and WASD
+// ----------------------------------------------------------------------------
+static uint32_t g_hold_up = 0;
+static uint32_t g_hold_down = 0;
+static uint32_t g_hold_left = 0;
+static uint32_t g_hold_right = 0;
+static uint32_t g_hold_deci = 0;
+static uint32_t g_last_action_frame[5] = {0};
+static int g_action_state[5] = {0};
+
+static int eval_action_repeat(int active, uint32_t *hold, uint32_t delay, uint32_t rate) {
+    if (active) {
+        (*hold)++;
+        if (*hold == 1) return 1;
+        if (*hold > delay && ((*hold - delay) % rate) == 0) return 1;
+        return 0;
+    } else {
+        *hold = 0;
+        return 0;
+    }
+}
+
+static int __thiscall hk_CheckAction_62d830(void *self, uint32_t tag, int user_id) {
+    int slot = -1;
+    if (tag == 0x5570) slot = 0;           // "Up"
+    else if (tag == 0x446F776E) slot = 1;  // "Down"
+    else if (tag == 0x4C656674) slot = 2;  // "Left"
+    else if (tag == 0x52696774) slot = 3;  // "Rigt"
+    else if (tag == 0x44656369) slot = 4;  // "Deci"
+
+    if (slot >= 0) {
+        if (g_last_action_frame[slot] != g_present_calls) {
+            g_last_action_frame[slot] = g_present_calls;
+            int active = 0;
+            uint32_t *hold = NULL;
+            uint32_t delay = 18, rate = 6;
+            switch (slot) {
+                case 0: // Up
+                    active = is_key_down(VK_UP) || is_key_down('W');
+                    hold = &g_hold_up;
+                    break;
+                case 1: // Down
+                    active = is_key_down(VK_DOWN) || is_key_down('S');
+                    hold = &g_hold_down;
+                    break;
+                case 2: // Left
+                    active = is_key_down(VK_LEFT) || is_key_down('A');
+                    hold = &g_hold_left;
+                    break;
+                case 3: // Right
+                    active = is_key_down(VK_RIGHT) || is_key_down('D');
+                    hold = &g_hold_right;
+                    break;
+                case 4: // Deci
+                    active = is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || is_key_down('C');
+                    hold = &g_hold_deci;
+                    delay = 30; rate = 20;
+                    break;
+            }
+            g_action_state[slot] = eval_action_repeat(active, hold, delay, rate);
+            if (g_action_state[slot]) {
+                log_msg("[VT4-Mod] Action 0x%08x triggered (slot %d) at frame %u", tag, slot, g_present_calls);
+            }
+        }
+        if (g_action_state[slot]) return 1;
+    }
+
+    // Fallback: check original controller if attached
+    if (self) {
+        uintptr_t dev_mgr = *(uintptr_t *)((char *)self + 0x13c);
+        if (dev_mgr && *(uint8_t *)(dev_mgr + 0x35)) {
+            typedef int (__thiscall *CheckCore_t)(void *self, uint32_t tag, int user, int mode);
+            return ((CheckCore_t)0x0062d700)(self, tag, user_id, 0);
+        }
+    }
+    return 0;
+}
+
+static int __thiscall hk_ActionUp(void *self)     { return hk_CheckAction_62d830(NULL, 0x5570, -1); }
+static int __thiscall hk_ActionDown(void *self)   { return hk_CheckAction_62d830(NULL, 0x446F776E, -1); }
+static int __thiscall hk_ActionLeft(void *self)   { return hk_CheckAction_62d830(NULL, 0x4C656674, -1); }
+static int __thiscall hk_ActionRight(void *self)  { return hk_CheckAction_62d830(NULL, 0x52696774, -1); }
+static int __thiscall hk_ActionDecide(void *self) { return hk_CheckAction_62d830(NULL, 0x44656369, -1); }
 
 static void __attribute__((naked)) hk_Safe45a920(void) {
     __asm__(
@@ -1574,7 +1771,21 @@ static void apply_vt4_patches(void) {
     patch_bytes(0x00406977, nops2, 2);
     log_msg("[VT4-Mod] GetKeyboardState hook and window focus bypass installed");
 
-    // 24. Install custom CRT invalid parameter handler to neutralize 0xc0000417 aborts
+    // 24. Action System hooks (0x0062D830, 0x00633A20-0x00633AA0) for Arrow & WASD menu/slider controls
+    install_jmp(0x0062D830, (void *)hk_CheckAction_62d830, 10);
+    install_jmp(0x00633A20, (void *)hk_ActionUp, 8);
+    install_jmp(0x00633A40, (void *)hk_ActionDown, 8);
+    install_jmp(0x00633A60, (void *)hk_ActionLeft, 8);
+    install_jmp(0x00633A80, (void *)hk_ActionRight, 8);
+    install_jmp(0x00633AA0, (void *)hk_ActionDecide, 8);
+    log_msg("[VT4-Mod] Action System hooks (0x62D830, 0x633A20-0x633AA0) installed for Arrow & WASD");
+
+    // 25. Neutralize focus loss / blanking: force IsWindowFocused (0x00404dc0) to ALWAYS return TRUE
+    const uint8_t ret_true3_focus[3] = { 0xB0, 0x01, 0xC3 }; // mov al, 1; ret
+    patch_bytes(0x00404dc0, ret_true3_focus, 3);
+    log_msg("[VT4-Mod] Window focus protection installed: IsWindowFocused (0x00404dc0) forced to TRUE");
+
+    // 26. Install custom CRT invalid parameter handler to neutralize 0xc0000417 aborts
     HMODULE hCRT = GetModuleHandleA("msvcr90.dll");
     if (!hCRT) hCRT = LoadLibraryA("msvcr90.dll");
     if (hCRT) {
