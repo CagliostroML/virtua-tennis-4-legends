@@ -495,6 +495,7 @@ static HRESULT __stdcall hk_CreateDevice(void *self, UINT adapter, DWORD devtype
             if (wm) {
                 *(uint32_t *)wm = 1280;
                 *(uint32_t *)(wm + 4) = 720;
+                *(uint8_t *)(wm + 0xa) = 1;
                 *(uint32_t *)(wm + 0x4c) = 1280;
                 *(uint32_t *)(wm + 0x50) = 720;
             }
@@ -904,6 +905,74 @@ static void __attribute__((naked)) hk_Safe628e60(void) {
     );
 }
 
+static void __attribute__((naked)) hk_Safe629100(void) {
+    __asm__(
+        "test %ecx, %ecx\n"
+        "jz 1f\n"
+        "cmp $0x10000, %ecx\n"
+        "jb 1f\n"
+        "cmpl $0, 0x44(%ecx)\n"
+        "jz 1f\n"
+        "push %ebx\n"
+        "push %ebp\n"
+        "push %esi\n"
+        "mov %ecx, %esi\n"
+        "push $0x00629109\n"
+        "ret\n"
+        "1:\n"
+        "xor %eax, %eax\n"
+        "ret $0x10\n"
+    );
+}
+
+typedef BOOL (WINAPI *GetKeyboardState_t)(PBYTE);
+static GetKeyboardState_t g_real_getkeyboardstate = NULL;
+
+static BOOL WINAPI hk_GetKeyboardState(PBYTE lpKeyState) {
+    if (g_real_getkeyboardstate) {
+        g_real_getkeyboardstate(lpKeyState);
+    } else {
+        GetKeyboardState(lpKeyState);
+    }
+
+    #define SYNC_KEY(vk, target) do { \
+        if (GetAsyncKeyState(vk) & 0x8000) { \
+            lpKeyState[target] |= 0x80; \
+        } \
+    } while(0)
+
+    // Directional arrows
+    SYNC_KEY(VK_UP, VK_UP);
+    SYNC_KEY(VK_DOWN, VK_DOWN);
+    SYNC_KEY(VK_LEFT, VK_LEFT);
+    SYNC_KEY(VK_RIGHT, VK_RIGHT);
+
+    // WASD alternative navigation
+    SYNC_KEY('W', VK_UP);
+    SYNC_KEY('S', VK_DOWN);
+    SYNC_KEY('A', VK_LEFT);
+    SYNC_KEY('D', VK_RIGHT);
+
+    // Face buttons & shots
+    SYNC_KEY('Z', 'Z');       // Lob / Cancel / Back
+    SYNC_KEY('X', 'X');       // Slice
+    SYNC_KEY('C', 'C');       // Topspin / Confirm / Select
+    SYNC_KEY('V', 'V');       // Dropshot / Super shot
+
+    // Enter & Space: In VT4, Button 2 is Confirm ('C'), Button 9 is Start (Space)
+    SYNC_KEY(VK_RETURN, 'C');
+    SYNC_KEY(VK_RETURN, VK_SPACE);
+    SYNC_KEY(VK_SPACE, 'C');
+    SYNC_KEY(VK_SPACE, VK_SPACE);
+
+    // Escape: map to 'Z' (Cancel / Back)
+    SYNC_KEY(VK_ESCAPE, 'Z');
+
+    #undef SYNC_KEY
+
+    return TRUE;
+}
+
 static void __attribute__((naked)) hk_Safe45a920(void) {
     __asm__(
         "test %ecx, %ecx\n"
@@ -1139,6 +1208,25 @@ static void apply_vt4_patches(void) {
     memcpy(&patch_628e60[1], &rel_628e60, 4);
     patch_bytes(0x00628E60, patch_628e60, 8);
     log_msg("[VT4-Mod] Patched 0x00628E00 & 0x00628E60: fwFormat null node crash guards installed");
+
+    // 22. Protect fwFormat SetText (0x00629100) null node dereferences
+    uint8_t patch_629100[9] = { 0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90 };
+    uint32_t rel_629100 = (uint32_t)(uintptr_t)hk_Safe629100 - (0x00629100 + 5);
+    memcpy(&patch_629100[1], &rel_629100, 4);
+    patch_bytes(0x00629100, patch_629100, 9);
+    log_msg("[VT4-Mod] Patched 0x00629100: fwFormat SetText null node crash guard installed");
+
+    // 23. Hook GetKeyboardState and bypass window focus blanking for 100% reliable controls
+    hook_iat(GetModuleHandleA(NULL), "user32.dll", "GetKeyboardState",
+             (void *)hk_GetKeyboardState, (void **)&g_real_getkeyboardstate);
+    if (!g_real_getkeyboardstate) {
+        g_real_getkeyboardstate = *(GetKeyboardState_t *)0x007884bc;
+        void *hk_gks = (void *)hk_GetKeyboardState;
+        patch_bytes(0x007884bc, &hk_gks, sizeof(hk_gks));
+    }
+    const uint8_t nops2[2] = { 0x90, 0x90 };
+    patch_bytes(0x00406977, nops2, 2);
+    log_msg("[VT4-Mod] GetKeyboardState hook and window focus bypass installed");
 
     log_msg("[VT4-Mod] Startup patches applied cleanly.");
 }
@@ -1521,16 +1609,18 @@ static LONG WINAPI CrashHandler(PEXCEPTION_POINTERS ep) {
         }
     }
 
-    // Automatic crash recovery for fwFormat (0x00628E00..0x00628F80) null ecx dereference
-    if (ep->ContextRecord->Eip >= 0x00628E00 && ep->ContextRecord->Eip <= 0x00628F80) {
+    // Automatic crash recovery for ALL fwFormat (0x00628000..0x0062A500) null ecx / node dereferences
+    if (ep->ContextRecord->Eip >= 0x00628000 && ep->ContextRecord->Eip <= 0x0062A500) {
         log_msg("[VT4-Mod] VEH recovered from fwFormat crash at %p!", (void *)ep->ContextRecord->Eip);
         uintptr_t *s = (uintptr_t *)ep->ContextRecord->Esp;
-        for (int i = 0; i < 16; i++) {
+        for (int i = 0; i < 32; i++) {
             if (s[i] >= 0x00401000 && s[i] < 0x00788000) {
-                ep->ContextRecord->Eax = 0;
-                ep->ContextRecord->Esp += (i + 1) * sizeof(uintptr_t);
-                ep->ContextRecord->Eip = s[i];
-                return EXCEPTION_CONTINUE_EXECUTION;
+                if (s[i] < 0x00628000 || s[i] > 0x0062A500) {
+                    ep->ContextRecord->Eax = 0;
+                    ep->ContextRecord->Esp += (i + 1) * sizeof(uintptr_t);
+                    ep->ContextRecord->Eip = s[i];
+                    return EXCEPTION_CONTINUE_EXECUTION;
+                }
             }
         }
     }
