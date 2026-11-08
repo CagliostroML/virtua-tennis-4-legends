@@ -1,6 +1,6 @@
 # Hoja de Ruta: Virtua Tennis 4 - Legends & Next-Gen Edition
 
-Este documento establece la arquitectura técnica y el plan de ejecución por fases para transformar *Virtua Tennis 4* en la edición definitiva: resolución HD nativa en 3D, eliminación total de bordes de sierra, estabilidad total sin GFWL, selector de personajes ampliado, incorporación de leyendas modernas y portabilidad futura.
+Este documento establece la arquitectura técnica y el plan de ejecución por fases para transformar *Virtua Tennis 4* en la edición definitiva: resolución HD nativa en 3D, eliminación total de bordes de sierra, integración del menú de ajustes gráficos in-game, remasterización de texturas con Nano Banana, selector de personajes ampliado, incorporación de leyendas modernas y portabilidad futura.
 
 ---
 
@@ -13,24 +13,24 @@ Este documento establece la arquitectura técnica y el plan de ejecución por fa
 
 ---
 
-## 2. Fase 1B: Remasterización Gráfica HD Total (3D Nativo & Anti-Aliasing)
-A raíz de las pruebas en pista, se ha identificado por qué los modelos 3D y las pistas conservan bordes de sierra ("dientes de sierra") mientras que el HUD ya es HD:
-
-```
-[VT4-Mod] SetViewport frame 4: pos=(0,0) size=640x512
-[VT4-Mod] StretchRect(srcTarget[2]=05DB9280 draws=13 -> BB=05DB98C0)
-```
-
-1. **Escalado del RenderTarget 3D Interno (Full HD / 4K)**:
-   - El motor de VT4 dibuja la interfaz directamente al BackBuffer (a 1920x1080), pero la partida 3D (jugadores, pista, sombras) la renderiza en un RenderTarget interno de resolución reducida (640x512 / 720p) y luego la estira con `StretchRect`.
-   - **Acción**: Interceptar `CreateRenderTarget` y `CreateTexture` (con flag `D3DUSAGE_RENDERTARGET`) para forzar que los buffers de color y profundidad de la escena 3D se creen a la resolución completa de la pantalla (`1920x1080` / `2560x1440` / `3840x2160`).
+## 2. Fase 1B: Remasterización Gráfica HD Total & Menú de Ajustes In-Game
+1. **Escalado del RenderTarget 3D Interno (Full HD / 2K / 4K)**:
+   - Interceptar en `xlive.dll` la creación de búferes (`CreateRenderTarget` y `CreateTexture` con flag `D3DUSAGE_RENDERTARGET`) para que la pista, jugadores y red se computen a la resolución nativa de pantalla (`1920x1080`, `2560x1440`, `3840x2160`) eliminando el reescalado borroso desde 640x512.
 2. **Anti-Aliasing Real en Geometría 3D (MSAA / SMAA)**:
    - Activar el estado `D3DRS_MULTISAMPLEANTIALIAS` en los pases de dibujo 3D e implementar un pase de anti-aliasing de bordes (SMAA o FXAA) para erradicar las aristas dentadas en las siluetas de los tenistas y la red.
 3. **Sombras de Alta Resolución**:
-   - Actualmente, el mapa de sombras (*shadow map*) se genera a 512x512, lo que provoca que las sombras de los tenistas sobre la pista verde se proyecten pixeladas.
-   - **Acción**: Escalar los buffers de sombras a 2048x2048 o 4096x4096 para obtener sombras nítidas y suaves.
+   - Escalar los mapas de sombras (*shadow maps*) de 512x512 a **2048x2048** o **4096x4096** para obtener sombras limpias y sin bordes pixelados bajo los tenistas.
 4. **Filtrado Anisotrópico 16x Permanente**:
-   - Forzar `D3DSAMP_MAXANISOTROPY = 16` y `D3DTEXF_ANISOTROPIC` en cada cambio de textura para que las líneas de fondo y la textura de la pista se mantengan nítidas en perspectiva rasante.
+   - Forzar `D3DSAMP_MAXANISOTROPY = 16` y `D3DTEXF_ANISOTROPIC` en cada textura para que las líneas de fondo y la superficie de la pista se mantengan nítidas en perspectiva rasante.
+5. **Integración de Opciones Gráficas en el Menú de Ajustes In-Game**:
+   - Conectar las opciones de `vt4_settings.ini` directamente a la pantalla de **Ajustes / Opciones (`OptionMode`)** del juego:
+     - **Resolución**: Selector interactivo (1080p Full HD, 1440p 2K, 4K UHD, 720p HD).
+     - **Modo de pantalla**: Pantalla completa sin bordes / Modo ventana.
+     - **Anti-Aliasing (MSAA)**: Desactivado / 2x / 4x / 8x.
+     - **Sincronización Vertical (VSync)**: Activado (60 FPS) / Desactivado.
+     - **Filtrado Anisotrópico**: Desactivado / 4x / 8x / 16x Ultra.
+     - **Ocultar Modo LIVE**: Activado / Desactivado.
+   - Sincronización bidireccional automática: los cambios realizados en el menú se guardan inmediatamente en `vt4_settings.ini` sin necesidad de reiniciar el juego.
 
 ---
 
@@ -46,14 +46,16 @@ El selector original de VT4 soporta una cuadrícula fija de 24 casillas:
 
 ---
 
-## 4. Fase 3: Modelado 3D, Texturas e Inyección de Roster (Alcaraz, Sinner, etc.)
-1. **Remasterización de Texturas (HD / 4K Textures)**:
-   - Sustitución de texturas de 512x512 originales por versiones en alta resolución (2048x2048) de piel, caras, ropa y raquetas usando el cargador de archivos sueltos `game/archive/`.
-2. **Pipeline de Modelos 3D (`asset-pipeline`)**:
+## 4. Fase 3: Remasterización de Texturas con Nano Banana & Nuevos Modelos Next-Gen
+1. **Pipeline de Remasterización de Texturas con Nano Banana (AI Upscaling / Generative Diffusion)**:
+   - Extracción masiva de texturas base (`.txp`, `.dds`, `.bin`) de pistas, redes, vestimentas, pieles y raquetas.
+   - Procesamiento con **Nano Banana** y modelos generativos de ultra alta resolución para escalar las texturas originales a **2K y 4K**, preservando costuras (*UV seams*), mapas normales y mapas de especularidad.
+   - Carga transparente desde la carpeta de archivos sueltos `game/archive/` sin modificar los binarios originales de Sega.
+2. **Pipeline de Modelos 3D Next-Gen (`asset-pipeline`)**:
    - Extracción de geometrías de jugadores base (`.mdl` / `.bin`) con herramientas de decompilación y Blender.
-   - Modelado y texturizado de nuevas figuras: Carlos Alcaraz, Jannik Sinner, Novak Djokovic (versión moderna), Rafael Nadal (Prime), Roger Federer (Prime), Aryna Sabalenka, Iga Świątek.
+   - Modelado y texturizado de nuevas figuras con alta carga poligonal: Carlos Alcaraz, Jannik Sinner, Novak Djokovic (versión moderna), Rafael Nadal (Prime), Roger Federer (Prime), Aryna Sabalenka, Iga Świątek.
 3. **Equipamiento Oficial Actual**:
-   - Raquetas Babolat Pure Aero, Head Speed, Wilson Pro Staff.
+   - Raquetas Babolat Pure Aero, Head Speed, Wilson Pro Staff recreadas en alta resolución.
    - Ropa con patrocinadores actuales (Nike, Lacoste, Uniqlo).
 
 ---
