@@ -905,6 +905,119 @@ static void __attribute__((naked)) hk_Safe628e60(void) {
     );
 }
 
+static void install_jmp(uint32_t addr, void *target, size_t total_len) {
+    uint8_t buf[16];
+    memset(buf, 0x90, sizeof(buf));
+    buf[0] = 0xE9;
+    uint32_t rel = (uint32_t)(uintptr_t)target - (addr + 5);
+    memcpy(&buf[1], &rel, 4);
+    patch_bytes(addr, buf, total_len);
+}
+
+static void __attribute__((naked)) hk_Safe6280b0(void) {
+    __asm__(
+        "test %ecx, %ecx\n"
+        "jz 1f\n"
+        "cmp $0x10000, %ecx\n"
+        "jb 1f\n"
+        "cmpl $0, 0x44(%ecx)\n"
+        "jz 1f\n"
+        "push %ebx\n"
+        "push %esi\n"
+        "push %edi\n"
+        "mov %ecx, %edi\n"
+        "push $0x006280D2\n"
+        "ret\n"
+        "1:\n"
+        "xor %eax, %eax\n"
+        "ret\n"
+    );
+}
+
+static void __attribute__((naked)) hk_Safe628ec0(void) {
+    __asm__(
+        "test %ecx, %ecx\n"
+        "jz 1f\n"
+        "cmp $0x10000, %ecx\n"
+        "jb 1f\n"
+        "cmpl $0, 0x44(%ecx)\n"
+        "jz 1f\n"
+        "push %ebx\n"
+        "push %ebp\n"
+        "push %esi\n"
+        "push %edi\n"
+        "mov %ecx, %esi\n"
+        "push $0x00628EE0\n"
+        "ret\n"
+        "1:\n"
+        "xor %eax, %eax\n"
+        "ret $0x10\n"
+    );
+}
+
+// 0x00628F50 (Difficulty Selection / Character Creation crash fix)
+static void __attribute__((naked)) hk_Safe628f50(void) {
+    __asm__(
+        "test %ecx, %ecx\n"
+        "jz 1f\n"
+        "cmp $0x10000, %ecx\n"
+        "jb 1f\n"
+        "cmpl $0, 0x44(%ecx)\n"
+        "jz 1f\n"
+        "push %ebx\n"
+        "push %ebp\n"
+        "push %esi\n"
+        "push %edi\n"
+        "mov %ecx, %ebx\n"
+        "push $0x00628F70\n"
+        "ret\n"
+        "1:\n"
+        "xor %eax, %eax\n"
+        "ret $0xc\n"
+    );
+}
+
+static void __attribute__((naked)) hk_Safe628ff0(void) {
+    __asm__(
+        "test %ecx, %ecx\n"
+        "jz 1f\n"
+        "cmp $0x10000, %ecx\n"
+        "jb 1f\n"
+        "cmpl $0, 0x44(%ecx)\n"
+        "jz 1f\n"
+        "push %ebx\n"
+        "push %esi\n"
+        "push %edi\n"
+        "mov %ecx, %esi\n"
+        "push $0x0062900F\n"
+        "ret\n"
+        "1:\n"
+        "xor %eax, %eax\n"
+        "ret $0x10\n"
+    );
+}
+
+static void __attribute__((naked)) hk_Safe629070(void) {
+    __asm__(
+        "test %ecx, %ecx\n"
+        "jz 1f\n"
+        "cmp $0x10000, %ecx\n"
+        "jb 1f\n"
+        "cmpl $0, 0x44(%ecx)\n"
+        "jz 1f\n"
+        "push %ebx\n"
+        "push %ebp\n"
+        "push %esi\n"
+        "push %edi\n"
+        "mov %ecx, %esi\n"
+        "push $0x00629090\n"
+        "ret\n"
+        "1:\n"
+        "xor %eax, %eax\n"
+        "ret $8\n"
+    );
+}
+
 static void __attribute__((naked)) hk_Safe629100(void) {
     __asm__(
         "test %ecx, %ecx\n"
@@ -916,12 +1029,88 @@ static void __attribute__((naked)) hk_Safe629100(void) {
         "push %ebx\n"
         "push %ebp\n"
         "push %esi\n"
+        "push %edi\n"
         "mov %ecx, %esi\n"
-        "push $0x00629109\n"
+        "push $0x00629120\n"
         "ret\n"
         "1:\n"
         "xor %eax, %eax\n"
         "ret $0x10\n"
+    );
+}
+
+static void __attribute__((naked)) hk_Safe6291d0(void) {
+    __asm__(
+        "test %ecx, %ecx\n"
+        "jz 1f\n"
+        "cmp $0x10000, %ecx\n"
+        "jb 1f\n"
+        "cmpl $0, 0x44(%ecx)\n"
+        "jz 1f\n"
+        "push %esi\n"
+        "push %edi\n"
+        "mov %ecx, %esi\n"
+        "push $0x006291F1\n"
+        "ret\n"
+        "1:\n"
+        "xor %eax, %eax\n"
+        "ret $0xc\n"
+    );
+}
+
+static void __attribute__((naked)) hk_Safe629230(void) {
+    __asm__(
+        "test %ecx, %ecx\n"
+        "jz 1f\n"
+        "cmp $0x10000, %ecx\n"
+        "jb 1f\n"
+        "cmpl $0, 0x44(%ecx)\n"
+        "jz 1f\n"
+        "push %esi\n"
+        "push %edi\n"
+        "mov %ecx, %esi\n"
+        "push $0x00629251\n"
+        "ret\n"
+        "1:\n"
+        "xor %eax, %eax\n"
+        "ret $0xc\n"
+    );
+}
+
+static void __attribute__((naked)) hk_Safe629290(void) {
+    __asm__(
+        "test %ecx, %ecx\n"
+        "jz 1f\n"
+        "cmp $0x10000, %ecx\n"
+        "jb 1f\n"
+        "cmpl $0, 0x44(%ecx)\n"
+        "jz 1f\n"
+        "push %esi\n"
+        "push %edi\n"
+        "mov %ecx, %esi\n"
+        "push $0x006292B1\n"
+        "ret\n"
+        "1:\n"
+        "xor %eax, %eax\n"
+        "ret $0xc\n"
+    );
+}
+
+static void __attribute__((naked)) hk_Safe6292f0(void) {
+    __asm__(
+        "test %ecx, %ecx\n"
+        "jz 1f\n"
+        "cmp $0x10000, %ecx\n"
+        "jb 1f\n"
+        "cmpl $0, 0x44(%ecx)\n"
+        "jz 1f\n"
+        "push %esi\n"
+        "mov %ecx, %esi\n"
+        "push $0x00629310\n"
+        "ret\n"
+        "1:\n"
+        "xor %eax, %eax\n"
+        "ret $4\n"
     );
 }
 
@@ -967,24 +1156,174 @@ static BOOL WINAPI hk_GetKeyboardState(PBYTE lpKeyState) {
     SYNC_KEY('A', VK_LEFT);
     SYNC_KEY('D', VK_RIGHT);
 
-    // Face buttons & shots
-    SYNC_KEY('Z', 'Z');       // Lob / Cancel / Back
-    SYNC_KEY('X', 'X');       // Slice
-    SYNC_KEY('C', 'C');       // Topspin / Confirm / Select
-    SYNC_KEY('V', 'V');       // Dropshot / Super shot
+    // Map physical inputs to VT4 internal virtual button codes:
+    // 0x94 = Menu Up, 0x90 = D-pad Up, 0x8E = Analog Up
+    if ((GetAsyncKeyState(VK_UP) & 0x8000) || (GetAsyncKeyState('W') & 0x8000)) {
+        lpKeyState[0x94] |= 0x80;
+        lpKeyState[0x90] |= 0x80;
+        lpKeyState[0x8E] |= 0x80;
+    }
+    // 0x95 = Menu Down, 0x91 = D-pad Down, 0x8F = Analog Down
+    if ((GetAsyncKeyState(VK_DOWN) & 0x8000) || (GetAsyncKeyState('S') & 0x8000)) {
+        lpKeyState[0x95] |= 0x80;
+        lpKeyState[0x91] |= 0x80;
+        lpKeyState[0x8F] |= 0x80;
+    }
+    // 0x96 = Menu Left, 0x92 = D-pad Left, 0x8C = Analog Left
+    if ((GetAsyncKeyState(VK_LEFT) & 0x8000) || (GetAsyncKeyState('A') & 0x8000)) {
+        lpKeyState[0x96] |= 0x80;
+        lpKeyState[0x92] |= 0x80;
+        lpKeyState[0x8C] |= 0x80;
+    }
+    // 0x97 = Menu Right, 0x93 = D-pad Right, 0x8D = Analog Right
+    if ((GetAsyncKeyState(VK_RIGHT) & 0x8000) || (GetAsyncKeyState('D') & 0x8000)) {
+        lpKeyState[0x97] |= 0x80;
+        lpKeyState[0x93] |= 0x80;
+        lpKeyState[0x8D] |= 0x80;
+    }
 
-    // Enter & Space: In VT4, Button 2 is Confirm ('C'), Button 9 is Start (Space)
-    SYNC_KEY(VK_RETURN, 'C');
-    SYNC_KEY(VK_RETURN, VK_SPACE);
-    SYNC_KEY(VK_SPACE, 'C');
-    SYNC_KEY(VK_SPACE, VK_SPACE);
+    // Confirm / Select / A button: Enter, Space, 'C'
+    if ((GetAsyncKeyState(VK_RETURN) & 0x8000) || (GetAsyncKeyState(VK_SPACE) & 0x8000) || (GetAsyncKeyState('C') & 0x8000)) {
+        lpKeyState[VK_RETURN] |= 0x80;
+        lpKeyState[VK_SPACE] |= 0x80;
+        lpKeyState['C'] |= 0x80;
+        lpKeyState[0x81] |= 0x80; // Button A
+        lpKeyState[0x50] |= 0x80; // Start
+    }
 
-    // Escape: map to 'Z' (Cancel / Back)
-    SYNC_KEY(VK_ESCAPE, 'Z');
+    // Cancel / Back / B button: Escape, 'Z', Backspace
+    if ((GetAsyncKeyState(VK_ESCAPE) & 0x8000) || (GetAsyncKeyState('Z') & 0x8000) || (GetAsyncKeyState(VK_BACK) & 0x8000)) {
+        lpKeyState[VK_ESCAPE] |= 0x80;
+        lpKeyState['Z'] |= 0x80;
+        lpKeyState[0x80] |= 0x80; // Button B
+    }
+
+    // Button X: 'X'
+    if (GetAsyncKeyState('X') & 0x8000) {
+        lpKeyState['X'] |= 0x80;
+        lpKeyState[0x82] |= 0x80;
+    }
+
+    // Button Y: 'V'
+    if (GetAsyncKeyState('V') & 0x8000) {
+        lpKeyState['V'] |= 0x80;
+        lpKeyState[0x83] |= 0x80;
+    }
+
+    // LB / RB: Q / E
+    if (GetAsyncKeyState('Q') & 0x8000) lpKeyState[0x84] |= 0x80;
+    if (GetAsyncKeyState('E') & 0x8000) lpKeyState[0x85] |= 0x80;
 
     #undef SYNC_KEY
 
     return TRUE;
+}
+
+// ----------------------------------------------------------------------------
+// First-Class Input Handlers (0x00415500 IsButtonDown & 0x00415530 IsButtonPressed)
+// ----------------------------------------------------------------------------
+static inline int original_IsButtonDown(void *self, int button) {
+    if (!self) return 0;
+    uint8_t *dev = *(uint8_t **)self;
+    if (!dev) return 0;
+    uint32_t buf = *(uint32_t *)dev;
+    if (button < 0 || button >= 256) return 0;
+    return dev[(buf << 8) + button + 9] != 0;
+}
+
+static inline int original_IsButtonPressed(void *self, int button) {
+    if (!self) return 0;
+    uint8_t *dev = *(uint8_t **)self;
+    if (!dev) return 0;
+    uint32_t buf = *(uint32_t *)dev;
+    if (button < 0 || button >= 256) return 0;
+    int cur = dev[(buf << 8) + button + 9] != 0;
+    if (!cur) return 0;
+    int prev = dev[((1 - buf) << 8) + button + 9] != 0;
+    return (!prev);
+}
+
+static int is_mapped_button_down(int button) {
+    switch (button) {
+        // Directions (Up, Down, Left, Right)
+        case 0x94: case 0x90: case 0x8E: // Up
+            return (GetAsyncKeyState(VK_UP) & 0x8000) != 0 || (GetAsyncKeyState('W') & 0x8000) != 0;
+        case 0x95: case 0x91: case 0x8F: // Down
+            return (GetAsyncKeyState(VK_DOWN) & 0x8000) != 0 || (GetAsyncKeyState('S') & 0x8000) != 0;
+        case 0x96: case 0x92: case 0x8C: // Left
+            return (GetAsyncKeyState(VK_LEFT) & 0x8000) != 0 || (GetAsyncKeyState('A') & 0x8000) != 0;
+        case 0x97: case 0x93: case 0x8D: // Right
+            return (GetAsyncKeyState(VK_RIGHT) & 0x8000) != 0 || (GetAsyncKeyState('D') & 0x8000) != 0;
+
+        // Action Buttons
+        case 0x81: // Confirm / A Button / Topspin
+            return (GetAsyncKeyState(VK_RETURN) & 0x8000) != 0 ||
+                   (GetAsyncKeyState(VK_SPACE) & 0x8000) != 0 ||
+                   (GetAsyncKeyState('C') & 0x8000) != 0;
+        case 0x80: // Cancel / Back / B Button / Lob
+            return (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0 ||
+                   (GetAsyncKeyState('Z') & 0x8000) != 0 ||
+                   (GetAsyncKeyState(VK_BACK) & 0x8000) != 0;
+        case 0x82: // X Button / Slice
+            return (GetAsyncKeyState('X') & 0x8000) != 0;
+        case 0x83: // Y Button / Dropshot
+            return (GetAsyncKeyState('V') & 0x8000) != 0;
+        case 0x84: // LB
+            return (GetAsyncKeyState('Q') & 0x8000) != 0;
+        case 0x85: // RB
+            return (GetAsyncKeyState('E') & 0x8000) != 0;
+        case 0x50: // Start / Pause
+            return (GetAsyncKeyState(VK_RETURN) & 0x8000) != 0 ||
+                   (GetAsyncKeyState(VK_SPACE) & 0x8000) != 0 ||
+                   (GetAsyncKeyState('P') & 0x8000) != 0;
+
+        // Pass-through for standard VK codes if checked directly
+        case VK_RETURN:
+            return (GetAsyncKeyState(VK_RETURN) & 0x8000) != 0;
+        case VK_SPACE:
+            return (GetAsyncKeyState(VK_SPACE) & 0x8000) != 0;
+        case VK_ESCAPE:
+            return (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0;
+        case VK_UP:
+            return (GetAsyncKeyState(VK_UP) & 0x8000) != 0 || (GetAsyncKeyState('W') & 0x8000) != 0;
+        case VK_DOWN:
+            return (GetAsyncKeyState(VK_DOWN) & 0x8000) != 0 || (GetAsyncKeyState('S') & 0x8000) != 0;
+        case VK_LEFT:
+            return (GetAsyncKeyState(VK_LEFT) & 0x8000) != 0 || (GetAsyncKeyState('A') & 0x8000) != 0;
+        case VK_RIGHT:
+            return (GetAsyncKeyState(VK_RIGHT) & 0x8000) != 0 || (GetAsyncKeyState('D') & 0x8000) != 0;
+        default:
+            return 0;
+    }
+}
+
+static int __thiscall hk_IsButtonDown(void *self, int button) {
+    if (is_mapped_button_down(button)) return 1;
+    return original_IsButtonDown(self, button);
+}
+
+static uint32_t g_btn_hold[256] = {0};
+
+static int __thiscall hk_IsButtonPressed(void *self, int button) {
+    if (button >= 0 && button < 256) {
+        if (is_mapped_button_down(button)) {
+            g_btn_hold[button]++;
+            if (g_btn_hold[button] == 1) {
+                log_msg("[VT4-Mod] IsButtonPressed: button=0x%02x down at frame %u", button, g_present_calls);
+                return 1;
+            }
+            // Auto-repeat for navigation keys after 18 frames, every 5 frames
+            if (button >= 0x94 && button <= 0x97) {
+                if (g_btn_hold[button] > 18 && ((g_btn_hold[button] % 5) == 0)) {
+                    return 1;
+                }
+            }
+            return 0;
+        } else {
+            g_btn_hold[button] = 0;
+        }
+    }
+    return original_IsButtonPressed(self, button);
 }
 
 static void __attribute__((naked)) hk_Safe45a920(void) {
@@ -1022,20 +1361,12 @@ static int __thiscall hk_IsStartPressed(void *self, int user) {
         log_msg("[VT4-Mod] hk_IsStartPressed auto-trigger at frame %u: user=%d -> 1", g_present_calls, user);
         return 1;
     }
-    if ((GetAsyncKeyState(VK_RETURN) & 0x8000) || (GetAsyncKeyState(VK_SPACE) & 0x8000)) {
-        log_msg("[VT4-Mod] hk_IsStartPressed key-trigger at frame %u: user=%d -> 1", g_present_calls, user);
-        return 1;
-    }
     return g_real_455590(self, user);
 }
 
 static int __thiscall hk_CheckInput_455300(void *self, int user) {
     if (g_present_calls >= 60 && g_present_calls <= 240) {
         log_msg("[VT4-Mod] hk_CheckInput_455300 auto-trigger at frame %u: user=%d -> 1", g_present_calls, user);
-        return 1;
-    }
-    if ((GetAsyncKeyState(VK_RETURN) & 0x8000) || (GetAsyncKeyState(VK_SPACE) & 0x8000)) {
-        log_msg("[VT4-Mod] hk_CheckInput_455300 key-trigger at frame %u: user=%d -> 1", g_present_calls, user);
         return 1;
     }
     return g_real_455300(self, user);
@@ -1211,24 +1542,25 @@ static void apply_vt4_patches(void) {
     patch_bytes(0x0045A8D0, patch_45a8d0, 8);
     log_msg("[VT4-Mod] Patched 0x0045A8D0: Sound/Fade null-pointer crash guard installed");
 
-    // 21. Protect fwFormat (0x00628E00 & 0x00628E60) null node dereferences
-    uint8_t patch_628e00[8] = { 0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90 };
-    uint32_t rel_628e00 = (uint32_t)(uintptr_t)hk_Safe628e00 - (0x00628E00 + 5);
-    memcpy(&patch_628e00[1], &rel_628e00, 4);
-    patch_bytes(0x00628E00, patch_628e00, 8);
+    // 21. Protect ALL fwFormat null node dereferences with safe stack-balanced trampolines
+    install_jmp(0x006280B0, (void *)hk_Safe6280b0, 9);
+    install_jmp(0x00628E00, (void *)hk_Safe628e00, 8);
+    install_jmp(0x00628E60, (void *)hk_Safe628e60, 8);
+    install_jmp(0x00628EC0, (void *)hk_Safe628ec0, 9);
+    install_jmp(0x00628F50, (void *)hk_Safe628f50, 8); // Difficulty selection & character creation crash fix
+    install_jmp(0x00628FF0, (void *)hk_Safe628ff0, 8);
+    install_jmp(0x00629070, (void *)hk_Safe629070, 9);
+    install_jmp(0x00629100, (void *)hk_Safe629100, 9);
+    install_jmp(0x006291D0, (void *)hk_Safe6291d0, 7);
+    install_jmp(0x00629230, (void *)hk_Safe629230, 7);
+    install_jmp(0x00629290, (void *)hk_Safe629290, 7);
+    install_jmp(0x006292F0, (void *)hk_Safe6292f0, 7);
+    log_msg("[VT4-Mod] Patched 12 fwFormat methods with clean stack crash guards");
 
-    uint8_t patch_628e60[8] = { 0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90 };
-    uint32_t rel_628e60 = (uint32_t)(uintptr_t)hk_Safe628e60 - (0x00628E60 + 5);
-    memcpy(&patch_628e60[1], &rel_628e60, 4);
-    patch_bytes(0x00628E60, patch_628e60, 8);
-    log_msg("[VT4-Mod] Patched 0x00628E00 & 0x00628E60: fwFormat null node crash guards installed");
-
-    // 22. Protect fwFormat SetText (0x00629100) null node dereferences
-    uint8_t patch_629100[9] = { 0xE9, 0, 0, 0, 0, 0x90, 0x90, 0x90, 0x90 };
-    uint32_t rel_629100 = (uint32_t)(uintptr_t)hk_Safe629100 - (0x00629100 + 5);
-    memcpy(&patch_629100[1], &rel_629100, 4);
-    patch_bytes(0x00629100, patch_629100, 9);
-    log_msg("[VT4-Mod] Patched 0x00629100: fwFormat SetText null node crash guard installed");
+    // 22. Hook IsButtonDown (0x00415500) and IsButtonPressed (0x00415530) for 100% responsive keyboard
+    install_jmp(0x00415500, (void *)hk_IsButtonDown, 8);
+    install_jmp(0x00415530, (void *)hk_IsButtonPressed, 8);
+    log_msg("[VT4-Mod] Patched IsButtonDown (0x00415500) and IsButtonPressed (0x00415530)");
 
     // 23. Hook GetKeyboardState and bypass window focus blanking for 100% reliable controls
     hook_iat(GetModuleHandleA(NULL), "user32.dll", "GetKeyboardState",
@@ -1277,14 +1609,6 @@ uint32_t __stdcall xlive_5002(void) {             // XLiveRender (called every f
     uintptr_t fl_ptr = *(uintptr_t *)0x00a75ae0;
     if (fl_ptr) {
         *(uint8_t *)(fl_ptr + 0x24 + 0x9e) = 0;
-    }
-
-    // Auto-advance Title Screen after 3 seconds (frame 180)
-    if (g_render_calls == 180 && g_game_hwnd && !g_start_pressed) {
-        g_start_pressed = 1;
-        log_msg("[VT4-Mod] Posting VK_RETURN to advance Title Screen...");
-        PostMessageA(g_game_hwnd, WM_KEYDOWN, VK_RETURN, 0x001C0001);
-        PostMessageA(g_game_hwnd, WM_KEYUP, VK_RETURN, 0xC01C0001);
     }
     return 0;
 }
@@ -1636,20 +1960,10 @@ static LONG WINAPI CrashHandler(PEXCEPTION_POINTERS ep) {
         }
     }
 
-    // Automatic crash recovery for ALL fwFormat (0x00628000..0x0062A500) null ecx / node dereferences
+    // Automatic crash recovery for fwFormat (0x00628000..0x0062A500)
     if (ep->ContextRecord->Eip >= 0x00628000 && ep->ContextRecord->Eip <= 0x0062A500) {
-        log_msg("[VT4-Mod] VEH recovered from fwFormat crash at %p!", (void *)ep->ContextRecord->Eip);
-        uintptr_t *s = (uintptr_t *)ep->ContextRecord->Esp;
-        for (int i = 0; i < 32; i++) {
-            if (s[i] >= 0x00401000 && s[i] < 0x00788000) {
-                if (s[i] < 0x00628000 || s[i] > 0x0062A500) {
-                    ep->ContextRecord->Eax = 0;
-                    ep->ContextRecord->Esp += (i + 1) * sizeof(uintptr_t);
-                    ep->ContextRecord->Eip = s[i];
-                    return EXCEPTION_CONTINUE_EXECUTION;
-                }
-            }
-        }
+        log_msg("[VT4-Mod] VEH intercepted unhooked fwFormat crash at %p (ECX=%p)!",
+                (void *)ep->ContextRecord->Eip, (void *)ep->ContextRecord->Ecx);
     }
 
     // Automatic crash recovery for sound/fade notification crash
