@@ -1,0 +1,20 @@
+[Graphics]
+; Resolucion de Renderizado: 1920x1080 (Full HD 1080p), 2560x1440 (2K QHD), 3840x2160 (4K UHD), 1280x720 (HD 720p)
+Width=1920
+Height=1080
+
+; Modo de Pantalla: 0 = Pantalla Completa sin bordes (Borderless Fullscreen), 1 = Modo Ventana
+Windowed=0
+
+; Suavizado de Bordes Anti-Aliasing (MSAA): 0 = Desactivado, 2 = 2x MSAA, 4 = 4x MSAA, 8 = 8x MSAA
+AntiAliasing=4
+
+; Sincronizacion Vertical (VSync): 1 = Activado (60 FPS fluidos sin tearing), 0 = Desactivado
+VSync=1
+
+; Filtrado Anisotropico (mejora drasticamente la nitidez de la pista y lineas de fondo vistas en perspectiva): 16 = Ultra Nitido, 0 = Desactivado
+AnisotropicFiltering=16
+
+[Menu]
+; Quitar del carrusel del Menu Principal el modo LIVE / Red (servidor GFWL inactivo)
+RemoveLiveMode=1

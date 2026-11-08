@@ -39,6 +39,13 @@ static void patch_call(uintptr_t call_site, void *target_fn) {
     patch_bytes(call_site, code, 5);
 }
 
+static void patch_nops(uintptr_t addr, size_t count) {
+    uint8_t nops[64];
+    if (count > sizeof(nops)) count = sizeof(nops);
+    memset(nops, 0x90, count);
+    patch_bytes(addr, nops, count);
+}
+
 // ============================================================================
 // D3D9 diagnostics hook: Direct3DCreate9 (IAT) -> IDirect3D9::CreateDevice (vtbl #16)
 // ============================================================================
@@ -77,6 +84,61 @@ static Direct3DCreate9Ex_t g_d3dcreate9ex = NULL;
 static HWND g_game_hwnd = NULL;
 static void *g_d3d_device = NULL;
 static WNDPROC g_orig_wndproc = NULL;
+
+static uint32_t g_cfg_width = 1920;
+static uint32_t g_cfg_height = 1080;
+static uint32_t g_cfg_windowed = 0; // 0 = borderless fullscreen (native), 1 = windowed
+static uint32_t g_cfg_antialiasing = 4; // 0=Off, 2=2x, 4=4x, 8=8x
+static uint32_t g_cfg_vsync = 1;
+static uint32_t g_cfg_anisotropic = 16;
+static uint32_t g_cfg_remove_live = 1;
+
+static void load_vt4_settings(void) {
+    char ini_path[MAX_PATH];
+    GetModuleFileNameA(NULL, ini_path, sizeof(ini_path));
+    char *last_slash = strrchr(ini_path, '\\');
+    if (last_slash) *last_slash = '\0';
+    strncat(ini_path, "\\vt4_settings.ini", sizeof(ini_path) - strlen(ini_path) - 1);
+
+    DWORD attr = GetFileAttributesA(ini_path);
+    if (attr == INVALID_FILE_ATTRIBUTES) {
+        FILE *f = fopen(ini_path, "w");
+        if (f) {
+            fprintf(f, "[Graphics]\n"
+                       "; Resolucion: 1920x1080 (Full HD), 2560x1440 (2K QHD), 3840x2160 (4K UHD), 1280x720 (HD)\n"
+                       "Width=1920\n"
+                       "Height=1080\n"
+                       "; Modo Ventana: 0 = Pantalla Completa sin bordes (Borderless), 1 = Modo Ventana\n"
+                       "Windowed=0\n"
+                       "; Suavizado de bordes Anti-Aliasing (MSAA): 0 = Desactivado, 2 = 2x, 4 = 4x, 8 = 8x\n"
+                       "AntiAliasing=4\n"
+                       "; Sincronizacion Vertical: 1 = Activado (60 FPS estables sin cortes), 0 = Desactivado\n"
+                       "VSync=1\n"
+                       "; Filtrado Anisotropico para texturas de pista ultra nitidas: 16 = Ultra Nitido, 0 = Normal\n"
+                       "AnisotropicFiltering=16\n\n"
+                       "[Menu]\n"
+                       "; Quitar el modo LIVE / Red (servidor GFWL inactivo) del menu principal\n"
+                       "RemoveLiveMode=1\n");
+            fclose(f);
+            log_msg("[VT4-Mod] Created modern settings configuration file: %s", ini_path);
+        }
+    }
+
+    g_cfg_width = GetPrivateProfileIntA("Graphics", "Width", 1920, ini_path);
+    g_cfg_height = GetPrivateProfileIntA("Graphics", "Height", 1080, ini_path);
+    g_cfg_windowed = GetPrivateProfileIntA("Graphics", "Windowed", 0, ini_path);
+    g_cfg_antialiasing = GetPrivateProfileIntA("Graphics", "AntiAliasing", 4, ini_path);
+    g_cfg_vsync = GetPrivateProfileIntA("Graphics", "VSync", 1, ini_path);
+    g_cfg_anisotropic = GetPrivateProfileIntA("Graphics", "AnisotropicFiltering", 16, ini_path);
+    g_cfg_remove_live = GetPrivateProfileIntA("Menu", "RemoveLiveMode", 1, ini_path);
+
+    if (g_cfg_width <= 0) g_cfg_width = 1920;
+    if (g_cfg_height <= 0) g_cfg_height = 1080;
+
+    log_msg("[VT4-Mod] Settings loaded: %ux%u (windowed=%u msaa=%u vsync=%u aniso=%u remove_live=%u)",
+            g_cfg_width, g_cfg_height, g_cfg_windowed, g_cfg_antialiasing,
+            g_cfg_vsync, g_cfg_anisotropic, g_cfg_remove_live);
+}
 static uint8_t g_keys_down[256] = {0};
 static uint32_t g_btn_hold[256] = {0};
 static uint32_t g_nav_hold[6] = {0};
@@ -282,12 +344,12 @@ static SetViewport_t g_real_setviewport = NULL;
 static HRESULT __stdcall hk_SetViewport(void *dev, const uint32_t *vp) {
     if (vp) {
         if (vp[2] == 0 || vp[3] == 0) {
-            uint32_t fix[6] = { vp[0], vp[1], 1280, 720, vp[4], vp[5] };
+            uint32_t fix[6] = { vp[0], vp[1], g_cfg_width, g_cfg_height, vp[4], vp[5] };
             static uint32_t last_zero_log = 0;
             if (g_present_calls - last_zero_log >= 60) {
                 last_zero_log = g_present_calls;
-                log_msg("[VT4-Mod] SetViewport intercepted zero dimensions (%u,%u) at frame %u! Overriding to 1280x720",
-                        vp[2], vp[3], g_present_calls);
+                log_msg("[VT4-Mod] SetViewport intercepted zero dimensions (%u,%u) at frame %u! Overriding to %ux%u",
+                        vp[2], vp[3], g_present_calls, g_cfg_width, g_cfg_height);
             }
             return g_real_setviewport(dev, fix);
         }
@@ -404,6 +466,22 @@ typedef HRESULT (__stdcall *BeginScene_t)(void *);
 static BeginScene_t g_real_beginscene = NULL;
 static HRESULT __stdcall hk_BeginScene(void *dev) {
     g_begin_scene_calls++;
+    ensure_valid_viewport(dev);
+
+    // Apply Anisotropic Filtering across texture stages for razor-sharp court lines
+    if (g_cfg_anisotropic > 0 && (g_present_calls % 60) == 1) {
+        void **vtbl = *(void ***)dev;
+        typedef HRESULT (__stdcall *SetSamplerState_t)(void *, DWORD, DWORD, DWORD);
+        SetSamplerState_t set_sampler = (SetSamplerState_t)vtbl[69];
+        if (set_sampler) {
+            for (DWORD s = 0; s < 4; s++) {
+                set_sampler(dev, s, 1, 3); // D3DSAMP_MAGFILTER = D3DTEXF_ANISOTROPIC
+                set_sampler(dev, s, 2, 3); // D3DSAMP_MINFILTER = D3DTEXF_ANISOTROPIC
+                set_sampler(dev, s, 3, 2); // D3DSAMP_MIPFILTER = D3DTEXF_LINEAR
+                set_sampler(dev, s, 10, g_cfg_anisotropic); // D3DSAMP_MAXANISOTROPY
+            }
+        }
+    }
     return g_real_beginscene(dev);
 }
 
@@ -557,12 +635,12 @@ static HRESULT __stdcall hk_CreateDevice(void *self, UINT adapter, DWORD devtype
     log_msg("[VT4-Mod] CreateDevice called: adapter=%u type=%u focus=%p flags=%08x", adapter, devtype, focus, flags);
     if (pp) {
         log_pp("raw in", pp);
-        if (pp->BackBufferWidth == 0) pp->BackBufferWidth = 1280;
-        if (pp->BackBufferHeight == 0) pp->BackBufferHeight = 720;
+        pp->BackBufferWidth = g_cfg_width;
+        pp->BackBufferHeight = g_cfg_height;
         if (!pp->hDeviceWindow) pp->hDeviceWindow = focus;
         pp->Windowed = TRUE;
         pp->FullScreen_RefreshRateInHz = 0;
-        pp->MultiSampleType = 0;
+        pp->MultiSampleType = g_cfg_antialiasing;
         pp->MultiSampleQuality = 0;
         pp->EnableAutoDepthStencil = TRUE;
         pp->AutoDepthStencilFormat = 75; // D3DFMT_D24S8
@@ -585,27 +663,49 @@ static HRESULT __stdcall hk_CreateDevice(void *self, UINT adapter, DWORD devtype
     };
 
     HRESULT hr = -1;
-    for (size_t i = 0; i < sizeof(configs)/sizeof(configs[0]); i++) {
-        if (pp) pp->BackBufferFormat = configs[i].fmt;
-        DWORD f = configs[i].flags;
-        hr = g_real_createdevice(self, adapter, devtype, focus, f, pp, ppdev);
-        log_msg("[VT4-Mod] CreateDevice attempt %u (flags=%08x fmt=%u BB=%ux%u) -> hr=%08lx dev=%p",
-                (unsigned)i, f, pp ? pp->BackBufferFormat : 0,
-                pp ? pp->BackBufferWidth : 0, pp ? pp->BackBufferHeight : 0,
-                (unsigned long)hr, ppdev ? *ppdev : NULL);
-        if (hr >= 0 && ppdev && *ppdev) {
-            log_msg("[VT4-Mod] CreateDevice SUCCESS on attempt %u! Device: %p", (unsigned)i, *ppdev);
-            g_d3d_device = *ppdev;
-            g_game_hwnd = focus ? focus : pp->hDeviceWindow;
+    for (int ms_pass = 0; ms_pass < 2 && hr < 0; ms_pass++) {
+        if (pp) {
+            pp->MultiSampleType = (ms_pass == 0) ? g_cfg_antialiasing : 0;
+            pp->MultiSampleQuality = 0;
+        }
+        for (size_t i = 0; i < sizeof(configs)/sizeof(configs[0]); i++) {
+            if (pp) pp->BackBufferFormat = configs[i].fmt;
+            DWORD f = configs[i].flags;
+            hr = g_real_createdevice(self, adapter, devtype, focus, f, pp, ppdev);
+            log_msg("[VT4-Mod] CreateDevice attempt %u (pass=%d flags=%08x fmt=%u BB=%ux%u MS=%u) -> hr=%08lx dev=%p",
+                    (unsigned)i, ms_pass, f, pp ? pp->BackBufferFormat : 0,
+                    pp ? pp->BackBufferWidth : 0, pp ? pp->BackBufferHeight : 0,
+                    pp ? pp->MultiSampleType : 0,
+                    (unsigned long)hr, ppdev ? *ppdev : NULL);
+            if (hr >= 0 && ppdev && *ppdev) {
+                log_msg("[VT4-Mod] CreateDevice SUCCESS on attempt %u (MSAA=%u)! Device: %p",
+                        (unsigned)i, pp ? pp->MultiSampleType : 0, *ppdev);
+                break;
+            }
+        }
+    }
 
-            // Force proper 1280x720 window dimensions & center on screen
-            RECT wr = { 0, 0, 1280, 720 };
+    if (hr >= 0 && ppdev && *ppdev) {
+        g_d3d_device = *ppdev;
+        g_game_hwnd = focus ? focus : (pp ? pp->hDeviceWindow : NULL);
+
+        int scr_w = GetSystemMetrics(SM_CXSCREEN);
+        int scr_h = GetSystemMetrics(SM_CYSCREEN);
+
+        if (!g_cfg_windowed) {
+            SetWindowLongA(g_game_hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+            SetWindowPos(g_game_hwnd, HWND_TOP, 0, 0, scr_w, scr_h, SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+            ShowWindow(g_game_hwnd, SW_SHOWMAXIMIZED);
+            UpdateWindow(g_game_hwnd);
+            SetForegroundWindow(g_game_hwnd);
+            g_is_fullscreen = 1;
+            log_msg("[VT4-Mod] Window geometry: Fullscreen Borderless (%dx%d)", scr_w, scr_h);
+        } else {
+            RECT wr = { 0, 0, g_cfg_width, g_cfg_height };
             DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE;
             AdjustWindowRect(&wr, style, FALSE);
             int win_w = wr.right - wr.left;
             int win_h = wr.bottom - wr.top;
-            int scr_w = GetSystemMetrics(SM_CXSCREEN);
-            int scr_h = GetSystemMetrics(SM_CYSCREEN);
             int pos_x = (scr_w > win_w) ? (scr_w - win_w) / 2 : 50;
             int pos_y = (scr_h > win_h) ? (scr_h - win_h) / 2 : 50;
 
@@ -614,64 +714,66 @@ static HRESULT __stdcall hk_CreateDevice(void *self, UINT adapter, DWORD devtype
             ShowWindow(g_game_hwnd, SW_SHOWNORMAL);
             UpdateWindow(g_game_hwnd);
             SetForegroundWindow(g_game_hwnd);
-            log_msg("[VT4-Mod] Fixed window geometry: pos=(%d,%d) size=%dx%d (client 1280x720)", pos_x, pos_y, win_w, win_h);
-
-            uintptr_t wm = *(uintptr_t *)0x00a75ad0;
-            if (wm) {
-                *(uint32_t *)wm = 1280;
-                *(uint32_t *)(wm + 4) = 720;
-                *(uint8_t *)(wm + 0xa) = 1;
-                *(uint32_t *)(wm + 0x4c) = 1280;
-                *(uint32_t *)(wm + 0x50) = 720;
-            }
-
-            if (g_game_hwnd && !g_orig_wndproc) {
-                g_orig_wndproc = (WNDPROC)(uintptr_t)SetWindowLongA(g_game_hwnd, GWL_WNDPROC, (LONG)(uintptr_t)hk_GameWndProc);
-                log_msg("[VT4-Mod] Subclassed game window procedure (orig=%p)", g_orig_wndproc);
-            }
-
-            void **dev_vtbl = *(void ***)(*ppdev);
-            if (!g_real_present) {
-                g_real_present = (Present_t)dev_vtbl[17];
-                void *hk_p = (void *)hk_Present;
-                patch_bytes((uintptr_t)&dev_vtbl[17], &hk_p, sizeof(hk_p));
-
-                g_real_setrendertarget = (SetRenderTarget_t)dev_vtbl[37];
-                void *hk_srt = (void *)hk_SetRenderTarget;
-                patch_bytes((uintptr_t)&dev_vtbl[37], &hk_srt, sizeof(hk_srt));
-
-                g_real_beginscene = (BeginScene_t)dev_vtbl[41];
-                void *hk_bs = (void *)hk_BeginScene;
-                patch_bytes((uintptr_t)&dev_vtbl[41], &hk_bs, sizeof(hk_bs));
-
-                g_real_clear = (Clear_t)dev_vtbl[43];
-                void *hk_c = (void *)hk_Clear;
-                patch_bytes((uintptr_t)&dev_vtbl[43], &hk_c, sizeof(hk_c));
-
-                g_real_setviewport = (SetViewport_t)dev_vtbl[47];
-                void *hk_svp = (void *)hk_SetViewport;
-                patch_bytes((uintptr_t)&dev_vtbl[47], &hk_svp, sizeof(hk_svp));
-
-                g_real_drawprimitive = (DrawPrimitive_t)dev_vtbl[81];
-                void *hk_dp = (void *)hk_DrawPrimitive;
-                patch_bytes((uintptr_t)&dev_vtbl[81], &hk_dp, sizeof(hk_dp));
-
-                g_real_drawindexedprimitive = (DrawIndexedPrimitive_t)dev_vtbl[82];
-                void *hk_d = (void *)hk_DrawIndexedPrimitive;
-                patch_bytes((uintptr_t)&dev_vtbl[82], &hk_d, sizeof(hk_d));
-
-                g_real_drawprimitiveup = (DrawPrimitiveUP_t)dev_vtbl[83];
-                void *hk_dpup = (void *)hk_DrawPrimitiveUP;
-                patch_bytes((uintptr_t)&dev_vtbl[83], &hk_dpup, sizeof(hk_dpup));
-
-                g_real_drawindexedprimitiveup = (DrawIndexedPrimitiveUP_t)dev_vtbl[84];
-                void *hk_dipup = (void *)hk_DrawIndexedPrimitiveUP;
-                patch_bytes((uintptr_t)&dev_vtbl[84], &hk_dipup, sizeof(hk_dipup));
-
-                log_msg("[VT4-Mod] D3D9 device hooks installed (Present, Clear, BeginScene, SetViewport, DrawPrim/Idx/UP)");
-            }
-            return hr;
+            g_is_fullscreen = 0;
+            log_msg("[VT4-Mod] Window geometry: Windowed pos=(%d,%d) size=%dx%d (client %ux%u)",
+                    pos_x, pos_y, win_w, win_h, g_cfg_width, g_cfg_height);
         }
+
+        uintptr_t wm = *(uintptr_t *)0x00a75ad0;
+        if (wm) {
+            *(uint32_t *)wm = g_cfg_width;
+            *(uint32_t *)(wm + 4) = g_cfg_height;
+            *(uint8_t *)(wm + 0xa) = 1;
+            *(uint32_t *)(wm + 0x4c) = g_cfg_width;
+            *(uint32_t *)(wm + 0x50) = g_cfg_height;
+        }
+
+        if (g_game_hwnd && !g_orig_wndproc) {
+            g_orig_wndproc = (WNDPROC)(uintptr_t)SetWindowLongA(g_game_hwnd, GWL_WNDPROC, (LONG)(uintptr_t)hk_GameWndProc);
+            log_msg("[VT4-Mod] Subclassed game window procedure (orig=%p)", g_orig_wndproc);
+        }
+
+        void **dev_vtbl = *(void ***)(*ppdev);
+        if (!g_real_present) {
+            g_real_present = (Present_t)dev_vtbl[17];
+            void *hk_p = (void *)hk_Present;
+            patch_bytes((uintptr_t)&dev_vtbl[17], &hk_p, sizeof(hk_p));
+
+            g_real_setrendertarget = (SetRenderTarget_t)dev_vtbl[37];
+            void *hk_srt = (void *)hk_SetRenderTarget;
+            patch_bytes((uintptr_t)&dev_vtbl[37], &hk_srt, sizeof(hk_srt));
+
+            g_real_beginscene = (BeginScene_t)dev_vtbl[41];
+            void *hk_bs = (void *)hk_BeginScene;
+            patch_bytes((uintptr_t)&dev_vtbl[41], &hk_bs, sizeof(hk_bs));
+
+            g_real_clear = (Clear_t)dev_vtbl[43];
+            void *hk_c = (void *)hk_Clear;
+            patch_bytes((uintptr_t)&dev_vtbl[43], &hk_c, sizeof(hk_c));
+
+            g_real_setviewport = (SetViewport_t)dev_vtbl[47];
+            void *hk_svp = (void *)hk_SetViewport;
+            patch_bytes((uintptr_t)&dev_vtbl[47], &hk_svp, sizeof(hk_svp));
+
+            g_real_drawprimitive = (DrawPrimitive_t)dev_vtbl[81];
+            void *hk_dp = (void *)hk_DrawPrimitive;
+            patch_bytes((uintptr_t)&dev_vtbl[81], &hk_dp, sizeof(hk_dp));
+
+            g_real_drawindexedprimitive = (DrawIndexedPrimitive_t)dev_vtbl[82];
+            void *hk_d = (void *)hk_DrawIndexedPrimitive;
+            patch_bytes((uintptr_t)&dev_vtbl[82], &hk_d, sizeof(hk_d));
+
+            g_real_drawprimitiveup = (DrawPrimitiveUP_t)dev_vtbl[83];
+            void *hk_dpup = (void *)hk_DrawPrimitiveUP;
+            patch_bytes((uintptr_t)&dev_vtbl[83], &hk_dpup, sizeof(hk_dpup));
+
+            g_real_drawindexedprimitiveup = (DrawIndexedPrimitiveUP_t)dev_vtbl[84];
+            void *hk_dipup = (void *)hk_DrawIndexedPrimitiveUP;
+            patch_bytes((uintptr_t)&dev_vtbl[84], &hk_dipup, sizeof(hk_dipup));
+
+            log_msg("[VT4-Mod] D3D9 device hooks installed (Present, Clear, BeginScene, SetViewport, DrawPrim/Idx/UP)");
+        }
+        return hr;
     }
 
     log_msg("[VT4-Mod] CreateDevice FAILED all attempts! Last hr=%08lx", (unsigned long)hr);
@@ -1772,23 +1874,18 @@ static void apply_vt4_patches(void) {
              (void *)hk_Direct3DCreate9, (void **)&g_real_d3dcreate9);
 
     log_msg("[VT4-Mod] Applying startup patches...");
+    load_vt4_settings();
 
     // 1. Registry-free save path & Spanish locale (0x0c0a = 3082)
     *(uint32_t *)0x00a75da0 = 1;
     *(wchar_t **)0x00a75bc4 = g_save_path;
     *(uint32_t *)0x00a75bc8 = 0x0c0a;
 
-    // 2. Default resolution 1280x720 in FUN_004025d0 & global resolution variables
-    uint32_t w = 1280, h = 720;
+    // 2. High Definition Resolution configuration
+    uint32_t w = g_cfg_width, h = g_cfg_height;
     patch_bytes(0x00402694, &w, 4);
     patch_bytes(0x0040269e, &h, 4);
-    uint16_t w16 = 1280, h16 = 720;
-    patch_bytes(0x008358c8, &w16, 2);
-    patch_bytes(0x008358cc, &h16, 2);
-
-    // 3. Force Windowed mode (0) instead of Fullscreen (1) in FUN_004049b0
-    uint8_t windowed = 0;
-    patch_bytes(0x00404a95, &windowed, 1);
+    log_msg("[VT4-Mod] Patched resolution: %ux%u (HD display active)", w, h);
 
     // 4. Enable loose files in game/archive/ before resource.bin in FUN_0042fe20
     uint8_t loose_flag = 0;
@@ -2323,6 +2420,15 @@ static LONG WINAPI CrashHandler(PEXCEPTION_POINTERS ep) {
 
     log_msg("[VT4-Mod] === EXCEPTION CAUGHT! Code: 0x%08lx at EIP=%p ===",
             (unsigned long)code, (void *)ep->ContextRecord->Eip);
+    {
+        HMODULE hMod = NULL;
+        char mod_name[MAX_PATH] = "Unknown";
+        if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                               (LPCSTR)ep->ContextRecord->Eip, &hMod) && hMod) {
+            GetModuleFileNameA(hMod, mod_name, sizeof(mod_name));
+        }
+        log_msg("[VT4-Mod] Exception Module: %s (base=%p)", mod_name, hMod);
+    }
     if (code == 0xC0000005) {
         log_msg("[VT4-Mod] Access violation: %s address %p",
                 ep->ExceptionRecord->ExceptionInformation[0] ? "writing" : "reading",
@@ -2344,7 +2450,18 @@ static LONG WINAPI CrashHandler(PEXCEPTION_POINTERS ep) {
         log_msg("[VT4-Mod]   [ESP+%02x] = 0x%08lx%s", i * 4, (unsigned long)val, extra);
     }
 
-    // Automatic crash recovery for invalid EIP execution (EIP == 0 or non-code memory)
+    // Protect fwTree traversal crashes on invalid / freed nodes
+    if (code == 0xC0000005) {
+        uintptr_t eip = ep->ContextRecord->Eip;
+        if ((eip >= 0x0062fa00 && eip <= 0x0062fd00) ||
+            (eip >= (uintptr_t)hk_SafeTreeTraverse && eip <= (uintptr_t)hk_SafeTreeTraverse + 0x80) ||
+            (eip >= (uintptr_t)hk_SafeTreePreUpdate && eip <= (uintptr_t)hk_SafeTreePreUpdate + 0x80)) {
+            log_msg("[VT4-Mod] VEH recovering from invalid TreeTraverse node ecx=%p", (void *)ep->ContextRecord->Ecx);
+            // If we pushed a register inside hook, pop it before returning
+            ep->ContextRecord->Eip = 0x0062fc52; // clean ret for 0x62fbc0
+            return EXCEPTION_CONTINUE_EXECUTION;
+        }
+    }
     if (!is_valid_code_ptr((void *)ep->ContextRecord->Eip)) {
         if (ep->ContextRecord->Ecx >= 0x00401000 && ep->ContextRecord->Ecx < 0x00788000) {
             log_msg("[VT4-Mod] VEH recovering Eip from ECX=%p", (void *)ep->ContextRecord->Ecx);
