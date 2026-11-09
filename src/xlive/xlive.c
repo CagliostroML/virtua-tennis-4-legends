@@ -962,11 +962,27 @@ static int check_roster_arrow_click(int mx, int my) {
     return 0;
 }
 
+static int s_entry_confirmed = 0;
+static int __thiscall hk_FPPlayerEntry_IsReady(void *self) {
+    if (!self) return 0;
+    if (is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || is_key_down('C')) {
+        s_entry_confirmed = 1;
+        log_msg("[VT4-Mod] Player confirmed position on court -> advancing to character select!");
+    }
+    if (s_entry_confirmed) return 1;
+    char *esi = *(char **)((char *)self + 0x1c);
+    if (esi && (uintptr_t)esi > 0x10000) {
+        if (esi[0x18] != 0 && esi[0x10] == 0) return 1;
+    }
+    return 0;
+}
+
 typedef void (__thiscall *FPCharaSelect_Update_t)(void *self);
 static FPCharaSelect_Update_t g_real_charaselect_update = (FPCharaSelect_Update_t)0x005e1340;
 
 static void __thiscall hk_FPCharaSelect_Update(void *self) {
     if (!self) return;
+    s_entry_confirmed = 0;
     g_pCharaSelect = self;
     g_chara_select_frames = 30;
 
@@ -1017,7 +1033,7 @@ static void __thiscall hk_FPCharaSelect_Update(void *self) {
         g_roster_page_dirty = 0;
         if (grid) {
             typedef void (__thiscall *UpdateGridCards_t)(void *self);
-            UpdateGridCards_t update_cards = (UpdateGridCards_t)0x005df1b4;
+            UpdateGridCards_t update_cards = (UpdateGridCards_t)0x005df1b0;
             update_cards(grid);
 
             typedef void (__thiscall *UpdateDisplay_t)(void *self, int player_idx);
@@ -1117,15 +1133,15 @@ static void render_roster_pagination_hud(void *dev) {
             draw_font_text(g_pFont, "[E / RB]", &r_rsh, 0x90000000, 1);
             draw_font_text(g_pFont, "[E / RB]", &r_r, 0xFF5090C0, 1);
 
-            // Page Subtitle right above character selection grid (x=880..1500, y=248..278)
-            RECT r_t = { 880, 248, 1500, 278 };
+            // Page Subtitle right above character selection grid (x=870..1500, y=275..310)
+            RECT r_t = { 870, 275, 1500, 310 };
             const char *title_text = (g_current_roster_page == 0)
-                ? "PAGINA 1/2: CIRCUITO MUNDIAL ATP / WTA  [LB / RB]"
-                : "PAGINA 2/2: LEYENDAS (BECKER, EDBERG, RAFTER...)  [LB / RB]";
+                ? "PAGINA 1/2: CIRCUITO ATP / WTA  [LB / RB o Q / E]"
+                : "PAGINA 2/2: LEYENDAS CLASICAS (BECKER, EDBERG...)  [LB / RB o Q / E]";
 
-            DWORD col = (g_current_roster_page == 1) ? 0xFF00AAFF : 0xFF3070A0;
-            RECT r_tsh = { r_t.left + 1, r_t.top + 1, r_t.right + 1, r_t.bottom + 1 };
-            draw_font_text(g_pFontTitle, title_text, &r_tsh, 0x80000000, 1);
+            DWORD col = (g_current_roster_page == 1) ? 0xFF00E5FF : 0xFFFFFFFF;
+            RECT r_tsh = { r_t.left + 2, r_t.top + 2, r_t.right + 2, r_t.bottom + 2 };
+            draw_font_text(g_pFontTitle, title_text, &r_tsh, 0xDD000000, 1);
             draw_font_text(g_pFontTitle, title_text, &r_t, col, 1);
 
             if (sp_end) sp_end(g_pSprite);
@@ -1225,11 +1241,6 @@ static HRESULT __stdcall hk_CreateRenderTarget(
         }
         log_msg("[VT4-Mod] hk_CreateRenderTarget: upscaling 3D target (%ux%u) -> %ux%u (MSAA=%u)",
                 orig_w, orig_h, Width, Height, MultiSample);
-    } else if (Width == 512 && Height == 512) {
-        Width = 2048;
-        Height = 2048;
-        log_msg("[VT4-Mod] hk_CreateRenderTarget: upscaling shadow map (%ux%u) -> %ux%u",
-                orig_w, orig_h, Width, Height);
     }
 
     HRESULT hr = g_real_createrendertarget(dev, Width, Height, Format, MultiSample, MultisampleQuality, Lockable, ppSurface, pSharedHandle);
@@ -1261,11 +1272,6 @@ static HRESULT __stdcall hk_CreateDepthStencilSurface(
         }
         log_msg("[VT4-Mod] hk_CreateDepthStencilSurface: depth buffer (%ux%u) -> %ux%u (MSAA=%u)",
                 orig_w, orig_h, Width, Height, MultiSample);
-    } else if (Width == 512 && Height == 512) {
-        Width = 2048;
-        Height = 2048;
-        log_msg("[VT4-Mod] hk_CreateDepthStencilSurface: shadow depth (%ux%u) -> %ux%u",
-                orig_w, orig_h, Width, Height);
     }
 
     HRESULT hr = g_real_createdepthstencilsurface(dev, Width, Height, Format, MultiSample, MultisampleQuality, Discard, ppSurface, pSharedHandle);
@@ -1298,10 +1304,6 @@ static HRESULT __stdcall hk_CreateTexture(
             Width = g_cfg_width;
             Height = g_cfg_height;
             log_msg("[VT4-Mod] hk_CreateTexture (RT): upscaling (%ux%u) -> %ux%u", orig_w, orig_h, Width, Height);
-        } else if (Width == 512 && Height == 512) {
-            Width = 2048;
-            Height = 2048;
-            log_msg("[VT4-Mod] hk_CreateTexture (ShadowRT): upscaling (%ux%u) -> %ux%u", orig_w, orig_h, Width, Height);
         }
     }
     return g_real_createtexture(dev, Width, Height, Levels, Usage, Format, Pool, ppTexture, pSharedHandle);
@@ -1535,31 +1537,67 @@ static HRESULT __stdcall hk_SetRenderTarget(void *dev, DWORD index, void *target
 typedef HRESULT (__stdcall *SetViewport_t)(void *, const void *);
 static SetViewport_t g_real_setviewport = NULL;
 static HRESULT __stdcall hk_SetViewport(void *dev, const uint32_t *vp) {
-    if (vp) {
-        if (vp[2] == 0 || vp[3] == 0) {
-            uint32_t fix[6] = { vp[0], vp[1], g_cfg_width, g_cfg_height, vp[4], vp[5] };
-            static uint32_t last_zero_log = 0;
-            if (g_present_calls - last_zero_log >= 60) {
-                last_zero_log = g_present_calls;
-                log_msg("[VT4-Mod] SetViewport intercepted zero dimensions (%u,%u) at frame %u! Overriding to %ux%u",
-                        vp[2], vp[3], g_present_calls, g_cfg_width, g_cfg_height);
+    if (!dev || !vp) return g_real_setviewport ? g_real_setviewport(dev, vp) : 0;
+
+    void **vtbl = *(void ***)dev;
+    typedef HRESULT (__stdcall *GetRenderTarget_t)(void *, DWORD, void **);
+    GetRenderTarget_t get_rt = (GetRenderTarget_t)vtbl[38];
+    void *pRT = NULL;
+    uint32_t rt_w = g_cfg_width, rt_h = g_cfg_height;
+    if (get_rt && get_rt(dev, 0, &pRT) >= 0 && pRT) {
+        void **rt_vtbl = *(void ***)pRT;
+        typedef struct {
+            DWORD Format; DWORD Type; DWORD Usage; DWORD Pool;
+            DWORD MultiSampleType; DWORD MultiSampleQuality;
+            UINT  Width; UINT  Height;
+        } D3DSURFACE_DESC_MIN;
+        typedef HRESULT (__stdcall *GetDesc_t)(void *, D3DSURFACE_DESC_MIN *);
+        GetDesc_t get_desc = (GetDesc_t)rt_vtbl[12];
+        D3DSURFACE_DESC_MIN desc = {0};
+        if (get_desc && get_desc(pRT, &desc) >= 0) {
+            if (desc.Width > 0 && desc.Height > 0) {
+                rt_w = desc.Width;
+                rt_h = desc.Height;
             }
-            return g_real_setviewport(dev, fix);
         }
-        if (vp[2] == 640 || (vp[2] == 1280 && vp[3] == 720)) {
-            uint32_t fix[6] = { 0, 0, g_cfg_width, g_cfg_height, vp[4], vp[5] };
-            return g_real_setviewport(dev, fix);
+        typedef ULONG (__stdcall *Release_t)(void *);
+        ((Release_t)rt_vtbl[2])(pRT);
+    }
+
+    uint32_t fix[6] = { vp[0], vp[1], vp[2], vp[3], vp[4], vp[5] };
+    if (fix[2] == 0 || fix[3] == 0) {
+        fix[0] = 0; fix[1] = 0;
+        fix[2] = rt_w;
+        fix[3] = rt_h;
+        static uint32_t last_zero_log = 0;
+        if (g_present_calls - last_zero_log >= 60) {
+            last_zero_log = g_present_calls;
+            log_msg("[VT4-Mod] SetViewport zero dimensions overridden to RT bounds (%ux%u) at frame %u",
+                    rt_w, rt_h, g_present_calls);
         }
-        if (vp[2] == 512 && vp[3] == 512) {
-            uint32_t fix[6] = { vp[0], vp[1], 2048, 2048, vp[4], vp[5] };
-            return g_real_setviewport(dev, fix);
-        }
-        if (g_present_calls <= 5 || g_present_calls == 60 || g_present_calls == 240) {
-            log_msg("[VT4-Mod] SetViewport frame %u: pos=(%u,%u) size=%ux%u z=(%lu,%lu)",
-                    g_present_calls, vp[0], vp[1], vp[2], vp[3], (unsigned long)vp[4], (unsigned long)vp[5]);
+    } else if (fix[2] == 640 || (fix[2] == 1280 && fix[3] == 720)) {
+        if (rt_w == g_cfg_width && rt_h == g_cfg_height) {
+            fix[0] = 0; fix[1] = 0;
+            fix[2] = g_cfg_width;
+            fix[3] = g_cfg_height;
+        } else {
+            fix[0] = 0; fix[1] = 0;
+            fix[2] = rt_w;
+            fix[3] = rt_h;
         }
     }
-    return g_real_setviewport(dev, vp);
+
+    // Safety clamp: viewport must never exceed render target bounds to prevent D3DERR_INVALIDCALL
+    if (fix[0] + fix[2] > rt_w) {
+        if (fix[0] < rt_w) fix[2] = rt_w - fix[0];
+        else { fix[0] = 0; fix[2] = rt_w; }
+    }
+    if (fix[1] + fix[3] > rt_h) {
+        if (fix[1] < rt_h) fix[3] = rt_h - fix[1];
+        else { fix[1] = 0; fix[3] = rt_h; }
+    }
+
+    return g_real_setviewport(dev, fix);
 }
 
 static inline void ensure_valid_viewport(void *dev) {
@@ -1716,53 +1754,6 @@ static HRESULT __stdcall hk_Present(void *dev, const RECT *src, const RECT *dst,
 
     if (g_option_mode_active && g_present_calls > g_option_mode_last_frame + 3) {
         g_option_mode_active = 0;
-    }
-
-    // StretchRect composite: stretch active offscreen render target to swapchain backbuffer only when offscreen
-    void **vtbl = *(void ***)dev;
-    typedef HRESULT (__stdcall *GetBackBuffer_t)(void *, UINT, UINT, int, void **);
-    GetBackBuffer_t get_bb = (GetBackBuffer_t)vtbl[18];
-    void *pBackBuffer = NULL;
-    if (get_bb && get_bb(dev, 0, 0, 0, &pBackBuffer) >= 0 && pBackBuffer) {
-        typedef HRESULT (__stdcall *StretchRect_t)(void *, void *, const RECT *, void *, const RECT *, int);
-        StretchRect_t stretch = (StretchRect_t)vtbl[34];
-
-        // Find offscreen target with the highest draw count this frame
-        int best_idx = -1;
-        uint32_t best_draws = 0;
-        for (int i = 1; i < g_num_tracked_targets; i++) {
-            if (g_tracked_targets[i] && g_tracked_targets[i] != pBackBuffer) {
-                if (g_target_draw_counts[i] > best_draws) {
-                    best_draws = g_target_draw_counts[i];
-                    best_idx = i;
-                }
-            }
-        }
-
-        void *srcTarget = (best_idx >= 0 && best_draws > 0) ? g_tracked_targets[best_idx] : NULL;
-
-        // If the engine drew directly onto the swapchain backbuffer (target 0), do NOT overwrite it!
-        // Only StretchRect if backbuffer had <= 1 dummy draw and an offscreen target had active draws.
-        if (stretch && srcTarget && g_target_draw_counts[0] <= 1 && best_draws > 0) {
-            HRESULT sr_hr = stretch(dev, srcTarget, NULL, pBackBuffer, NULL, 2); // 2 = D3DTEXF_LINEAR
-            if (g_present_calls <= 5 || g_present_calls == 60 || (g_present_calls % 120) == 0) {
-                log_msg("[VT4-Mod] hk_Present frame %u: StretchRect(srcTarget[%d]=%p draws=%u -> BB=%p) hr=0x%08lx",
-                        g_present_calls, best_idx, srcTarget, best_draws, pBackBuffer, (unsigned long)sr_hr);
-            }
-        } else if (g_target_draw_counts[0] > 1) {
-            if (g_present_calls <= 5 || g_present_calls == 60 || (g_present_calls % 120) == 0) {
-                log_msg("[VT4-Mod] hk_Present frame %u: Direct backbuffer rendering active (T0 draws=%u), skipping StretchRect",
-                        g_present_calls, g_target_draw_counts[0]);
-            }
-        }
-
-        // Reset per-frame draw counts
-        memset(g_target_draw_counts, 0, sizeof(g_target_draw_counts));
-
-        void **bb_vtbl = *(void ***)pBackBuffer;
-        typedef ULONG (__stdcall *Release_t)(void *);
-        Release_t rel = (Release_t)bb_vtbl[2];
-        rel(pBackBuffer);
     }
 
     if (g_present_calls == 1 || (g_present_calls % 300) == 0) {
@@ -2824,6 +2815,7 @@ static int is_mapped_button_down(int button) {
         case 0x81: // Confirm / A Button / Topspin
             return is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || is_key_down('C');
         case 0x80: // Cancel / Back / B Button / Lob
+        case 0x0E: // Virtual Cancel / Escape (used by FPPlayerEntry and Sega AFC)
             return is_key_down(VK_ESCAPE) || is_key_down('Z') || is_key_down(VK_BACK);
         case 0x82: // X Button / Slice
             return is_key_down('X');
@@ -3004,9 +2996,9 @@ static inline int eval_nav_key(int slot, int active, uint32_t delay, uint32_t ra
             g_nav_val[slot] = 0;
         }
     }
-    int res = g_nav_val[slot];
-    g_nav_val[slot] = 0;
-    return res;
+    // Return frame-persistent value so all callers within the same frame
+    // (e.g. 3D carousel cylinder and 2D description subtask) receive identical input
+    return g_nav_val[slot];
 }
 
 static inline int original_menu_input_offset(void *self, int user, int offset) {
@@ -3458,8 +3450,28 @@ static void __attribute__((naked)) hk_Archive_CheckDirectory(void) {
     );
 }
 
+typedef void (__thiscall *Carousel_AddItem_t)(void *self, const char *name, void *param1, int enabled);
+static Carousel_AddItem_t g_real_carousel_additem = NULL;
+static void __thiscall hk_Carousel_AddItem(void *self, const char *name, void *param1, int enabled) {
+    log_msg("[VT4-Mod] Carousel::AddItem: name='%s' param1=%p enabled=%d self=%p",
+            name ? name : "(null)", param1, enabled, self);
+    if (name && (stricmp(name, "Live") == 0 || strcmp(name, "") == 0)) {
+        log_msg("[VT4-Mod] Carousel::AddItem: BLOCKED Live item!");
+        return;
+    }
+    if (g_real_carousel_additem) {
+        g_real_carousel_additem(self, name, param1, enabled);
+    }
+}
+
 static void apply_remove_live_mode_patch(void) {
     if (!g_cfg_remove_live) return;
+
+    if (!g_real_carousel_additem) {
+        g_real_carousel_additem = (Carousel_AddItem_t)make_trampoline(0x00634e80, 7);
+        install_jmp(0x00634e80, (void *)hk_Carousel_AddItem, 7);
+        log_msg("[VT4-Mod] Carousel::AddItem hooked at 0x00634e80 (Live blocker active)");
+    }
 
     // 1. In MainMenu::SetupCarousel (0x0043ebb8), NOP out adding "Live" item (14 bytes)
     // 0x0043ebb8: 53 57 68 dc a6 78 00 8b ce e8 ba 62 1f 00
@@ -3507,6 +3519,9 @@ static void apply_vt4_patches(void) {
     *(uint32_t *)0x00a75da0 = 1;
     *(wchar_t **)0x00a75bc4 = g_save_path;
     *(uint32_t *)0x00a75bc8 = 0x0c0a;
+
+    // 1b. Cleanly eliminate LIVE Mode from Main Menu carousel (9 items total)
+    apply_remove_live_mode_patch();
 
     // 2. High Definition Resolution configuration
     uint32_t w = g_cfg_width, h = g_cfg_height;
@@ -3572,11 +3587,9 @@ static void apply_vt4_patches(void) {
     log_msg("[VT4-Mod] Character Select Grid: Initialized to Page 0 (Tour: Federer at Slot 0, Slots 21..23 intact)");
 
     // 5c. Smooth transition from Court Position Select to Character Select:
-    // In FPPlayerEntry::IsReady (0x005f62d0), once player is active ([esi+0x18] != 0),
-    // return true (al = 1) at 0x005f62e9 to automatically proceed to FPCharaSelect
-    const uint8_t auto_ready_patch[9] = { 0xB0, 0x01, 0x5E, 0xC3, 0x90, 0x90, 0x90, 0x90, 0x90 };
-    patch_bytes(0x005f62e9, auto_ready_patch, 9);
-    log_msg("[VT4-Mod] FPPlayerEntry auto-advance to FPCharaSelect active at 0x005f62e9");
+    // Hook FPPlayerEntry::IsReady (0x005f62d0) so pressing Enter advances immediately
+    install_jmp(0x005f62d0, (void *)hk_FPPlayerEntry_IsReady, 6);
+    log_msg("[VT4-Mod] FPPlayerEntry::IsReady hooked at 0x005f62d0 (Enter auto-advance active)");
 
     // Hook FPCharaSelect::Update at vtable 0x007c601c + 8
     void *hk_cs = (void *)hk_FPCharaSelect_Update;
@@ -3588,6 +3601,12 @@ static void apply_vt4_patches(void) {
     const uint8_t nops_10[10] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
     patch_bytes(0x005df47c, nops_10, 10);
     log_msg("[VT4-Mod] Patched 0x005df47c with 10 NOPs: dynamic grid card updating enabled");
+
+    // 5e. Bypass cached card unlock status in FPCharaSelectGrid::UpdateGridCards (0x005df447)
+    // Forces dynamic card texture and label reload for all 24 slots on every page flip
+    const uint8_t nops_6[6] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
+    patch_bytes(0x005df447, nops_6, 6);
+    log_msg("[VT4-Mod] Patched 0x005df447 with 6 NOPs: dynamic grid card cache bypass enabled");
 
     // 6. Fix Sega European Region ESRB infinite loop deadlock
     // In FUN_00431580 (AdvMode ctor), replace call to FUN_0044fc70 at 0x004315d1 with near jmp to 0x0043165c
@@ -3752,6 +3771,7 @@ static void apply_vt4_patches(void) {
     log_msg("[VT4-Mod] GetKeyboardState hook and window focus bypass installed");
 
     // 24. Central Menu Navigation & Slider hooks (0x455180, 0x4551E0, 0x455240, 0x4552A0, 0x455300, 0x455440)
+    // Synchronized across all callers within the same frame via frame-cached eval_nav_key
     install_jmp(0x00455180, (void *)hk_MenuInput_Left, 5);
     install_jmp(0x004551E0, (void *)hk_MenuInput_Right, 5);
     install_jmp(0x00455240, (void *)hk_MenuInput_Up, 5);
@@ -3767,7 +3787,7 @@ static void apply_vt4_patches(void) {
     install_jmp(0x00454F80, (void *)hk_AnalogY, 6);
     install_jmp(0x00455080, (void *)hk_AnalogX, 6);
 
-    log_msg("[VT4-Mod] Central Menu Navigation & Analog hooks installed (Up, Down, Left, Right, Decide, Cancel)");
+    log_msg("[VT4-Mod] Central Menu Navigation & Analog hooks installed (100%% synchronized frame-cached routing)");
 
     // 27. Neutralize focus loss / blanking: force IsWindowFocused (0x00404dc0) to ALWAYS return TRUE
     const uint8_t ret_true3_focus[3] = { 0xB0, 0x01, 0xC3 }; // mov al, 1; ret
