@@ -483,12 +483,20 @@ static int handle_settings_menu_input(int vk, void *dev) {
 // ----------------------------------------------------------------------------
 #define D3DFVF_XYZRHW 0x004
 #define D3DFVF_DIFFUSE 0x040
+#define D3DFVF_TEX1 0x100
 #define FVF_SCREEN_VERTEX (D3DFVF_XYZRHW | D3DFVF_DIFFUSE)
+#define FVF_TEXTURED_VERTEX (D3DFVF_XYZRHW | D3DFVF_DIFFUSE | D3DFVF_TEX1)
 
 typedef struct {
     float x, y, z, rhw;
     DWORD color;
 } ScreenVertex;
+
+typedef struct {
+    float x, y, z, rhw;
+    DWORD color;
+    float u, v;
+} TexturedVertex;
 
 typedef HRESULT (WINAPI *D3DXCreateFontA_t)(
     void *pDevice,
@@ -515,17 +523,63 @@ typedef INT (WINAPI *D3DXFont_DrawTextA_t)(
     DWORD Color
 );
 
+typedef HRESULT (WINAPI *D3DXCreateSprite_t)(void *pDevice, void **ppSprite);
+static D3DXCreateSprite_t g_d3dx_createsprite = NULL;
+static void *g_pSprite = NULL;
+
 static void *g_pFont = NULL;
 static void *g_pFontTitle = NULL;
 static D3DXCreateFontA_t g_d3dx_createfont = NULL;
 
-static void init_menu_fonts(void *dev) {
-    if (!dev) return;
-    if (!g_d3dx_createfont) {
+static int g_in_overlay = 0;
+static void *g_pOverlaySB = NULL;
+
+static int begin_overlay_state(void *dev) {
+    if (!dev) dev = g_d3d_device;
+    if (!dev || !*(void ***)dev) return 0;
+    void **vtbl = *(void ***)dev;
+
+    typedef HRESULT (__stdcall *CreateStateBlock_t)(void *, int, void **);
+    CreateStateBlock_t create_sb = (CreateStateBlock_t)vtbl[59];
+    if (create_sb) {
+        if (g_pOverlaySB) {
+            typedef ULONG (__stdcall *Rel_t)(void *);
+            ((Rel_t)(*(void ***)g_pOverlaySB)[2])(g_pOverlaySB);
+            g_pOverlaySB = NULL;
+        }
+        create_sb(dev, 1 /* D3DSBT_ALL */, &g_pOverlaySB);
+    }
+    g_in_overlay = 1;
+    return 1;
+}
+
+static void end_overlay_state(void *dev) {
+    if (g_pOverlaySB) {
+        void **sb_vtbl = *(void ***)g_pOverlaySB;
+        typedef HRESULT (__stdcall *Apply_t)(void *);
+        typedef ULONG   (__stdcall *Release_t)(void *);
+        Apply_t   sb_apply   = (Apply_t)sb_vtbl[4];
+        Release_t sb_release = (Release_t)sb_vtbl[2];
+        if (sb_apply) sb_apply(g_pOverlaySB);
+        if (sb_release) sb_release(g_pOverlaySB);
+        g_pOverlaySB = NULL;
+    }
+    g_in_overlay = 0;
+}
+
+static void __attribute__((noinline)) init_menu_fonts(void *dev) {
+    if (!dev) dev = g_d3d_device;
+    if (!dev || !*(void ***)dev) return;
+    if (!g_d3dx_createfont || !g_d3dx_createsprite) {
         HMODULE hD3DX = LoadLibraryA("d3dx9_43.dll");
         if (hD3DX) {
             g_d3dx_createfont = (D3DXCreateFontA_t)GetProcAddress(hD3DX, "D3DXCreateFontA");
+            g_d3dx_createsprite = (D3DXCreateSprite_t)GetProcAddress(hD3DX, "D3DXCreateSprite");
         }
+    }
+    if (g_d3dx_createsprite && !g_pSprite) {
+        HRESULT hr_sp = g_d3dx_createsprite(dev, &g_pSprite);
+        log_msg("[VT4-Mod] Created D3DXSprite object: %p (hr=0x%08lx)", g_pSprite, (unsigned long)hr_sp);
     }
     if (g_d3dx_createfont) {
         if (!g_pFontTitle) {
@@ -550,7 +604,7 @@ static void draw_font_text(void *pFont, const char *text, RECT *r, DWORD color, 
     if (align == 1) fmt |= DT_CENTER;
     else if (align == 2) fmt |= DT_RIGHT;
     else fmt |= DT_LEFT;
-    fn(pFont, NULL, text, -1, r, fmt, color);
+    fn(pFont, g_pSprite, text, -1, r, fmt, color);
 }
 
 typedef HRESULT (__stdcall *DrawPrimitiveUP_t)(void *, int, UINT, const void *, UINT);
@@ -568,11 +622,17 @@ static void draw_screen_quad(void *dev, float x1, float y1, float x2, float y2, 
     typedef HRESULT (__stdcall *SetFVF_t)(void *, DWORD);
     typedef HRESULT (__stdcall *SetRenderState_t)(void *, DWORD, DWORD);
     typedef HRESULT (__stdcall *SetTexture_t)(void *, DWORD, void *);
+    typedef HRESULT (__stdcall *SetVertexShader_t)(void *, void *);
+    typedef HRESULT (__stdcall *SetPixelShader_t)(void *, void *);
 
     SetFVF_t set_fvf = (SetFVF_t)vtbl[89];
     SetRenderState_t set_rs = (SetRenderState_t)vtbl[57];
     SetTexture_t set_tex = (SetTexture_t)vtbl[65];
+    SetVertexShader_t set_vs = (SetVertexShader_t)vtbl[92];
+    SetPixelShader_t set_ps = (SetPixelShader_t)vtbl[107];
 
+    if (set_vs) set_vs(dev, NULL);
+    if (set_ps) set_ps(dev, NULL);
     if (set_tex) set_tex(dev, 0, NULL);
 
     if (set_rs) {
@@ -593,6 +653,8 @@ static void draw_screen_quad(void *dev, float x1, float y1, float x2, float y2, 
 static void render_settings_hud(void *dev) {
     if (!dev) return;
     if (!g_menu_visible && !g_option_mode_active) return;
+
+    if (!begin_overlay_state(dev)) return;
 
     if (g_menu_saved_banner_timer > 0) g_menu_saved_banner_timer--;
 
@@ -639,7 +701,14 @@ static void render_settings_hud(void *dev) {
     draw_screen_quad(dev, box_x, box_y + box_h - 55.0f, box_x + box_w, box_y + box_h - 53.0f, 0xFF2A4A7A);
 
     // 8. Render Text
-    if (g_pFont && g_pFontTitle) {
+    if (g_pFont && g_pFontTitle && g_pSprite) {
+        void **svtbl = *(void ***)g_pSprite;
+        typedef HRESULT (__stdcall *SpriteBegin_t)(void *, DWORD);
+        typedef HRESULT (__stdcall *SpriteEnd_t)(void *);
+        SpriteBegin_t sp_begin = (SpriteBegin_t)svtbl[8];
+        SpriteEnd_t sp_end = (SpriteEnd_t)svtbl[11];
+        if (sp_begin) sp_begin(g_pSprite, 0x10);
+
         RECT r;
 
         // Title
@@ -726,7 +795,348 @@ static void render_settings_hud(void *dev) {
             r.bottom = (LONG)(ban_y + 35.0f);
             draw_font_text(g_pFontTitle, "AJUSTES GUARDADOS Y APLICADOS CON EXITO", &r, 0xFF00FF88, 1);
         }
+
+        if (sp_end) sp_end(g_pSprite);
     }
+
+    end_overlay_state(dev);
+}
+
+static uint8_t g_keys_down[256] = {0};
+static uint32_t g_btn_hold[256] = {0};
+static uint32_t g_nav_hold[6] = {0};
+
+static inline int is_key_down(int vk) {
+    if (vk < 0 || vk >= 256) return 0;
+    if (g_keys_down[vk]) return 1;
+    if (g_game_hwnd) {
+        HWND fg = GetForegroundWindow();
+        if (fg && fg != g_game_hwnd) return 0;
+    }
+    return ((GetAsyncKeyState(vk) & 0x8000) != 0);
+}
+
+// ----------------------------------------------------------------------------
+// Roster Pagination & Character Selection Grid
+// ----------------------------------------------------------------------------
+#define NUM_ROSTER_PAGES 2
+
+// Page 0: ATP & WTA World Tour (Vanilla Sega Roster: 8 rows x 3 columns)
+static const uint8_t g_roster_page_tour[24] = {
+     0,  2,  3,   // Row 0: Federer(0), Djokovic(2), Murray(3)
+     1,  5,  4,   // Row 1: Nadal(1), Roddick(5), Del Potro(4)
+     6,  7, 10,   // Row 2: Gonzalez(6), Haas(7), Kohlschreiber(10)
+     8,  9, 13,   // Row 3: Seppi(8), Monfils(9), Courier(13)
+    15, 16, 22,   // Row 4: King(15), Duke(16), Sharapova(22)
+    17, 19, 18,   // Row 5: Venus(17), Ivanovic(19), Kuznetsova(18)
+    23, 21, 20,   // Row 6: Robson(23), Chakvetadze(21), Wozniacki(20)
+    26, 26, 27    // Row 7: CARGAR (26), ACTUAL (26), ALEATORIO (27)
+};
+
+// Page 1: Classic Tennis Legends (Becker, Edberg, Rafter + Champions + Intact Slots 21..23)
+static const uint8_t g_roster_page_legends[24] = {
+    11, 14, 12,   // Row 0: Becker(11), Edberg(14), Rafter(12)
+    13, 15, 16,   // Row 1: Courier(13), King(15), Duke(16)
+     0,  1,  2,   // Row 2: Federer(0), Nadal(1), Djokovic(2)
+     3,  5,  4,   // Row 3: Murray(3), Roddick(5), Del Potro(4)
+     6,  7, 10,   // Row 4: Gonzalez(6), Haas(7), Kohlschreiber(10)
+     8,  9, 22,   // Row 5: Seppi(8), Monfils(9), Sharapova(22)
+    17, 19, 18,   // Row 6: Venus(17), Ivanovic(19), Kuznetsova(18)
+    26, 26, 27    // Row 7: CARGAR (26), ACTUAL (26), ALEATORIO (27)
+};
+
+static const uint8_t *g_roster_pages[NUM_ROSTER_PAGES] = {
+    g_roster_page_tour,
+    g_roster_page_legends
+};
+
+static const char *g_roster_page_titles[NUM_ROSTER_PAGES] = {
+    "PAGINA 1/2: CIRCUITO ATP & WTA WORLD TOUR",
+    "PAGINA 2/2: LEYENDAS CLASICAS (BECKER, EDBERG, RAFTER...)"
+};
+
+static int g_current_roster_page = 0;
+static void *g_pCharaSelect = NULL;
+static int g_chara_select_frames = 0;
+static int g_roster_page_dirty = 0;
+
+static float g_arr_left_rc[4] = { 0 };
+static float g_arr_right_rc[4] = { 0 };
+
+typedef HRESULT (WINAPI *D3DXCreateTextureFromFileA_t)(void *pDevice, LPCSTR pSrcFile, void **ppTexture);
+static D3DXCreateTextureFromFileA_t g_d3dx_createtexture = NULL;
+static void *g_pTexArrowLeft = NULL;
+static void *g_pTexArrowRight = NULL;
+static int g_arrow_textures_attempted = 0;
+
+static char s_arrow_path_l[MAX_PATH] = { 0 };
+static char s_arrow_path_r[MAX_PATH] = { 0 };
+
+static void __attribute__((noinline)) init_arrow_textures(void *dev) {
+    if (g_arrow_textures_attempted) return;
+    if (!dev) dev = g_d3d_device;
+    if (!dev || !*(void ***)dev) return;
+    g_arrow_textures_attempted = 1;
+    HMODULE hD3DX = LoadLibraryA("d3dx9_43.dll");
+    if (hD3DX) {
+        g_d3dx_createtexture = (D3DXCreateTextureFromFileA_t)GetProcAddress(hD3DX, "D3DXCreateTextureFromFileA");
+    }
+    if (g_d3dx_createtexture) {
+        snprintf(s_arrow_path_l, sizeof(s_arrow_path_l), "%s\\ui_arrow_left.png", g_game_dir);
+        snprintf(s_arrow_path_r, sizeof(s_arrow_path_r), "%s\\ui_arrow_right.png", g_game_dir);
+        HRESULT hr_l = g_d3dx_createtexture(dev, s_arrow_path_l, &g_pTexArrowLeft);
+        HRESULT hr_r = g_d3dx_createtexture(dev, s_arrow_path_r, &g_pTexArrowRight);
+        log_msg("[VT4-Mod] Loaded UI arrow textures: left=%p (hr=0x%08lx) right=%p (hr=0x%08lx)",
+                g_pTexArrowLeft, (unsigned long)hr_l, g_pTexArrowRight, (unsigned long)hr_r);
+    }
+}
+
+static void draw_textured_quad(void *dev, void *tex, float x1, float y1, float x2, float y2, DWORD color) {
+    if (!dev || !tex) return;
+    TexturedVertex verts[4] = {
+        { x1, y1, 0.0f, 1.0f, color, 0.0f, 0.0f },
+        { x2, y1, 0.0f, 1.0f, color, 1.0f, 0.0f },
+        { x1, y2, 0.0f, 1.0f, color, 0.0f, 1.0f },
+        { x2, y2, 0.0f, 1.0f, color, 1.0f, 1.0f }
+    };
+
+    void **vtbl = *(void ***)dev;
+    typedef HRESULT (__stdcall *SetFVF_t)(void *, DWORD);
+    typedef HRESULT (__stdcall *SetRenderState_t)(void *, DWORD, DWORD);
+    typedef HRESULT (__stdcall *SetTexture_t)(void *, DWORD, void *);
+    typedef HRESULT (__stdcall *SetVertexShader_t)(void *, void *);
+    typedef HRESULT (__stdcall *SetPixelShader_t)(void *, void *);
+
+    SetFVF_t set_fvf = (SetFVF_t)vtbl[89];
+    SetRenderState_t set_rs = (SetRenderState_t)vtbl[57];
+    SetTexture_t set_tex = (SetTexture_t)vtbl[65];
+    SetVertexShader_t set_vs = (SetVertexShader_t)vtbl[92];
+    SetPixelShader_t set_ps = (SetPixelShader_t)vtbl[107];
+
+    if (set_vs) set_vs(dev, NULL);
+    if (set_ps) set_ps(dev, NULL);
+
+    if (set_rs) {
+        set_rs(dev, 27, 1);  // D3DRS_ALPHABLENDENABLE = TRUE
+        set_rs(dev, 19, 5);  // D3DRS_SRCBLEND = D3DBLEND_SRCALPHA (5)
+        set_rs(dev, 20, 6);  // D3DRS_DESTBLEND = D3DBLEND_INVSRCALPHA (6)
+        set_rs(dev, 137, 0); // D3DRS_LIGHTING = FALSE
+        set_rs(dev, 22, 1);  // D3DRS_CULLMODE = D3DCULL_NONE (1)
+        set_rs(dev, 7, 0);   // D3DRS_ZENABLE = FALSE
+    }
+
+    if (set_tex) set_tex(dev, 0, tex);
+    if (set_fvf) set_fvf(dev, FVF_TEXTURED_VERTEX);
+    if (g_real_drawprimitiveup) {
+        g_real_drawprimitiveup(dev, 5, 2, verts, sizeof(TexturedVertex));
+    }
+    if (set_tex) set_tex(dev, 0, NULL);
+}
+
+static void switch_roster_page(int dir) {
+    g_current_roster_page = (g_current_roster_page + dir + NUM_ROSTER_PAGES) % NUM_ROSTER_PAGES;
+    log_msg("[VT4-Mod] Switching to roster page %d (%s)", g_current_roster_page, g_roster_page_titles[g_current_roster_page]);
+
+    // 1. Copy the 24 slot IDs of the active page to 0x007c5f6c
+    memcpy((void *)0x007c5f6c, g_roster_pages[g_current_roster_page], 24);
+
+    // 2. Mark dirty so hk_FPCharaSelect_Update immediately refreshes on next tick
+    g_roster_page_dirty = 1;
+}
+
+static int check_roster_arrow_click(int mx, int my) {
+    if (g_chara_select_frames <= 0) return 0;
+    float fx = (float)mx;
+    float fy = (float)my;
+
+    if (fx >= g_arr_left_rc[0] && fx <= g_arr_left_rc[2] &&
+        fy >= g_arr_left_rc[1] && fy <= g_arr_left_rc[3]) {
+        switch_roster_page(-1);
+        return 1;
+    }
+    if (fx >= g_arr_right_rc[0] && fx <= g_arr_right_rc[2] &&
+        fy >= g_arr_right_rc[1] && fy <= g_arr_right_rc[3]) {
+        switch_roster_page(1);
+        return 1;
+    }
+    return 0;
+}
+
+typedef void (__thiscall *FPCharaSelect_Update_t)(void *self);
+static FPCharaSelect_Update_t g_real_charaselect_update = (FPCharaSelect_Update_t)0x005e1340;
+
+static void __thiscall hk_FPCharaSelect_Update(void *self) {
+    if (!self) return;
+    g_pCharaSelect = self;
+    g_chara_select_frames = 30;
+
+    static int s_logged_cs = 0;
+    if (s_logged_cs++ < 5 || (s_logged_cs % 180) == 0) {
+        log_msg("[VT4-Mod] FPCharaSelect_Update frame %u: self=%p", g_present_calls, self);
+    }
+
+    void *grid = *(void **)((char *)self + 0x1c);
+    if (grid) {
+        // Keyboard direct shortcuts [Q] and [E]
+        int q_down = is_key_down('Q');
+        int e_down = is_key_down('E');
+        static int s_prev_q = 0, s_prev_e = 0;
+        if (q_down && !s_prev_q) {
+            switch_roster_page(-1);
+        } else if (e_down && !s_prev_e) {
+            switch_roster_page(1);
+        }
+        s_prev_q = q_down;
+        s_prev_e = e_down;
+
+        // Natural Left/Right grid rollover pagination:
+        // Grid is 3 columns (col 0, 1, 2) by 8 rows (row 0..7).
+        char *p0 = (char *)grid + 0x0c;
+        int col0 = *(int *)(p0 + 0x0c);
+        int row0 = *(int *)(p0 + 0x10);
+
+        if (row0 < 7) {
+            static int s_prev_left = 0;
+            static int s_prev_right = 0;
+            int left_down = is_key_down(VK_LEFT) || is_key_down('A');
+            int right_down = is_key_down(VK_RIGHT) || is_key_down('D');
+
+            if (left_down && !s_prev_left && col0 == 0) {
+                switch_roster_page(-1);
+                *(int *)(p0 + 0x0c) = 2; // rollover to right column
+            } else if (right_down && !s_prev_right && col0 == 2) {
+                switch_roster_page(1);
+                *(int *)(p0 + 0x0c) = 0; // rollover to left column
+            }
+            s_prev_left = left_down;
+            s_prev_right = right_down;
+        }
+    }
+
+    if (g_roster_page_dirty && g_pCharaSelect) {
+        g_roster_page_dirty = 0;
+        if (grid) {
+            typedef void (__thiscall *UpdateGridCards_t)(void *self);
+            UpdateGridCards_t update_cards = (UpdateGridCards_t)0x005df1b4;
+            update_cards(grid);
+
+            typedef void (__thiscall *UpdateDisplay_t)(void *self, int player_idx);
+            typedef void (__thiscall *SetPlayerCharacter_t)(void *self, int player_idx);
+            UpdateDisplay_t update_disp = (UpdateDisplay_t)0x005df5d0;
+            SetPlayerCharacter_t set_player_char = (SetPlayerCharacter_t)0x005e03b0;
+            for (int i = 0; i < 4; i++) {
+                char *pi = (char *)grid + 0x0c + i * 0x48;
+                int col = *(int *)(pi + 0x0c);
+                int row = *(int *)(pi + 0x10);
+                int slot = row * 3 + col;
+                if (slot >= 0 && slot < 21) {
+                    uint8_t new_id = g_roster_pages[g_current_roster_page][slot];
+                    *(int *)(pi + 0x14) = new_id;
+                    log_msg("[VT4-Mod] Page flip: Player %d slot %d (col=%d, row=%d) -> char ID %u",
+                            i, slot, col, row, new_id);
+                    set_player_char(grid, i);
+                    update_disp(grid, i);
+                }
+            }
+        }
+    }
+
+    if (g_real_charaselect_update) {
+        g_real_charaselect_update(self);
+    }
+}
+
+static void render_roster_pagination_hud(void *dev) {
+    if (!dev) dev = g_d3d_device;
+    if (!dev || !*(void ***)dev || g_chara_select_frames <= 0 || g_menu_visible) return;
+
+    if (!begin_overlay_state(dev)) return;
+
+    init_menu_fonts(dev);
+    init_arrow_textures(dev);
+
+    void **dev_vtbl = *(void ***)dev;
+    typedef HRESULT (__stdcall *SetViewport_t)(void *, const void *);
+    SetViewport_t set_vp = (SetViewport_t)dev_vtbl[47];
+
+    uint32_t full_vp[6] = { 0, 0, g_cfg_width, g_cfg_height, 0, 0x3f800000 };
+    if (set_vp) set_vp(dev, full_vp);
+
+    typedef HRESULT (__stdcall *BeginScene_t)(void *);
+    typedef HRESULT (__stdcall *EndScene_t)(void *);
+    BeginScene_t begin_sc = (BeginScene_t)dev_vtbl[41];
+    EndScene_t   end_sc   = (EndScene_t)dev_vtbl[42];
+
+    int need_end_scene = 0;
+    if (begin_sc && begin_sc(dev) >= 0) {
+        need_end_scene = 1;
+    }
+
+    if (g_pSprite && g_pFont && g_pFontTitle) {
+        void **svtbl = *(void ***)g_pSprite;
+        typedef struct { float x, y, z; } D3DVECTOR3_Mod;
+        typedef HRESULT (__stdcall *SpriteBegin_t)(void *, DWORD);
+        typedef HRESULT (__stdcall *SpriteDraw_t)(void *, void *, const RECT *, const D3DVECTOR3_Mod *, const D3DVECTOR3_Mod *, DWORD);
+        typedef HRESULT (__stdcall *SpriteEnd_t)(void *);
+
+        SpriteBegin_t sp_begin = (SpriteBegin_t)svtbl[8];
+        SpriteDraw_t  sp_draw  = (SpriteDraw_t)svtbl[9];
+        SpriteEnd_t   sp_end   = (SpriteEnd_t)svtbl[11];
+
+        // 0x10 = D3DXSPRITE_ALPHABLEND, 0x01 = D3DXSPRITE_DONOTSAVESTATE
+        if (sp_begin && sp_begin(g_pSprite, 0x10 | 0x01) >= 0) {
+            float l_x = 810.0f, l_y = 530.0f;
+            float r_x = 1530.0f, r_y = 530.0f;
+
+            g_arr_left_rc[0] = l_x; g_arr_left_rc[1] = l_y;
+            g_arr_left_rc[2] = l_x + 48.0f; g_arr_left_rc[3] = l_y + 48.0f;
+
+            g_arr_right_rc[0] = r_x; g_arr_right_rc[1] = r_y;
+            g_arr_right_rc[2] = r_x + 48.0f; g_arr_right_rc[3] = r_y + 48.0f;
+
+            if (sp_draw) {
+                if (g_pTexArrowLeft) {
+                    D3DVECTOR3_Mod posL = { l_x, l_y, 0.0f };
+                    sp_draw(g_pSprite, g_pTexArrowLeft, NULL, NULL, &posL, 0xFFFFFFFF);
+                }
+                if (g_pTexArrowRight) {
+                    D3DVECTOR3_Mod posR = { r_x, r_y, 0.0f };
+                    sp_draw(g_pSprite, g_pTexArrowRight, NULL, NULL, &posR, 0xFFFFFFFF);
+                }
+            }
+
+            // Key hint under left arrow: [Q / LB]
+            RECT r_l = { (LONG)l_x - 20, (LONG)(l_y + 54.0f), (LONG)l_x + 68, (LONG)(l_y + 78.0f) };
+            RECT r_lsh = { r_l.left + 1, r_l.top + 1, r_l.right + 1, r_l.bottom + 1 };
+            draw_font_text(g_pFont, "[Q / LB]", &r_lsh, 0x90000000, 1);
+            draw_font_text(g_pFont, "[Q / LB]", &r_l, 0xFF5090C0, 1);
+
+            // Key hint under right arrow: [E / RB]
+            RECT r_r = { (LONG)r_x - 20, (LONG)(r_y + 54.0f), (LONG)r_x + 68, (LONG)(r_y + 78.0f) };
+            RECT r_rsh = { r_r.left + 1, r_r.top + 1, r_r.right + 1, r_r.bottom + 1 };
+            draw_font_text(g_pFont, "[E / RB]", &r_rsh, 0x90000000, 1);
+            draw_font_text(g_pFont, "[E / RB]", &r_r, 0xFF5090C0, 1);
+
+            // Page Subtitle right above character selection grid (x=880..1500, y=248..278)
+            RECT r_t = { 880, 248, 1500, 278 };
+            const char *title_text = (g_current_roster_page == 0)
+                ? "PAGINA 1/2: CIRCUITO MUNDIAL ATP / WTA  [LB / RB]"
+                : "PAGINA 2/2: LEYENDAS (BECKER, EDBERG, RAFTER...)  [LB / RB]";
+
+            DWORD col = (g_current_roster_page == 1) ? 0xFF00AAFF : 0xFF3070A0;
+            RECT r_tsh = { r_t.left + 1, r_t.top + 1, r_t.right + 1, r_t.bottom + 1 };
+            draw_font_text(g_pFontTitle, title_text, &r_tsh, 0x80000000, 1);
+            draw_font_text(g_pFontTitle, title_text, &r_t, col, 1);
+
+            if (sp_end) sp_end(g_pSprite);
+        }
+    }
+
+    if (need_end_scene && end_sc) {
+        end_sc(dev);
+    }
+
+    end_overlay_state(dev);
 }
 
 // ----------------------------------------------------------------------------
@@ -806,7 +1216,7 @@ static HRESULT __stdcall hk_CreateRenderTarget(
     BOOL Lockable, void **ppSurface, HANDLE *pSharedHandle)
 {
     UINT orig_w = Width, orig_h = Height;
-    if ((Width == 640 && Height == 512) || (Width == 640 && Height == 480)) {
+    if (Width == 640 || (Width == 1280 && Height == 720)) {
         Width = g_cfg_width;
         Height = g_cfg_height;
         if (g_cfg_antialiasing > 0) {
@@ -841,7 +1251,7 @@ static HRESULT __stdcall hk_CreateDepthStencilSurface(
     BOOL Discard, void **ppSurface, HANDLE *pSharedHandle)
 {
     UINT orig_w = Width, orig_h = Height;
-    if ((Width == 640 && Height == 512) || (Width == 640 && Height == 480) ||
+    if (Width == 640 || (Width == 1280 && Height == 720) ||
         (Width == g_cfg_width && Height == g_cfg_height)) {
         Width = g_cfg_width;
         Height = g_cfg_height;
@@ -884,7 +1294,7 @@ static HRESULT __stdcall hk_CreateTexture(
 {
     UINT orig_w = Width, orig_h = Height;
     if (Usage & (D3DUSAGE_RENDERTARGET | D3DUSAGE_DEPTHSTENCIL)) {
-        if ((Width == 640 && Height == 512) || (Width == 640 && Height == 480)) {
+        if (Width == 640 || (Width == 1280 && Height == 720)) {
             Width = g_cfg_width;
             Height = g_cfg_height;
             log_msg("[VT4-Mod] hk_CreateTexture (RT): upscaling (%ux%u) -> %ux%u", orig_w, orig_h, Width, Height);
@@ -897,21 +1307,8 @@ static HRESULT __stdcall hk_CreateTexture(
     return g_real_createtexture(dev, Width, Height, Levels, Usage, Format, Pool, ppTexture, pSharedHandle);
 }
 
-static uint8_t g_keys_down[256] = {0};
-static uint32_t g_btn_hold[256] = {0};
-static uint32_t g_nav_hold[6] = {0};
 static RECT g_windowed_rect = {0};
 static DWORD g_windowed_style = 0;
-
-static inline int is_key_down(int vk) {
-    if (vk < 0 || vk >= 256) return 0;
-    if (g_keys_down[vk]) return 1;
-    if (g_game_hwnd) {
-        HWND fg = GetForegroundWindow();
-        if (fg && fg != g_game_hwnd) return 0;
-    }
-    return ((GetAsyncKeyState(vk) & 0x8000) != 0);
-}
 
 static void toggle_fullscreen(HWND hwnd) {
     if (!hwnd) hwnd = g_game_hwnd;
@@ -1019,6 +1416,11 @@ static LRESULT CALLBACK hk_GameWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
             break;
         }
         case WM_SYSKEYDOWN: {
+            if (wParam == VK_F10) {
+                g_screenshot_requested = 1;
+                log_msg("[VT4-Mod] Screenshot requested via F10 key (SYSKEYDOWN)");
+                return 0;
+            }
             if (wParam == VK_RETURN && ((GetKeyState(VK_MENU) & 0x8000) || (GetAsyncKeyState(VK_MENU) & 0x8000))) {
                 toggle_fullscreen(hwnd);
                 return 0;
@@ -1045,12 +1447,30 @@ static LRESULT CALLBACK hk_GameWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                 log_msg("[VT4-Mod] F2 pressed: g_menu_visible=%d", g_menu_visible);
                 return 0;
             }
+            if (!g_menu_visible) {
+                if (wParam == 'Q' || wParam == 'q' || wParam == VK_OEM_4 || wParam == VK_PRIOR) {
+                    switch_roster_page(-1);
+                    return 0;
+                }
+                if (wParam == 'E' || wParam == 'e' || wParam == VK_TAB || wParam == VK_OEM_6 || wParam == VK_NEXT) {
+                    switch_roster_page(1);
+                    return 0;
+                }
+            }
             if (g_menu_visible || g_option_mode_active) {
                 if (handle_settings_menu_input(wParam, NULL)) {
                     return 0;
                 }
             }
             if (wParam < 256) g_keys_down[wParam] = 1;
+            break;
+        }
+        case WM_LBUTTONDOWN: {
+            int mx = (short)LOWORD(lParam);
+            int my = (short)HIWORD(lParam);
+            if (check_roster_arrow_click(mx, my)) {
+                return 0;
+            }
             break;
         }
         case WM_KEYUP: {
@@ -1126,8 +1546,8 @@ static HRESULT __stdcall hk_SetViewport(void *dev, const uint32_t *vp) {
             }
             return g_real_setviewport(dev, fix);
         }
-        if ((vp[2] == 640 && vp[3] == 512) || (vp[2] == 640 && vp[3] == 480)) {
-            uint32_t fix[6] = { vp[0], vp[1], g_cfg_width, g_cfg_height, vp[4], vp[5] };
+        if (vp[2] == 640 || (vp[2] == 1280 && vp[3] == 720)) {
+            uint32_t fix[6] = { 0, 0, g_cfg_width, g_cfg_height, vp[4], vp[5] };
             return g_real_setviewport(dev, fix);
         }
         if (vp[2] == 512 && vp[3] == 512) {
@@ -1195,6 +1615,7 @@ static inline void ensure_valid_viewport(void *dev) {
 
 static uint32_t g_target_draw_counts[8] = {0};
 static inline void record_draw_target(void) {
+    if (g_in_overlay) return;
     g_draw_calls++;
     if (g_current_target) {
         g_last_draw_target = g_current_target;
@@ -1242,7 +1663,18 @@ static HRESULT __stdcall hk_DrawIndexedPrimitiveUP(void *dev, int type, UINT min
 
 static uint32_t g_begin_scene_calls = 0;
 typedef HRESULT (__stdcall *BeginScene_t)(void *);
+typedef HRESULT (__stdcall *EndScene_t)(void *);
 static BeginScene_t g_real_beginscene = NULL;
+static EndScene_t   g_real_endscene = NULL;
+
+static HRESULT __stdcall hk_EndScene(void *dev) {
+    HRESULT hr = g_real_endscene ? g_real_endscene(dev) : 0;
+    if (hr != 0) {
+        log_msg("[VT4-Mod] EndScene returned 0x%08lx caller=%p", (unsigned long)hr, __builtin_return_address(0));
+    }
+    return hr;
+}
+
 static HRESULT __stdcall hk_BeginScene(void *dev) {
     g_begin_scene_calls++;
     ensure_valid_viewport(dev);
@@ -1270,12 +1702,17 @@ static HRESULT __stdcall hk_BeginScene(void *dev) {
             }
         }
     }
-    return g_real_beginscene(dev);
+    HRESULT hr = g_real_beginscene ? g_real_beginscene(dev) : 0;
+    if (hr != 0) {
+        log_msg("[VT4-Mod] BeginScene returned 0x%08lx caller=%p", (unsigned long)hr, __builtin_return_address(0));
+    }
+    return hr;
 }
 
 static HRESULT __stdcall hk_Present(void *dev, const RECT *src, const RECT *dst, HWND dstWnd, const void *dirty) {
     g_present_calls++;
     g_draws_in_cur_frame = 0;
+    if (!g_d3d_device && dev) g_d3d_device = dev;
 
     if (g_option_mode_active && g_present_calls > g_option_mode_last_frame + 3) {
         g_option_mode_active = 0;
@@ -1333,22 +1770,9 @@ static HRESULT __stdcall hk_Present(void *dev, const RECT *src, const RECT *dst,
                 g_present_calls, g_clear_calls, (unsigned long)g_last_clear_color, g_draw_calls, g_begin_scene_calls,
                 __builtin_return_address(0), g_last_draw_target);
     }
-    // Render in-game graphics settings HUD overlay if active
-    if (g_menu_visible || g_option_mode_active) {
-        typedef HRESULT (__stdcall *BeginScene_t)(void *);
-        typedef HRESULT (__stdcall *EndScene_t)(void *);
-        BeginScene_t bs = (BeginScene_t)vtbl[41];
-        EndScene_t es = (EndScene_t)vtbl[42];
-        if (bs && es && bs(dev) >= 0) {
-            render_settings_hud(dev);
-            es(dev);
 
-            static int s_menu_shot_taken = 0;
-            if (!s_menu_shot_taken) {
-                s_menu_shot_taken = 1;
-                capture_d3d9_screenshot(dev, "c:\\Users\\acorr\\Documents\\tenis\\game\\vt4_menu_overlay.png");
-            }
-        }
+    if (is_key_down(VK_F10)) {
+        g_screenshot_requested = 1;
     }
 
     if (g_present_calls == 1 || g_present_calls == 60 || g_screenshot_requested) {
@@ -1357,7 +1781,20 @@ static HRESULT __stdcall hk_Present(void *dev, const RECT *src, const RECT *dst,
         snprintf(path, sizeof(path), "%s\\vt4_present_%u.png", g_game_dir, g_present_calls);
         capture_d3d9_screenshot(dev, path);
     }
-    return g_real_present(dev, src, dst, dstWnd, dirty);
+    if (g_present_calls <= 5 || g_present_calls == 60 || g_present_calls >= 890 && g_present_calls <= 905) {
+        log_msg("[VT4-Mod] hk_Present frame %u: calling real_present", g_present_calls);
+    }
+    render_roster_pagination_hud(dev);
+    render_settings_hud(dev);
+
+    HRESULT pres_hr = g_real_present(dev, src, dst, dstWnd, dirty);
+    if (g_present_calls <= 5 || g_present_calls == 60 || (g_present_calls >= 890 && g_present_calls <= 905) || (pres_hr != 0 && pres_hr != (HRESULT)0x08760878)) {
+        log_msg("[VT4-Mod] hk_Present frame %u: real_present returned 0x%08lx", g_present_calls, (unsigned long)pres_hr);
+    }
+    if (pres_hr == (HRESULT)0x08760878) { // S_PRESENT_OCCLUDED: window occluded/background, treat as D3D_OK so render loop never stalls
+        pres_hr = 0;
+    }
+    return pres_hr;
 }
 
 static void capture_d3d9_screenshot(void *dev, const char *png_path) {
@@ -1573,6 +2010,10 @@ static HRESULT __stdcall hk_CreateDevice(void *self, UINT adapter, DWORD devtype
             g_real_beginscene = (BeginScene_t)dev_vtbl[41];
             void *hk_bs = (void *)hk_BeginScene;
             patch_bytes((uintptr_t)&dev_vtbl[41], &hk_bs, sizeof(hk_bs));
+
+            g_real_endscene = (EndScene_t)dev_vtbl[42];
+            void *hk_es = (void *)hk_EndScene;
+            patch_bytes((uintptr_t)&dev_vtbl[42], &hk_es, sizeof(hk_es));
 
             g_real_clear = (Clear_t)dev_vtbl[43];
             void *hk_c = (void *)hk_Clear;
@@ -1799,9 +2240,21 @@ static void __fastcall hk_MainMenu_Update(void *self) {
         last_state = *pState;
     }
 
+    void *carousel = (char *)self + 0xe9c;
+    int curr_sel = *(int *)((char *)carousel + 0x2c);
+    static int last_sel = -999;
+    if (curr_sel != last_sel) {
+        log_msg("[VT4-Mod] Carousel selection changed: %d -> %d at frame %u", last_sel, curr_sel, g_present_calls);
+        last_sel = curr_sel;
+    }
+
     if (g_present_calls - last_log >= 60) {
         last_log = g_present_calls;
-        log_msg("[VT4-Mod] MainMenu::Update frame %u: state=%u subtask=%d", g_present_calls, *pState, (int)subtask);
+        void *carousel = (char *)self + 0xe9c;
+        void *carousel_vtbl = *(void **)carousel;
+        log_msg("[VT4-Mod] MainMenu::Update frame %u: state=%u subtask=%d carousel=%p vtbl=%p [0x30]=%d [0x2c]=%d",
+                g_present_calls, *pState, (int)subtask, carousel, carousel_vtbl,
+                *(uint8_t *)((char *)carousel + 0x30), *(int *)((char *)carousel + 0x2c));
     }
 
     // Fallback: If still in State 1 after frame 260 on boot, call InitButtons (0x0043e730) properly
@@ -2411,6 +2864,13 @@ static int __thiscall hk_IsButtonDown(void *self, int button) {
 }
 
 static int __thiscall hk_IsButtonPressed(void *self, int button) {
+    if (g_chara_select_frames > 0 && !g_menu_visible) {
+        if (button == 0x84) { // LB
+            switch_roster_page(-1);
+        } else if (button == 0x85) { // RB
+            switch_roster_page(1);
+        }
+    }
     if (button >= 0 && button < 256) {
         if (is_mapped_button_down(button)) {
             g_btn_hold[button]++;
@@ -2544,7 +3004,9 @@ static inline int eval_nav_key(int slot, int active, uint32_t delay, uint32_t ra
             g_nav_val[slot] = 0;
         }
     }
-    return g_nav_val[slot];
+    int res = g_nav_val[slot];
+    g_nav_val[slot] = 0;
+    return res;
 }
 
 static inline int original_menu_input_offset(void *self, int user, int offset) {
@@ -2653,9 +3115,36 @@ static int __thiscall hk_MenuInput_Down(void *self, int user) {
     return original_menu_input_offset(self, user, 0x68);
 }
 
+// 0x0078b6d8: Carousel Navigation Handlers
+// Carousel calls vtable[1] (+4) for Prev (moves backwards/up) and vtable[2] (+8) for Next (moves forwards/down)
+static int __thiscall hk_Carousel_Prev(void *self) {
+    int up = is_key_down(VK_UP) || is_key_down('W');
+    int left = is_key_down(VK_LEFT) || is_key_down('A');
+    if (eval_nav_key(2, up || left, 18, 6)) {
+        log_msg("[VT4-Mod] Carousel Prev triggered (UP/LEFT) at frame %u", g_present_calls);
+        return 1;
+    }
+    return 0;
+}
+
+static int __thiscall hk_Carousel_Next(void *self) {
+    int down = is_key_down(VK_DOWN) || is_key_down('S');
+    int right = is_key_down(VK_RIGHT) || is_key_down('D');
+    if (eval_nav_key(3, down || right, 18, 6)) {
+        log_msg("[VT4-Mod] Carousel Next triggered (DOWN/RIGHT) at frame %u", g_present_calls);
+        return 1;
+    }
+    return 0;
+}
+
+static int s_menu_enter_cooldown = 0;
+
 // 0x00455300: Menu Decide / Enter
 static MenuInputFn_t g_real_menu_decide = NULL;
 static int __thiscall hk_MenuInput_Decide(void *self, int user) {
+    if (s_menu_enter_cooldown > 0) {
+        return 0; // Debounce lockout: ignore buffered Enter while transitioning from Title
+    }
     if (g_menu_visible || g_option_mode_active) {
         int active = is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || is_key_down('C');
         if (eval_nav_key(4, active, 30, 20)) {
@@ -2748,20 +3237,28 @@ typedef int (__thiscall *InputCheckFn_t)(void *self, int user);
 static InputCheckFn_t g_real_455590 = (InputCheckFn_t)0x00455590;
 static InputCheckFn_t g_real_455300 = (InputCheckFn_t)0x00455300;
 
+static int s_prev_start_key = 0;
 static int __thiscall hk_IsStartPressed(void *self, int user) {
-    if (g_present_calls >= 60 && g_present_calls <= 240) {
-        log_msg("[VT4-Mod] hk_IsStartPressed auto-trigger at frame %u: user=%d -> 1", g_present_calls, user);
+    int cur_down = is_key_down(VK_RETURN) || is_key_down(VK_SPACE);
+    int triggered = (cur_down && !s_prev_start_key);
+    s_prev_start_key = cur_down;
+    if (triggered) {
+        s_menu_enter_cooldown = 30;
         return 1;
     }
-    return g_real_455590(self, user);
+    return g_real_455590 ? g_real_455590(self, user) : 0;
 }
 
+static int s_prev_title_key = 0;
 static int __thiscall hk_CheckInput_455300(void *self, int user) {
-    if (g_present_calls >= 60 && g_present_calls <= 240) {
-        log_msg("[VT4-Mod] hk_CheckInput_455300 auto-trigger at frame %u: user=%d -> 1", g_present_calls, user);
+    int cur_down = is_key_down(VK_RETURN) || is_key_down(VK_SPACE);
+    int triggered = (cur_down && !s_prev_title_key);
+    s_prev_title_key = cur_down;
+    if (triggered) {
+        s_menu_enter_cooldown = 30;
         return 1;
     }
-    return g_real_455300(self, user);
+    return g_real_455300 ? g_real_455300(self, user) : 0;
 }
 
 static int is_loose_file_override(const char *rel_path, char *out_path, size_t out_size) {
@@ -2961,6 +3458,39 @@ static void __attribute__((naked)) hk_Archive_CheckDirectory(void) {
     );
 }
 
+static void apply_remove_live_mode_patch(void) {
+    if (!g_cfg_remove_live) return;
+
+    // 1. In MainMenu::SetupCarousel (0x0043ebb8), NOP out adding "Live" item (14 bytes)
+    // 0x0043ebb8: 53 57 68 dc a6 78 00 8b ce e8 ba 62 1f 00
+    const uint8_t nops_14[14] = {
+        0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90,
+        0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90
+    };
+    patch_bytes(0x0043ebb8, nops_14, 14);
+
+    // 2. Adjust carousel modulo item count from 10 (0x0a) to 9 (0x09)
+    const uint8_t count_9_ecx[5] = { 0xb9, 0x09, 0x00, 0x00, 0x00 };
+    patch_bytes(0x0043eac8, count_9_ecx, 5);
+
+    const uint8_t set_len_9[7] = { 0xc7, 0x46, 0x6c, 0x09, 0x00, 0x00, 0x00 };
+    patch_bytes(0x00634cb9, set_len_9, 7);
+
+    // 3. Blank out "Live" string at 0x0078a6dc
+    patch_bytes(0x0078a6dc, "\0\0\0\0", 4);
+
+    // 4. Enable all carousel items unconditionally on PC:
+    // Bypass demo/platform check at 0x0043eb09 that cleared [esp+0x14] (which disabled Arcade, Exhibition, etc.)
+    const uint8_t enable_all_carousel_items[20] = {
+        0xeb, 0x12, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90,
+        0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90
+    };
+    patch_bytes(0x0043eb09, enable_all_carousel_items, sizeof(enable_all_carousel_items));
+    log_msg("[VT4-Mod] Patched 0x0043eb09: All Main Menu carousel items unlocked (Arcade, Exhibition, Training)");
+
+    log_msg("[VT4-Mod] LIVE Mode cleanly eliminated from Main Menu carousel (9 items total)");
+}
+
 static void apply_vt4_patches(void) {
     DWORD old_code_prot = 0;
     VirtualProtect((void *)0x00401000, 0x00400000, PAGE_EXECUTE_READWRITE, &old_code_prot);
@@ -3036,11 +3566,10 @@ static void apply_vt4_patches(void) {
     const uint8_t unlock_all_patch[8] = { 0xB8, 0x01, 0x00, 0x00, 0x00, 0xC2, 0x04, 0x00 };
     patch_bytes(0x005dfe90, unlock_all_patch, 8);
 
-    // 5b. Roster Expansion: Assign Boris Becker (11), Patrick Rafter (12), and Stefan Edberg (14)
-    // to slots 21, 22, 23 of the character selection grid (replacing duplicate EDIT00/EDIT01)
-    const uint8_t legends_grid_patch[3] = { 11, 12, 14 };
-    patch_bytes(0x007c5f6c + 21, legends_grid_patch, 3);
-    log_msg("[VT4-Mod] Character Select Grid: Slots 21..23 mapped to Becker (11), Rafter (12), Edberg (14)");
+    // 5b. Roster Expansion: Roster Pagination (Page 0 = ATP/WTA, Page 1 = Legends)
+    // Initialize base 24-entry grid so Slots 21..23 remain Cargar (26), Actual (26), Aleatorio (27)
+    memcpy((void *)0x007c5f6c, g_roster_page_tour, 24);
+    log_msg("[VT4-Mod] Character Select Grid: Initialized to Page 0 (Tour: Federer at Slot 0, Slots 21..23 intact)");
 
     // 5c. Smooth transition from Court Position Select to Character Select:
     // In FPPlayerEntry::IsReady (0x005f62d0), once player is active ([esi+0x18] != 0),
@@ -3048,6 +3577,17 @@ static void apply_vt4_patches(void) {
     const uint8_t auto_ready_patch[9] = { 0xB0, 0x01, 0x5E, 0xC3, 0x90, 0x90, 0x90, 0x90, 0x90 };
     patch_bytes(0x005f62e9, auto_ready_patch, 9);
     log_msg("[VT4-Mod] FPPlayerEntry auto-advance to FPCharaSelect active at 0x005f62e9");
+
+    // Hook FPCharaSelect::Update at vtable 0x007c601c + 8
+    void *hk_cs = (void *)hk_FPCharaSelect_Update;
+    patch_bytes(0x007c601c + 8, &hk_cs, sizeof(hk_cs));
+    log_msg("[VT4-Mod] Hooked FPCharaSelect::Update at 0x007c601c+8 -> hk_FPCharaSelect_Update");
+
+    // 5d. Enable dynamic grid card updating for all 24 slots (Federer -> Becker/Edberg/Rafter)
+    // NOP the 10 bytes at 0x005df47c so Sega's card manager unconditionally reads 0x007c5f6c
+    const uint8_t nops_10[10] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
+    patch_bytes(0x005df47c, nops_10, 10);
+    log_msg("[VT4-Mod] Patched 0x005df47c with 10 NOPs: dynamic grid card updating enabled");
 
     // 6. Fix Sega European Region ESRB infinite loop deadlock
     // In FUN_00431580 (AdvMode ctor), replace call to FUN_0044fc70 at 0x004315d1 with near jmp to 0x0043165c
@@ -3142,11 +3682,6 @@ static void apply_vt4_patches(void) {
     patch_bytes(0x0044dc10, ret_true_ret8, 5);
     log_msg("[VT4-Mod] Patched MainMenu task completion checks at 0x44DA10, 0x44DC10");
 
-    // 17. Disable FPLoadSaveIcon::Render at 0x005ef5c0 (prevents black background I_CMN_load_save_bg_M & spinner)
-    const uint8_t ret_op = 0xC3;
-    patch_bytes(0x005ef5c0, &ret_op, 1);
-    log_msg("[VT4-Mod] Patched 0x005ef5c0: FPLoadSaveIcon::Render disabled (ret)");
-
     // 18. Auto-confirm MiscWindow modal dialogs (0x0043ff50) so SaveData doesn't block
     uint8_t jmp_mw[7] = { 0xE9, 0, 0, 0, 0, 0x90, 0x90 };
     uint32_t rel_mw = (uint32_t)(uintptr_t)hk_MiscWindow_GetResult - (0x0043ff50 + 5);
@@ -3160,12 +3695,6 @@ static void apply_vt4_patches(void) {
     void *hk_menu = (void *)hk_MainMenu_Update;
     patch_bytes(0x0078a64c, &hk_menu, sizeof(hk_menu));
     log_msg("[VT4-Mod] Installed Loading::Update and MainMenu::Update hooks");
-
-    // 19b. Install hook in OptionMode vtable (0x0078ae00)
-    g_real_optionmode_update = *(OptionMode_Update_t *)0x0078ae00;
-    void *hk_opt = (void *)hk_OptionMode_Update;
-    patch_bytes(0x0078ae00, &hk_opt, sizeof(hk_opt));
-    log_msg("[VT4-Mod] Installed OptionMode::Update hook at 0x0078ae00");
 
     // 18. Hook MessageBoxA and MessageBoxW to prevent assert popups from blocking
     void *hk_mba = (void *)hk_MessageBoxA;
@@ -3240,18 +3769,17 @@ static void apply_vt4_patches(void) {
 
     log_msg("[VT4-Mod] Central Menu Navigation & Analog hooks installed (Up, Down, Left, Right, Decide, Cancel)");
 
-    // 26. Action System hooks (0x0062D830, 0x00633A20-0x00633AA0) for Arrow & WASD menu/slider controls
-    install_jmp(0x0062D830, (void *)hk_CheckAction_62d830, 10);
-    install_jmp(0x00633A20, (void *)hk_ActionUp, 8);
-    install_jmp(0x00633A40, (void *)hk_ActionDown, 8);
-    install_jmp(0x00633A60, (void *)hk_ActionLeft, 8);
-    install_jmp(0x00633A80, (void *)hk_ActionRight, 8);
-    install_jmp(0x00633AA0, (void *)hk_ActionDecide, 8);
-
     // 27. Neutralize focus loss / blanking: force IsWindowFocused (0x00404dc0) to ALWAYS return TRUE
     const uint8_t ret_true3_focus[3] = { 0xB0, 0x01, 0xC3 }; // mov al, 1; ret
     patch_bytes(0x00404dc0, ret_true3_focus, 3);
     log_msg("[VT4-Mod] Window focus protection installed: IsWindowFocused (0x00404dc0) forced to TRUE");
+
+    // 27b. Neutralize accidental emergency shutdown: force 0x00404d90 to return 0 (xor eax, eax; ret)
+    const uint8_t ret_zero_3[3] = { 0x31, 0xC0, 0xC3 };
+    patch_bytes(0x00404d90, ret_zero_3, 3);
+    const uint8_t ret_op[1] = { 0xC3 };
+    patch_bytes(0x00404da0, ret_op, 1);
+    log_msg("[VT4-Mod] Emergency shutdown guards installed at 0x00404d90 and 0x00404da0");
 
     // 28. Install custom CRT invalid parameter handler to neutralize 0xc0000417 aborts
     HMODULE hCRT = GetModuleHandleA("msvcr90.dll");
@@ -3265,10 +3793,6 @@ static void apply_vt4_patches(void) {
             log_msg("[VT4-Mod] Custom CRT _invalid_parameter_handler registered");
         }
     }
-
-    // 29. Hook Renderer::CalcPipelineSettings at 0x004b09c0 (8 bytes)
-    install_jmp(0x004b09c0, (void *)hk_Renderer_CalcPipelineSettings, 8);
-    log_msg("[VT4-Mod] Patched 0x004b09c0: Renderer::CalcPipelineSettings hooked (Native 3D + 2048 Shadows)");
 
     log_msg("[VT4-Mod] Startup patches applied cleanly.");
 }
@@ -3286,6 +3810,14 @@ uint32_t __stdcall xlive_5002(void) {             // XLiveRender (called every f
     g_render_calls++;
     if (g_render_calls == 1 || (g_render_calls % 300) == 0) {
         log_msg("[VT4-Mod] XLiveRender frame %u", g_render_calls);
+    }
+
+    if (g_chara_select_frames > 0) {
+        g_chara_select_frames--;
+    }
+
+    if (s_menu_enter_cooldown > 0) {
+        s_menu_enter_cooldown--;
     }
 
     // Also ensure loose file flag stays 0 if FileLoader is initialized
