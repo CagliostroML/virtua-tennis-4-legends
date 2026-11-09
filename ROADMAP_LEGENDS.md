@@ -13,24 +13,25 @@ Este documento establece la arquitectura técnica y el plan de ejecución por fa
 
 ---
 
-## 2. Fase 1B: Remasterización Gráfica HD Total & Menú de Ajustes In-Game
-1. **Escalado del RenderTarget 3D Interno (Full HD / 2K / 4K)**:
-   - Interceptar en `xlive.dll` la creación de búferes (`CreateRenderTarget` y `CreateTexture` con flag `D3DUSAGE_RENDERTARGET`) para que la pista, jugadores y red se computen a la resolución nativa de pantalla (`1920x1080`, `2560x1440`, `3840x2160`) eliminando el reescalado borroso desde 640x512.
-2. **Anti-Aliasing Real en Geometría 3D (MSAA / SMAA)**:
-   - Activar el estado `D3DRS_MULTISAMPLEANTIALIAS` en los pases de dibujo 3D e implementar un pase de anti-aliasing de bordes (SMAA o FXAA) para erradicar las aristas dentadas en las siluetas de los tenistas y la red.
-3. **Sombras de Alta Resolución**:
-   - Escalar los mapas de sombras (*shadow maps*) de 512x512 a **2048x2048** o **4096x4096** para obtener sombras limpias y sin bordes pixelados bajo los tenistas.
-4. **Filtrado Anisotrópico 16x Permanente**:
-   - Forzar `D3DSAMP_MAXANISOTROPY = 16` y `D3DTEXF_ANISOTROPIC` en cada textura para que las líneas de fondo y la superficie de la pista se mantengan nítidas en perspectiva rasante.
-5. **Integración de Opciones Gráficas en el Menú de Ajustes In-Game**:
-   - Conectar las opciones de `vt4_settings.ini` directamente a la pantalla de **Ajustes / Opciones (`OptionMode`)** del juego:
-     - **Resolución**: Selector interactivo (1080p Full HD, 1440p 2K, 4K UHD, 720p HD).
-     - **Modo de pantalla**: Pantalla completa sin bordes / Modo ventana.
-     - **Anti-Aliasing (MSAA)**: Desactivado / 2x / 4x / 8x.
-     - **Sincronización Vertical (VSync)**: Activado (60 FPS) / Desactivado.
-     - **Filtrado Anisotrópico**: Desactivado / 4x / 8x / 16x Ultra.
-     - **Ocultar Modo LIVE**: Activado / Desactivado.
-   - Sincronización bidireccional automática: los cambios realizados en el menú se guardan inmediatamente en `vt4_settings.ini` sin necesidad de reiniciar el juego.
+## 2. Fase 1B: Remasterización Gráfica HD Total & Menú de Ajustes In-Game (Completada)
+- [x] **Escalado del RenderTarget 3D Interno (Full HD / 2K / 4K)**:
+  - Intercepción completa en `Renderer::CalcPipelineSettings` (`0x004b09c0`) y métodos Direct3D 9 (`CreateRenderTarget`, `CreateDepthStencilSurface`, `CreateTexture`, `SetViewport`) para computar la escena 3D a resolución nativa (`1920x1080`, `2560x1440`, `3840x2160`), erradicando definitivamente el renderizado interno a 640x512 y el estiramiento borroso.
+- [x] **Anti-Aliasing Real en Geometría 3D (MSAA)**:
+  - Activado `D3DRS_MULTISAMPLEANTIALIAS` y `D3DRS_ANTIALIASEDLINEENABLE` en `hk_BeginScene` con búferes multitemuestra reales (`D3DMULTISAMPLE_TYPE`), eliminando los dientes de sierra en siluetas de jugadores, pista y red.
+- [x] **Sombras de Ultra Alta Resolución (2048x2048)**:
+  - Mapas de sombras escalados de 512x512 a **2048x2048** con viewports sincronizados a 2048x2048 para sombras suaves y definidas sin pixelación.
+- [x] **Filtrado Anisotrópico 16x Permanente**:
+  - Forzado `D3DSAMP_MAXANISOTROPY = 16` y `D3DTEXF_ANISOTROPIC` en todas las etapas de textura (samplers 0 a 7), garantizando líneas de fondo nítidas en ángulos rasantes.
+- [x] **Menú de Ajustes Gráficos In-Game & Sincronización Bidireccional**:
+  - Interfaz gráfica superpuesta (HUD) Direct3D 9 con renderizado tipográfico anti-aliasing (`ID3DXFont`), cajas translúcidas y navegación con teclado (WASD / Flechas / Enter / Espacio / Esc) y mando:
+    - **Resolución**: Selector interactivo (1080p Full HD, 1440p 2K, 4K UHD, 720p HD).
+    - **Modo de pantalla**: Pantalla completa sin bordes / Modo ventana con reajuste en caliente.
+    - **Anti-Aliasing 3D (MSAA)**: Desactivado / 2x / 4x / 8x Ultra.
+    - **Sincronización Vertical (VSync)**: Activado (60 FPS) / Desactivado.
+    - **Filtrado Anisotrópico**: Desactivado / 4x / 8x / 16x Ultra.
+    - **Ocultar Modo LIVE**: Activado (Recomendado) / Desactivado.
+  - Sincronización bidireccional automática: guardado instantáneo en `vt4_settings.ini` y `game/save/Config.txt` con aplicación en tiempo real y banner de confirmación.
+  - Accesible desde la opción **Ajustes / Opciones (`OptionMode`)** del juego o pulsando **F2** en cualquier momento.
 
 ---
 

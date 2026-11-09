@@ -93,6 +93,10 @@ static uint32_t g_cfg_vsync = 1;
 static uint32_t g_cfg_anisotropic = 16;
 static uint32_t g_cfg_remove_live = 1;
 
+static int g_is_fullscreen = 0;
+static uint32_t g_present_calls = 0;
+static void sync_menu_indices_from_cfg(void);
+
 static void load_vt4_settings(void) {
     char ini_path[MAX_PATH];
     GetModuleFileNameA(NULL, ini_path, sizeof(ini_path));
@@ -138,11 +142,761 @@ static void load_vt4_settings(void) {
     log_msg("[VT4-Mod] Settings loaded: %ux%u (windowed=%u msaa=%u vsync=%u aniso=%u remove_live=%u)",
             g_cfg_width, g_cfg_height, g_cfg_windowed, g_cfg_antialiasing,
             g_cfg_vsync, g_cfg_anisotropic, g_cfg_remove_live);
+    sync_menu_indices_from_cfg();
 }
+
+// ============================================================================
+// Phase 1B: Settings Menu, Options Integration & Direct3D 9 RenderTarget Scaling
+// ============================================================================
+
+#define NUM_SETTINGS_ITEMS 7
+
+typedef struct {
+    uint32_t w, h;
+    const char *desc;
+} ResChoice;
+
+static const ResChoice s_res_choices[] = {
+    { 1920, 1080, "1920x1080 (Full HD 1080p)" },
+    { 2560, 1440, "2560x1440 (2K QHD 1440p)" },
+    { 3840, 2160, "3840x2160 (4K UHD 2160p)" },
+    { 1280, 720,  "1280x720 (HD 720p)" }
+};
+#define NUM_RES_CHOICES (sizeof(s_res_choices) / sizeof(s_res_choices[0]))
+
+static const char *s_windowed_choices[] = {
+    "Pantalla Completa Sin Bordes",
+    "Modo Ventana"
+};
+
+static const struct {
+    uint32_t val;
+    const char *desc;
+} s_msaa_choices[] = {
+    { 0, "Desactivado (Off)" },
+    { 2, "2x MSAA" },
+    { 4, "4x MSAA (Recomendado)" },
+    { 8, "8x MSAA (Ultra)" }
+};
+#define NUM_MSAA_CHOICES (sizeof(s_msaa_choices) / sizeof(s_msaa_choices[0]))
+
+static const char *s_vsync_choices[] = {
+    "Desactivado (Sin limite)",
+    "Activado (60 FPS)"
+};
+
+static const struct {
+    uint32_t val;
+    const char *desc;
+} s_aniso_choices[] = {
+    { 0, "Desactivado" },
+    { 4, "4x" },
+    { 8, "8x" },
+    { 16, "16x Ultra (Pistas nitidas)" }
+};
+#define NUM_ANISO_CHOICES (sizeof(s_aniso_choices) / sizeof(s_aniso_choices[0]))
+
+static const char *s_live_choices[] = {
+    "Desactivado",
+    "Activado (Recomendado)"
+};
+
+static int s_idx_res = 0;
+static int s_idx_win = 0;
+static int s_idx_msaa = 2; // 4x default
+static int s_idx_vsync = 1;
+static int s_idx_aniso = 3; // 16x default
+static int s_idx_live = 1;
+
+static int g_menu_visible = 0;
+static int g_menu_selection = 0;
+static int g_menu_saved_banner_timer = 0;
+static int g_option_mode_active = 0;
+static uint32_t g_option_mode_last_frame = 0;
+
+static void sync_menu_indices_from_cfg(void) {
+    s_idx_res = 0;
+    for (int i = 0; i < (int)NUM_RES_CHOICES; i++) {
+        if (s_res_choices[i].w == g_cfg_width && s_res_choices[i].h == g_cfg_height) {
+            s_idx_res = i;
+            break;
+        }
+    }
+    s_idx_win = g_cfg_windowed ? 1 : 0;
+
+    s_idx_msaa = 0;
+    for (int i = 0; i < (int)NUM_MSAA_CHOICES; i++) {
+        if (s_msaa_choices[i].val == g_cfg_antialiasing) {
+            s_idx_msaa = i;
+            break;
+        }
+    }
+
+    s_idx_vsync = g_cfg_vsync ? 1 : 0;
+
+    s_idx_aniso = 0;
+    for (int i = 0; i < (int)NUM_ANISO_CHOICES; i++) {
+        if (s_aniso_choices[i].val == g_cfg_anisotropic) {
+            s_idx_aniso = i;
+            break;
+        }
+    }
+
+    s_idx_live = g_cfg_remove_live ? 1 : 0;
+}
+
+static void update_config_txt(void) {
+    const wchar_t *config_path = L"c:\\Users\\acorr\\Documents\\tenis\\game\\save\\Config.txt";
+    FILE *f = _wfopen(config_path, L"rb");
+    if (!f) return;
+
+    fseek(f, 0, SEEK_END);
+    long sz = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (sz <= 2 || sz > 65536) {
+        fclose(f);
+        return;
+    }
+
+    wchar_t *buf = (wchar_t *)malloc(sz + 4);
+    if (!buf) {
+        fclose(f);
+        return;
+    }
+
+    size_t read_bytes = fread(buf, 1, sz, f);
+    fclose(f);
+
+    if (buf[0] != 0xFEFF) {
+        free(buf);
+        return;
+    }
+
+    size_t num_wchars = read_bytes / sizeof(wchar_t);
+    buf[num_wchars] = L'\0';
+
+    wchar_t *new_buf = (wchar_t *)malloc((sz + 1024) * sizeof(wchar_t));
+    if (!new_buf) {
+        free(buf);
+        return;
+    }
+
+    new_buf[0] = 0xFEFF;
+    size_t new_len = 1;
+
+    wchar_t *p = buf + 1;
+    int line_idx = 0;
+    while (*p) {
+        wchar_t line[1024];
+        size_t l_idx = 0;
+        while (*p && *p != L'\r' && *p != L'\n' && l_idx < 1020) {
+            line[l_idx++] = *p++;
+        }
+        line[l_idx] = L'\0';
+        if (*p == L'\r') p++;
+        if (*p == L'\n') p++;
+
+        if (line_idx == 5) {
+            swprintf(line, 1024, L"%u", g_cfg_width);
+        } else if (line_idx == 6) {
+            swprintf(line, 1024, L"%u", g_cfg_height);
+        } else if (line_idx == 10) {
+            swprintf(line, 1024, L"%u", g_cfg_antialiasing);
+        }
+
+        size_t slen = wcslen(line);
+        memcpy(&new_buf[new_len], line, slen * sizeof(wchar_t));
+        new_len += slen;
+        new_buf[new_len++] = L'\r';
+        new_buf[new_len++] = L'\n';
+        line_idx++;
+    }
+
+    FILE *fout = _wfopen(config_path, L"wb");
+    if (fout) {
+        fwrite(new_buf, sizeof(wchar_t), new_len, fout);
+        fclose(fout);
+        log_msg("[VT4-Mod] Successfully updated %ls (lines 5=%u, 6=%u, 10=%u)",
+                config_path, g_cfg_width, g_cfg_height, g_cfg_antialiasing);
+    }
+
+    free(new_buf);
+    free(buf);
+}
+
+static void save_vt4_settings(void) {
+    char ini_path[MAX_PATH];
+    GetModuleFileNameA(NULL, ini_path, sizeof(ini_path));
+    char *last_slash = strrchr(ini_path, '\\');
+    if (last_slash) *last_slash = '\0';
+    strncat(ini_path, "\\vt4_settings.ini", sizeof(ini_path) - strlen(ini_path) - 1);
+
+    char val[32];
+    snprintf(val, sizeof(val), "%u", g_cfg_width);
+    WritePrivateProfileStringA("Graphics", "Width", val, ini_path);
+    snprintf(val, sizeof(val), "%u", g_cfg_height);
+    WritePrivateProfileStringA("Graphics", "Height", val, ini_path);
+    snprintf(val, sizeof(val), "%u", g_cfg_windowed);
+    WritePrivateProfileStringA("Graphics", "Windowed", val, ini_path);
+    snprintf(val, sizeof(val), "%u", g_cfg_antialiasing);
+    WritePrivateProfileStringA("Graphics", "AntiAliasing", val, ini_path);
+    snprintf(val, sizeof(val), "%u", g_cfg_vsync);
+    WritePrivateProfileStringA("Graphics", "VSync", val, ini_path);
+    snprintf(val, sizeof(val), "%u", g_cfg_anisotropic);
+    WritePrivateProfileStringA("Graphics", "AnisotropicFiltering", val, ini_path);
+    snprintf(val, sizeof(val), "%u", g_cfg_remove_live);
+    WritePrivateProfileStringA("Menu", "RemoveLiveMode", val, ini_path);
+
+    log_msg("[VT4-Mod] Settings saved to %s", ini_path);
+}
+
+static void apply_and_save_menu_settings(void *dev) {
+    g_cfg_width = s_res_choices[s_idx_res].w;
+    g_cfg_height = s_res_choices[s_idx_res].h;
+    g_cfg_windowed = s_idx_win;
+    g_cfg_antialiasing = s_msaa_choices[s_idx_msaa].val;
+    g_cfg_vsync = s_idx_vsync;
+    g_cfg_anisotropic = s_aniso_choices[s_idx_aniso].val;
+    g_cfg_remove_live = s_idx_live;
+
+    save_vt4_settings();
+    update_config_txt();
+
+    *(uint32_t *)0x00a75d24 = g_cfg_width;
+    *(uint32_t *)0x00a75d28 = g_cfg_height;
+    *(uint32_t *)0x00a75d7c = g_cfg_antialiasing;
+
+    uintptr_t wm = *(uintptr_t *)0x00a75ad0;
+    if (wm) {
+        *(uint32_t *)wm = g_cfg_width;
+        *(uint32_t *)(wm + 4) = g_cfg_height;
+        *(uint32_t *)(wm + 0x4c) = g_cfg_width;
+        *(uint32_t *)(wm + 0x50) = g_cfg_height;
+    }
+
+    if (g_game_hwnd) {
+        int scr_w = GetSystemMetrics(SM_CXSCREEN);
+        int scr_h = GetSystemMetrics(SM_CYSCREEN);
+        if (!g_cfg_windowed) {
+            SetWindowLongA(g_game_hwnd, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+            SetWindowPos(g_game_hwnd, HWND_TOP, 0, 0, scr_w, scr_h, SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+            g_is_fullscreen = 1;
+        } else {
+            RECT wr = { 0, 0, g_cfg_width, g_cfg_height };
+            DWORD style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_VISIBLE;
+            AdjustWindowRect(&wr, style, FALSE);
+            int win_w = wr.right - wr.left;
+            int win_h = wr.bottom - wr.top;
+            int pos_x = (scr_w > win_w) ? (scr_w - win_w) / 2 : 50;
+            int pos_y = (scr_h > win_h) ? (scr_h - win_h) / 2 : 50;
+            SetWindowLongA(g_game_hwnd, GWL_STYLE, style);
+            SetWindowPos(g_game_hwnd, HWND_TOP, pos_x, pos_y, win_w, win_h, SWP_SHOWWINDOW | SWP_FRAMECHANGED);
+            g_is_fullscreen = 0;
+        }
+        UpdateWindow(g_game_hwnd);
+    }
+
+    if (dev && g_cfg_anisotropic > 0) {
+        void **vtbl = *(void ***)dev;
+        typedef HRESULT (__stdcall *SetSamplerState_t)(void *, DWORD, DWORD, DWORD);
+        SetSamplerState_t set_sampler = (SetSamplerState_t)vtbl[69];
+        if (set_sampler) {
+            for (DWORD s = 0; s < 8; s++) {
+                set_sampler(dev, s, 1, 3);
+                set_sampler(dev, s, 2, 3);
+                set_sampler(dev, s, 3, 2);
+                set_sampler(dev, s, 10, g_cfg_anisotropic);
+            }
+        }
+    }
+
+    g_menu_saved_banner_timer = 180;
+    log_msg("[VT4-Mod] Settings applied immediately: %ux%u Win=%u MSAA=%u VSync=%u Aniso=%u Live=%u",
+            g_cfg_width, g_cfg_height, g_cfg_windowed, g_cfg_antialiasing,
+            g_cfg_vsync, g_cfg_anisotropic, g_cfg_remove_live);
+}
+
+static int handle_settings_menu_input(int vk, void *dev) {
+    if (!g_menu_visible && !g_option_mode_active) return 0;
+
+    switch (vk) {
+        case VK_UP:
+        case 'W': {
+            g_menu_selection = (g_menu_selection - 1 + NUM_SETTINGS_ITEMS) % NUM_SETTINGS_ITEMS;
+            log_msg("[VT4-Mod] Menu Nav: Up -> selection=%d", g_menu_selection);
+            return 1;
+        }
+        case VK_DOWN:
+        case 'S': {
+            g_menu_selection = (g_menu_selection + 1) % NUM_SETTINGS_ITEMS;
+            log_msg("[VT4-Mod] Menu Nav: Down -> selection=%d", g_menu_selection);
+            return 1;
+        }
+        case VK_LEFT:
+        case 'A': {
+            switch (g_menu_selection) {
+                case 0: s_idx_res = (s_idx_res - 1 + (int)NUM_RES_CHOICES) % (int)NUM_RES_CHOICES; break;
+                case 1: s_idx_win = !s_idx_win; break;
+                case 2: s_idx_msaa = (s_idx_msaa - 1 + (int)NUM_MSAA_CHOICES) % (int)NUM_MSAA_CHOICES; break;
+                case 3: s_idx_vsync = !s_idx_vsync; break;
+                case 4: s_idx_aniso = (s_idx_aniso - 1 + (int)NUM_ANISO_CHOICES) % (int)NUM_ANISO_CHOICES; break;
+                case 5: s_idx_live = !s_idx_live; break;
+            }
+            log_msg("[VT4-Mod] Menu Value Left: item %d changed", g_menu_selection);
+            return 1;
+        }
+        case VK_RIGHT:
+        case 'D': {
+            switch (g_menu_selection) {
+                case 0: s_idx_res = (s_idx_res + 1) % (int)NUM_RES_CHOICES; break;
+                case 1: s_idx_win = !s_idx_win; break;
+                case 2: s_idx_msaa = (s_idx_msaa + 1) % (int)NUM_MSAA_CHOICES; break;
+                case 3: s_idx_vsync = !s_idx_vsync; break;
+                case 4: s_idx_aniso = (s_idx_aniso + 1) % (int)NUM_ANISO_CHOICES; break;
+                case 5: s_idx_live = !s_idx_live; break;
+            }
+            log_msg("[VT4-Mod] Menu Value Right: item %d changed", g_menu_selection);
+            return 1;
+        }
+        case VK_RETURN:
+        case VK_SPACE: {
+            apply_and_save_menu_settings(dev);
+            return 1;
+        }
+        case VK_ESCAPE: {
+            if (g_menu_visible) {
+                g_menu_visible = 0;
+                log_msg("[VT4-Mod] Menu closed by ESC");
+                return 1;
+            }
+            break;
+        }
+    }
+    return 0;
+}
+
+// ----------------------------------------------------------------------------
+// Overlay Rendering Structures & Shaders
+// ----------------------------------------------------------------------------
+#define D3DFVF_XYZRHW 0x004
+#define D3DFVF_DIFFUSE 0x040
+#define FVF_SCREEN_VERTEX (D3DFVF_XYZRHW | D3DFVF_DIFFUSE)
+
+typedef struct {
+    float x, y, z, rhw;
+    DWORD color;
+} ScreenVertex;
+
+typedef HRESULT (WINAPI *D3DXCreateFontA_t)(
+    void *pDevice,
+    INT Height,
+    UINT Width,
+    UINT Weight,
+    UINT MipLevels,
+    BOOL Italic,
+    DWORD CharSet,
+    DWORD OutputPrecision,
+    DWORD Quality,
+    DWORD PitchAndFamily,
+    LPCSTR pFaceName,
+    void **ppFont
+);
+
+typedef INT (WINAPI *D3DXFont_DrawTextA_t)(
+    void *pFont,
+    void *pSprite,
+    LPCSTR pString,
+    INT Count,
+    RECT *pRect,
+    DWORD Format,
+    DWORD Color
+);
+
+static void *g_pFont = NULL;
+static void *g_pFontTitle = NULL;
+static D3DXCreateFontA_t g_d3dx_createfont = NULL;
+
+static void init_menu_fonts(void *dev) {
+    if (!dev) return;
+    if (!g_d3dx_createfont) {
+        HMODULE hD3DX = LoadLibraryA("d3dx9_43.dll");
+        if (hD3DX) {
+            g_d3dx_createfont = (D3DXCreateFontA_t)GetProcAddress(hD3DX, "D3DXCreateFontA");
+        }
+    }
+    if (g_d3dx_createfont) {
+        if (!g_pFontTitle) {
+            g_d3dx_createfont(dev, 22, 0, FW_BOLD, 1, FALSE, DEFAULT_CHARSET,
+                              OUT_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
+                              DEFAULT_PITCH | FF_DONTCARE, "Arial", &g_pFontTitle);
+        }
+        if (!g_pFont) {
+            g_d3dx_createfont(dev, 18, 0, FW_NORMAL, 1, FALSE, DEFAULT_CHARSET,
+                              OUT_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
+                              DEFAULT_PITCH | FF_DONTCARE, "Arial", &g_pFont);
+        }
+    }
+}
+
+static void draw_font_text(void *pFont, const char *text, RECT *r, DWORD color, int align) {
+    if (!pFont || !text) return;
+    void **vtbl = *(void ***)pFont;
+    D3DXFont_DrawTextA_t fn = (D3DXFont_DrawTextA_t)vtbl[14];
+    if (!fn) return;
+    DWORD fmt = DT_NOCLIP | DT_VCENTER;
+    if (align == 1) fmt |= DT_CENTER;
+    else if (align == 2) fmt |= DT_RIGHT;
+    else fmt |= DT_LEFT;
+    fn(pFont, NULL, text, -1, r, fmt, color);
+}
+
+typedef HRESULT (__stdcall *DrawPrimitiveUP_t)(void *, int, UINT, const void *, UINT);
+static DrawPrimitiveUP_t g_real_drawprimitiveup = NULL;
+
+static void draw_screen_quad(void *dev, float x1, float y1, float x2, float y2, DWORD color) {
+    ScreenVertex verts[4] = {
+        { x1, y1, 0.0f, 1.0f, color },
+        { x2, y1, 0.0f, 1.0f, color },
+        { x1, y2, 0.0f, 1.0f, color },
+        { x2, y2, 0.0f, 1.0f, color }
+    };
+
+    void **vtbl = *(void ***)dev;
+    typedef HRESULT (__stdcall *SetFVF_t)(void *, DWORD);
+    typedef HRESULT (__stdcall *SetRenderState_t)(void *, DWORD, DWORD);
+    typedef HRESULT (__stdcall *SetTexture_t)(void *, DWORD, void *);
+
+    SetFVF_t set_fvf = (SetFVF_t)vtbl[89];
+    SetRenderState_t set_rs = (SetRenderState_t)vtbl[57];
+    SetTexture_t set_tex = (SetTexture_t)vtbl[65];
+
+    if (set_tex) set_tex(dev, 0, NULL);
+
+    if (set_rs) {
+        set_rs(dev, 27, 1);  // D3DRS_ALPHABLENDENABLE = TRUE
+        set_rs(dev, 19, 5);  // D3DRS_SRCBLEND = D3DBLEND_SRCALPHA (5)
+        set_rs(dev, 20, 6);  // D3DRS_DESTBLEND = D3DBLEND_INVSRCALPHA (6)
+        set_rs(dev, 137, 0); // D3DRS_LIGHTING = FALSE
+        set_rs(dev, 22, 1);  // D3DRS_CULLMODE = D3DCULL_NONE (1)
+        set_rs(dev, 7, 0);   // D3DRS_ZENABLE = FALSE
+    }
+
+    if (set_fvf) set_fvf(dev, FVF_SCREEN_VERTEX);
+    if (g_real_drawprimitiveup) {
+        g_real_drawprimitiveup(dev, 5, 2, verts, sizeof(ScreenVertex));
+    }
+}
+
+static void render_settings_hud(void *dev) {
+    if (!dev) return;
+    if (!g_menu_visible && !g_option_mode_active) return;
+
+    if (g_menu_saved_banner_timer > 0) g_menu_saved_banner_timer--;
+
+    init_menu_fonts(dev);
+
+    void **vtbl = *(void ***)dev;
+    typedef HRESULT (__stdcall *SetViewport_t)(void *, const void *);
+    SetViewport_t set_vp = (SetViewport_t)vtbl[47];
+    uint32_t full_vp[6] = { 0, 0, g_cfg_width, g_cfg_height, 0, 0x3f800000 };
+    if (set_vp) set_vp(dev, full_vp);
+
+    float box_w = 820.0f;
+    float box_h = 540.0f;
+    float box_x = ((float)g_cfg_width - box_w) * 0.5f;
+    float box_y = ((float)g_cfg_height - box_h) * 0.5f;
+
+    // 1. Drop shadow
+    draw_screen_quad(dev, box_x + 8.0f, box_y + 8.0f, box_x + box_w + 8.0f, box_y + box_h + 8.0f, 0x88000000);
+
+    // 2. Main backdrop panel
+    draw_screen_quad(dev, box_x, box_y, box_x + box_w, box_y + box_h, 0xEB0A101C);
+
+    // 3. Header bar
+    draw_screen_quad(dev, box_x, box_y, box_x + box_w, box_y + 70.0f, 0xF014223A);
+
+    // 4. Border lines
+    draw_screen_quad(dev, box_x, box_y, box_x + box_w, box_y + 2.0f, 0xFF3575D5);
+    draw_screen_quad(dev, box_x, box_y + box_h - 2.0f, box_x + box_w, box_y + box_h, 0xFF3575D5);
+    draw_screen_quad(dev, box_x, box_y, box_x + 2.0f, box_y + box_h, 0xFF3575D5);
+    draw_screen_quad(dev, box_x + box_w - 2.0f, box_y, box_x + box_w, box_y + box_h, 0xFF3575D5);
+
+    // 5. Header separator
+    draw_screen_quad(dev, box_x, box_y + 70.0f, box_x + box_w, box_y + 72.0f, 0xFF4585E5);
+
+    // 6. Highlight bar for selected item
+    float item_y_start = box_y + 90.0f;
+    float item_h = 44.0f;
+    float sel_y = item_y_start + (float)g_menu_selection * item_h;
+
+    draw_screen_quad(dev, box_x + 20.0f, sel_y, box_x + box_w - 20.0f, sel_y + item_h - 4.0f, 0xCC1E4B88);
+    draw_screen_quad(dev, box_x + 20.0f, sel_y, box_x + 26.0f, sel_y + item_h - 4.0f, 0xFFFFD700);
+
+    // 7. Footer separator
+    draw_screen_quad(dev, box_x, box_y + box_h - 55.0f, box_x + box_w, box_y + box_h - 53.0f, 0xFF2A4A7A);
+
+    // 8. Render Text
+    if (g_pFont && g_pFontTitle) {
+        RECT r;
+
+        // Title
+        r.left = (LONG)(box_x + 30.0f);
+        r.top = (LONG)(box_y + 12.0f);
+        r.right = (LONG)(box_x + box_w - 30.0f);
+        r.bottom = (LONG)(box_y + 40.0f);
+        draw_font_text(g_pFontTitle, "VIRTUA TENNIS 4: LEGENDS & NEXT-GEN EDITION", &r, 0xFFFFD700, 1);
+
+        // Subtitle
+        r.top = (LONG)(box_y + 42.0f);
+        r.bottom = (LONG)(box_y + 66.0f);
+        draw_font_text(g_pFont, "AJUSTES GRAFICOS HD Y OPCIONES DEL MOD", &r, 0xFF80D0FF, 1);
+
+        // Render each item
+        const char *item_labels[NUM_SETTINGS_ITEMS] = {
+            "Resolucion de Pantalla:",
+            "Modo de Pantalla:",
+            "Anti-Aliasing 3D (MSAA):",
+            "Sincronizacion (VSync):",
+            "Filtrado Anisotropico:",
+            "Ocultar Modo LIVE:",
+            "[ GUARDAR Y APLICAR CAMBIOS ]"
+        };
+
+        char val_buf[128];
+        for (int i = 0; i < NUM_SETTINGS_ITEMS; i++) {
+            float cur_y = item_y_start + (float)i * item_h + 8.0f;
+            int is_sel = (i == g_menu_selection);
+            DWORD lbl_col = is_sel ? 0xFFFFFFFF : 0xFFB0C4DE;
+            DWORD val_col = is_sel ? 0xFFFFD700 : 0xFF40E0D0;
+
+            if (i == 6) {
+                r.left = (LONG)(box_x + 40.0f);
+                r.top = (LONG)cur_y;
+                r.right = (LONG)(box_x + box_w - 40.0f);
+                r.bottom = (LONG)(cur_y + 30.0f);
+                DWORD act_col = is_sel ? 0xFF00FF88 : 0xFF50C070;
+                draw_font_text(g_pFontTitle, item_labels[i], &r, act_col, 1);
+            } else {
+                r.left = (LONG)(box_x + 45.0f);
+                r.top = (LONG)cur_y;
+                r.right = (LONG)(box_x + 360.0f);
+                r.bottom = (LONG)(cur_y + 30.0f);
+                draw_font_text(g_pFont, item_labels[i], &r, lbl_col, 0);
+
+                switch (i) {
+                    case 0: snprintf(val_buf, sizeof(val_buf), "< %s >", s_res_choices[s_idx_res].desc); break;
+                    case 1: snprintf(val_buf, sizeof(val_buf), "< %s >", s_windowed_choices[s_idx_win]); break;
+                    case 2: snprintf(val_buf, sizeof(val_buf), "< %s >", s_msaa_choices[s_idx_msaa].desc); break;
+                    case 3: snprintf(val_buf, sizeof(val_buf), "< %s >", s_vsync_choices[s_idx_vsync]); break;
+                    case 4: snprintf(val_buf, sizeof(val_buf), "< %s >", s_aniso_choices[s_idx_aniso].desc); break;
+                    case 5: snprintf(val_buf, sizeof(val_buf), "< %s >", s_live_choices[s_idx_live]); break;
+                }
+
+                r.left = (LONG)(box_x + 360.0f);
+                r.right = (LONG)(box_x + box_w - 45.0f);
+                draw_font_text(g_pFont, val_buf, &r, val_col, 2);
+            }
+        }
+
+        // Footer navigation controls
+        r.left = (LONG)(box_x + 30.0f);
+        r.top = (LONG)(box_y + box_h - 45.0f);
+        r.right = (LONG)(box_x + box_w - 30.0f);
+        r.bottom = (LONG)(box_y + box_h - 10.0f);
+        draw_font_text(g_pFont, "[FLECHAS / WASD] Navegar    [ENTER / ESPACIO] Guardar    [ESC / F2] Cerrar",
+                       &r, 0xFF9BB0C8, 1);
+
+        // Saved feedback banner
+        if (g_menu_saved_banner_timer > 0) {
+            float ban_w = 600.0f;
+            float ban_h = 45.0f;
+            float ban_x = ((float)g_cfg_width - ban_w) * 0.5f;
+            float ban_y = box_y + box_h + 15.0f;
+
+            draw_screen_quad(dev, ban_x, ban_y, ban_x + ban_w, ban_y + ban_h, 0xF00A2515);
+            draw_screen_quad(dev, ban_x, ban_y, ban_x + ban_w, ban_y + 2.0f, 0xFF00FF7F);
+            draw_screen_quad(dev, ban_x, ban_y + ban_h - 2.0f, ban_x + ban_w, ban_y + ban_h, 0xFF00FF7F);
+
+            r.left = (LONG)ban_x;
+            r.top = (LONG)(ban_y + 10.0f);
+            r.right = (LONG)(ban_x + ban_w);
+            r.bottom = (LONG)(ban_y + 35.0f);
+            draw_font_text(g_pFontTitle, "AJUSTES GUARDADOS Y APLICADOS CON EXITO", &r, 0xFF00FF88, 1);
+        }
+    }
+}
+
+// ----------------------------------------------------------------------------
+// 3D Pipeline & OptionMode Hooks
+// ----------------------------------------------------------------------------
+typedef struct {
+    uint32_t width;
+    uint32_t height;
+    uint32_t msaa_samples;
+    uint32_t unk_0c;
+    uint32_t bloom_w;
+    uint32_t bloom_h;
+    uint32_t shadow_w;
+    uint32_t shadow_h;
+} PipelineSettings;
+
+static void __fastcall hk_Renderer_CalcPipelineSettings(PipelineSettings *settings, void *edx, int flag) {
+    if (!settings) return;
+    settings->width = g_cfg_width;
+    settings->height = g_cfg_height;
+    settings->msaa_samples = g_cfg_antialiasing;
+    settings->unk_0c = 4;
+    settings->bloom_w = (g_cfg_width >= 1920) ? 2048 : 1024;
+    settings->bloom_h = (g_cfg_height >= 1080) ? 1024 : 512;
+    settings->shadow_w = 2048;
+    settings->shadow_h = 2048;
+
+    *(uint32_t *)0x00a75d24 = g_cfg_width;
+    *(uint32_t *)0x00a75d28 = g_cfg_height;
+    *(uint32_t *)0x00a75d7c = g_cfg_antialiasing;
+
+    log_msg("[VT4-Mod] hk_Renderer_CalcPipelineSettings: 3D=%ux%u MSAA=%u Shadows=%ux%u Bloom=%ux%u",
+            settings->width, settings->height, settings->msaa_samples,
+            settings->shadow_w, settings->shadow_h, settings->bloom_w, settings->bloom_h);
+}
+
+typedef void (__thiscall *OptionMode_Update_t)(void *);
+static OptionMode_Update_t g_real_optionmode_update = NULL;
+
+static void __thiscall hk_OptionMode_Update(void *this_ptr) {
+    g_option_mode_active = 1;
+    g_option_mode_last_frame = g_present_calls;
+    if (g_real_optionmode_update) {
+        g_real_optionmode_update(this_ptr);
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Direct3D 9 Interceptions for Native 3D RenderTargets & 2048 Shadows
+// ----------------------------------------------------------------------------
+typedef HRESULT (__stdcall *Reset_t)(void *, void *);
+static Reset_t g_real_reset = NULL;
+static HRESULT __stdcall hk_Reset(void *dev, void *pp) {
+    if (g_pFont) {
+        void **vtbl = *(void ***)g_pFont;
+        typedef ULONG (__stdcall *Rel_t)(void *);
+        ((Rel_t)vtbl[2])(g_pFont);
+        g_pFont = NULL;
+    }
+    if (g_pFontTitle) {
+        void **vtbl = *(void ***)g_pFontTitle;
+        typedef ULONG (__stdcall *Rel_t)(void *);
+        ((Rel_t)vtbl[2])(g_pFontTitle);
+        g_pFontTitle = NULL;
+    }
+    return g_real_reset(dev, pp);
+}
+
+typedef HRESULT (__stdcall *CreateRenderTarget_t)(
+    void *dev, UINT Width, UINT Height, DWORD Format,
+    DWORD MultiSample, DWORD MultisampleQuality,
+    BOOL Lockable, void **ppSurface, HANDLE *pSharedHandle);
+static CreateRenderTarget_t g_real_createrendertarget = NULL;
+static HRESULT __stdcall hk_CreateRenderTarget(
+    void *dev, UINT Width, UINT Height, DWORD Format,
+    DWORD MultiSample, DWORD MultisampleQuality,
+    BOOL Lockable, void **ppSurface, HANDLE *pSharedHandle)
+{
+    UINT orig_w = Width, orig_h = Height;
+    if ((Width == 640 && Height == 512) || (Width == 640 && Height == 480)) {
+        Width = g_cfg_width;
+        Height = g_cfg_height;
+        if (g_cfg_antialiasing > 0) {
+            MultiSample = g_cfg_antialiasing;
+            MultisampleQuality = 0;
+        }
+        log_msg("[VT4-Mod] hk_CreateRenderTarget: upscaling 3D target (%ux%u) -> %ux%u (MSAA=%u)",
+                orig_w, orig_h, Width, Height, MultiSample);
+    } else if (Width == 512 && Height == 512) {
+        Width = 2048;
+        Height = 2048;
+        log_msg("[VT4-Mod] hk_CreateRenderTarget: upscaling shadow map (%ux%u) -> %ux%u",
+                orig_w, orig_h, Width, Height);
+    }
+
+    HRESULT hr = g_real_createrendertarget(dev, Width, Height, Format, MultiSample, MultisampleQuality, Lockable, ppSurface, pSharedHandle);
+    if (hr < 0 && MultiSample > 0) {
+        log_msg("[VT4-Mod] hk_CreateRenderTarget: fallback without MSAA (hr=0x%08lx)", (unsigned long)hr);
+        hr = g_real_createrendertarget(dev, Width, Height, Format, 0, 0, Lockable, ppSurface, pSharedHandle);
+    }
+    return hr;
+}
+
+typedef HRESULT (__stdcall *CreateDepthStencilSurface_t)(
+    void *dev, UINT Width, UINT Height, DWORD Format,
+    DWORD MultiSample, DWORD MultisampleQuality,
+    BOOL Discard, void **ppSurface, HANDLE *pSharedHandle);
+static CreateDepthStencilSurface_t g_real_createdepthstencilsurface = NULL;
+static HRESULT __stdcall hk_CreateDepthStencilSurface(
+    void *dev, UINT Width, UINT Height, DWORD Format,
+    DWORD MultiSample, DWORD MultisampleQuality,
+    BOOL Discard, void **ppSurface, HANDLE *pSharedHandle)
+{
+    UINT orig_w = Width, orig_h = Height;
+    if ((Width == 640 && Height == 512) || (Width == 640 && Height == 480) ||
+        (Width == g_cfg_width && Height == g_cfg_height)) {
+        Width = g_cfg_width;
+        Height = g_cfg_height;
+        if (g_cfg_antialiasing > 0) {
+            MultiSample = g_cfg_antialiasing;
+            MultisampleQuality = 0;
+        }
+        log_msg("[VT4-Mod] hk_CreateDepthStencilSurface: depth buffer (%ux%u) -> %ux%u (MSAA=%u)",
+                orig_w, orig_h, Width, Height, MultiSample);
+    } else if (Width == 512 && Height == 512) {
+        Width = 2048;
+        Height = 2048;
+        log_msg("[VT4-Mod] hk_CreateDepthStencilSurface: shadow depth (%ux%u) -> %ux%u",
+                orig_w, orig_h, Width, Height);
+    }
+
+    HRESULT hr = g_real_createdepthstencilsurface(dev, Width, Height, Format, MultiSample, MultisampleQuality, Discard, ppSurface, pSharedHandle);
+    if (hr < 0 && MultiSample > 0) {
+        hr = g_real_createdepthstencilsurface(dev, Width, Height, Format, 0, 0, Discard, ppSurface, pSharedHandle);
+    }
+    return hr;
+}
+
+#ifndef D3DUSAGE_RENDERTARGET
+#define D3DUSAGE_RENDERTARGET 0x00000001L
+#endif
+#ifndef D3DUSAGE_DEPTHSTENCIL
+#define D3DUSAGE_DEPTHSTENCIL 0x00000002L
+#endif
+
+typedef HRESULT (__stdcall *CreateTexture_t)(
+    void *dev, UINT Width, UINT Height, UINT Levels,
+    DWORD Usage, DWORD Format, DWORD Pool,
+    void **ppTexture, HANDLE *pSharedHandle);
+static CreateTexture_t g_real_createtexture = NULL;
+static HRESULT __stdcall hk_CreateTexture(
+    void *dev, UINT Width, UINT Height, UINT Levels,
+    DWORD Usage, DWORD Format, DWORD Pool,
+    void **ppTexture, HANDLE *pSharedHandle)
+{
+    UINT orig_w = Width, orig_h = Height;
+    if (Usage & (D3DUSAGE_RENDERTARGET | D3DUSAGE_DEPTHSTENCIL)) {
+        if ((Width == 640 && Height == 512) || (Width == 640 && Height == 480)) {
+            Width = g_cfg_width;
+            Height = g_cfg_height;
+            log_msg("[VT4-Mod] hk_CreateTexture (RT): upscaling (%ux%u) -> %ux%u", orig_w, orig_h, Width, Height);
+        } else if (Width == 512 && Height == 512) {
+            Width = 2048;
+            Height = 2048;
+            log_msg("[VT4-Mod] hk_CreateTexture (ShadowRT): upscaling (%ux%u) -> %ux%u", orig_w, orig_h, Width, Height);
+        }
+    }
+    return g_real_createtexture(dev, Width, Height, Levels, Usage, Format, Pool, ppTexture, pSharedHandle);
+}
+
 static uint8_t g_keys_down[256] = {0};
 static uint32_t g_btn_hold[256] = {0};
 static uint32_t g_nav_hold[6] = {0};
-static int g_is_fullscreen = 0;
 static RECT g_windowed_rect = {0};
 static DWORD g_windowed_style = 0;
 
@@ -276,6 +1030,16 @@ static LRESULT CALLBACK hk_GameWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                 toggle_fullscreen(hwnd);
                 return 0;
             }
+            if (wParam == VK_F2) { // F2 toggle graphics options menu
+                g_menu_visible = !g_menu_visible;
+                log_msg("[VT4-Mod] F2 pressed: g_menu_visible=%d", g_menu_visible);
+                return 0;
+            }
+            if (g_menu_visible || g_option_mode_active) {
+                if (handle_settings_menu_input(wParam, NULL)) {
+                    return 0;
+                }
+            }
             if (wParam < 256) g_keys_down[wParam] = 1;
             break;
         }
@@ -295,7 +1059,6 @@ static D3DXSaveSurfaceToFileA_t g_d3dx_save = NULL;
 
 typedef HRESULT (__stdcall *Present_t)(void *, const RECT *, const RECT *, HWND, const void *);
 static Present_t g_real_present = NULL;
-static uint32_t g_present_calls = 0;
 static uint32_t g_clear_calls = 0;
 static uint32_t g_draw_calls = 0;
 static DWORD g_last_clear_color = 0;
@@ -351,6 +1114,14 @@ static HRESULT __stdcall hk_SetViewport(void *dev, const uint32_t *vp) {
                 log_msg("[VT4-Mod] SetViewport intercepted zero dimensions (%u,%u) at frame %u! Overriding to %ux%u",
                         vp[2], vp[3], g_present_calls, g_cfg_width, g_cfg_height);
             }
+            return g_real_setviewport(dev, fix);
+        }
+        if ((vp[2] == 640 && vp[3] == 512) || (vp[2] == 640 && vp[3] == 480)) {
+            uint32_t fix[6] = { vp[0], vp[1], g_cfg_width, g_cfg_height, vp[4], vp[5] };
+            return g_real_setviewport(dev, fix);
+        }
+        if (vp[2] == 512 && vp[3] == 512) {
+            uint32_t fix[6] = { vp[0], vp[1], 2048, 2048, vp[4], vp[5] };
             return g_real_setviewport(dev, fix);
         }
         if (g_present_calls <= 5 || g_present_calls == 60 || g_present_calls == 240) {
@@ -445,8 +1216,6 @@ static HRESULT __stdcall hk_DrawIndexedPrimitive(void *dev, int type, INT base_v
     return g_real_drawindexedprimitive(dev, type, base_vtx, min_idx, num_vtx, start_idx, prim_count);
 }
 
-typedef HRESULT (__stdcall *DrawPrimitiveUP_t)(void *, int, UINT, const void *, UINT);
-static DrawPrimitiveUP_t g_real_drawprimitiveup = NULL;
 static HRESULT __stdcall hk_DrawPrimitiveUP(void *dev, int type, UINT prim_count, const void *data, UINT stride) {
     ensure_valid_viewport(dev);
     record_draw_target();
@@ -468,13 +1237,22 @@ static HRESULT __stdcall hk_BeginScene(void *dev) {
     g_begin_scene_calls++;
     ensure_valid_viewport(dev);
 
-    // Apply Anisotropic Filtering across texture stages for razor-sharp court lines
-    if (g_cfg_anisotropic > 0 && (g_present_calls % 60) == 1) {
-        void **vtbl = *(void ***)dev;
+    void **vtbl = *(void ***)dev;
+
+    // Enable Hardware MSAA rasterization & antialiased line rendering on 3D geometry
+    typedef HRESULT (__stdcall *SetRenderState_t)(void *, DWORD, DWORD);
+    SetRenderState_t set_rs = (SetRenderState_t)vtbl[57];
+    if (set_rs && g_cfg_antialiasing > 0) {
+        set_rs(dev, 161, 1); // D3DRS_MULTISAMPLEANTIALIAS = TRUE
+        set_rs(dev, 176, 1); // D3DRS_ANTIALIASEDLINEENABLE = TRUE
+    }
+
+    // Apply Anisotropic Filtering across all 8 texture stages for razor-sharp court lines
+    if (g_cfg_anisotropic > 0 && (g_present_calls % 30) == 1) {
         typedef HRESULT (__stdcall *SetSamplerState_t)(void *, DWORD, DWORD, DWORD);
         SetSamplerState_t set_sampler = (SetSamplerState_t)vtbl[69];
         if (set_sampler) {
-            for (DWORD s = 0; s < 4; s++) {
+            for (DWORD s = 0; s < 8; s++) {
                 set_sampler(dev, s, 1, 3); // D3DSAMP_MAGFILTER = D3DTEXF_ANISOTROPIC
                 set_sampler(dev, s, 2, 3); // D3DSAMP_MINFILTER = D3DTEXF_ANISOTROPIC
                 set_sampler(dev, s, 3, 2); // D3DSAMP_MIPFILTER = D3DTEXF_LINEAR
@@ -488,6 +1266,10 @@ static HRESULT __stdcall hk_BeginScene(void *dev) {
 static HRESULT __stdcall hk_Present(void *dev, const RECT *src, const RECT *dst, HWND dstWnd, const void *dirty) {
     g_present_calls++;
     g_draws_in_cur_frame = 0;
+
+    if (g_option_mode_active && g_present_calls > g_option_mode_last_frame + 3) {
+        g_option_mode_active = 0;
+    }
 
     // StretchRect composite: stretch active offscreen render target to swapchain backbuffer only when offscreen
     void **vtbl = *(void ***)dev;
@@ -541,6 +1323,24 @@ static HRESULT __stdcall hk_Present(void *dev, const RECT *src, const RECT *dst,
                 g_present_calls, g_clear_calls, (unsigned long)g_last_clear_color, g_draw_calls, g_begin_scene_calls,
                 __builtin_return_address(0), g_last_draw_target);
     }
+    // Render in-game graphics settings HUD overlay if active
+    if (g_menu_visible || g_option_mode_active) {
+        typedef HRESULT (__stdcall *BeginScene_t)(void *);
+        typedef HRESULT (__stdcall *EndScene_t)(void *);
+        BeginScene_t bs = (BeginScene_t)vtbl[41];
+        EndScene_t es = (EndScene_t)vtbl[42];
+        if (bs && es && bs(dev) >= 0) {
+            render_settings_hud(dev);
+            es(dev);
+
+            static int s_menu_shot_taken = 0;
+            if (!s_menu_shot_taken) {
+                s_menu_shot_taken = 1;
+                capture_d3d9_screenshot(dev, "c:\\Users\\acorr\\Documents\\tenis\\game\\vt4_menu_overlay.png");
+            }
+        }
+    }
+
     if (g_present_calls == 1 || g_present_calls == 60) {
         char path[MAX_PATH];
         snprintf(path, sizeof(path), "c:\\Users\\acorr\\Documents\\tenis\\game\\vt4_present_%u.png", g_present_calls);
@@ -738,6 +1538,22 @@ static HRESULT __stdcall hk_CreateDevice(void *self, UINT adapter, DWORD devtype
             g_real_present = (Present_t)dev_vtbl[17];
             void *hk_p = (void *)hk_Present;
             patch_bytes((uintptr_t)&dev_vtbl[17], &hk_p, sizeof(hk_p));
+
+            g_real_reset = (Reset_t)dev_vtbl[16];
+            void *hk_res = (void *)hk_Reset;
+            patch_bytes((uintptr_t)&dev_vtbl[16], &hk_res, sizeof(hk_res));
+
+            g_real_createtexture = (CreateTexture_t)dev_vtbl[23];
+            void *hk_ct = (void *)hk_CreateTexture;
+            patch_bytes((uintptr_t)&dev_vtbl[23], &hk_ct, sizeof(hk_ct));
+
+            g_real_createrendertarget = (CreateRenderTarget_t)dev_vtbl[28];
+            void *hk_crt = (void *)hk_CreateRenderTarget;
+            patch_bytes((uintptr_t)&dev_vtbl[28], &hk_crt, sizeof(hk_crt));
+
+            g_real_createdepthstencilsurface = (CreateDepthStencilSurface_t)dev_vtbl[29];
+            void *hk_cds = (void *)hk_CreateDepthStencilSurface;
+            patch_bytes((uintptr_t)&dev_vtbl[29], &hk_cds, sizeof(hk_cds));
 
             g_real_setrendertarget = (SetRenderTarget_t)dev_vtbl[37];
             void *hk_srt = (void *)hk_SetRenderTarget;
@@ -960,6 +1776,7 @@ static void __fastcall hk_AdvMode_Update(void *self) {
 }
 
 static void __fastcall hk_MainMenu_Update(void *self) {
+    g_option_mode_active = 0;
     static uint32_t last_log = 0;
     static uint32_t last_state = 999;
     uint32_t *pState = (uint32_t *)((char *)self + 0xe98);
@@ -1739,6 +2556,18 @@ static inline int original_menu_input_offset(void *self, int user, int offset) {
 
 // 0x00455180: Menu / Slider Left
 static int __thiscall hk_MenuInput_Left(void *self, int user) {
+    if (g_menu_visible || g_option_mode_active) {
+        int active = is_key_down(VK_LEFT) || is_key_down('A');
+        if (eval_nav_key(0, active, 14, 4)) {
+            handle_settings_menu_input(VK_LEFT, NULL);
+            return 1;
+        }
+        if (original_menu_input_offset(self, user, 0x08)) {
+            handle_settings_menu_input(VK_LEFT, NULL);
+            return 1;
+        }
+        return 1;
+    }
     int active = is_key_down(VK_LEFT) || is_key_down('A');
     if (eval_nav_key(0, active, 14, 4)) {
         log_msg("[VT4-Mod] Menu Left triggered at frame %u (user=%d)", g_present_calls, user);
@@ -1749,6 +2578,18 @@ static int __thiscall hk_MenuInput_Left(void *self, int user) {
 
 // 0x004551E0: Menu / Slider Right
 static int __thiscall hk_MenuInput_Right(void *self, int user) {
+    if (g_menu_visible || g_option_mode_active) {
+        int active = is_key_down(VK_RIGHT) || is_key_down('D');
+        if (eval_nav_key(1, active, 14, 4)) {
+            handle_settings_menu_input(VK_RIGHT, NULL);
+            return 1;
+        }
+        if (original_menu_input_offset(self, user, 0x28)) {
+            handle_settings_menu_input(VK_RIGHT, NULL);
+            return 1;
+        }
+        return 1;
+    }
     int active = is_key_down(VK_RIGHT) || is_key_down('D');
     if (eval_nav_key(1, active, 14, 4)) {
         log_msg("[VT4-Mod] Menu Right triggered at frame %u (user=%d)", g_present_calls, user);
@@ -1759,6 +2600,18 @@ static int __thiscall hk_MenuInput_Right(void *self, int user) {
 
 // 0x00455240: Menu Up
 static int __thiscall hk_MenuInput_Up(void *self, int user) {
+    if (g_menu_visible || g_option_mode_active) {
+        int active = is_key_down(VK_UP) || is_key_down('W');
+        if (eval_nav_key(2, active, 18, 6)) {
+            handle_settings_menu_input(VK_UP, NULL);
+            return 1;
+        }
+        if (original_menu_input_offset(self, user, 0x48)) {
+            handle_settings_menu_input(VK_UP, NULL);
+            return 1;
+        }
+        return 1;
+    }
     int active = is_key_down(VK_UP) || is_key_down('W');
     if (eval_nav_key(2, active, 18, 6)) {
         log_msg("[VT4-Mod] Menu Up triggered at frame %u (user=%d)", g_present_calls, user);
@@ -1769,6 +2622,18 @@ static int __thiscall hk_MenuInput_Up(void *self, int user) {
 
 // 0x004552A0: Menu Down
 static int __thiscall hk_MenuInput_Down(void *self, int user) {
+    if (g_menu_visible || g_option_mode_active) {
+        int active = is_key_down(VK_DOWN) || is_key_down('S');
+        if (eval_nav_key(3, active, 18, 6)) {
+            handle_settings_menu_input(VK_DOWN, NULL);
+            return 1;
+        }
+        if (original_menu_input_offset(self, user, 0x68)) {
+            handle_settings_menu_input(VK_DOWN, NULL);
+            return 1;
+        }
+        return 1;
+    }
     int active = is_key_down(VK_DOWN) || is_key_down('S');
     if (eval_nav_key(3, active, 18, 6)) {
         log_msg("[VT4-Mod] Menu Down triggered at frame %u (user=%d)", g_present_calls, user);
@@ -1780,6 +2645,18 @@ static int __thiscall hk_MenuInput_Down(void *self, int user) {
 // 0x00455300: Menu Decide / Enter
 static MenuInputFn_t g_real_menu_decide = NULL;
 static int __thiscall hk_MenuInput_Decide(void *self, int user) {
+    if (g_menu_visible || g_option_mode_active) {
+        int active = is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || is_key_down('C');
+        if (eval_nav_key(4, active, 30, 20)) {
+            handle_settings_menu_input(VK_RETURN, NULL);
+            return 1;
+        }
+        if (g_real_menu_decide && g_real_menu_decide(self, user)) {
+            handle_settings_menu_input(VK_RETURN, NULL);
+            return 1;
+        }
+        return 1;
+    }
     int active = is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || is_key_down('C');
     if (eval_nav_key(4, active, 30, 20)) {
         log_msg("[VT4-Mod] Menu Decide triggered at frame %u (user=%d)", g_present_calls, user);
@@ -1794,6 +2671,18 @@ static int __thiscall hk_MenuInput_Decide(void *self, int user) {
 // 0x00455440: Menu Cancel / Escape
 static MenuInputFn_t g_real_menu_cancel = NULL;
 static int __thiscall hk_MenuInput_Cancel(void *self, int user) {
+    if (g_menu_visible) {
+        int active = is_key_down(VK_ESCAPE) || is_key_down('Z') || is_key_down(VK_BACK);
+        if (eval_nav_key(5, active, 30, 20)) {
+            g_menu_visible = 0;
+            return 1;
+        }
+        if (g_real_menu_cancel && g_real_menu_cancel(self, user)) {
+            g_menu_visible = 0;
+            return 1;
+        }
+        return 1;
+    }
     int active = is_key_down(VK_ESCAPE) || is_key_down('Z') || is_key_down(VK_BACK);
     if (eval_nav_key(5, active, 30, 20)) {
         log_msg("[VT4-Mod] Menu Cancel triggered at frame %u (user=%d)", g_present_calls, user);
@@ -2008,6 +2897,12 @@ static void apply_vt4_patches(void) {
     patch_bytes(0x0078a64c, &hk_menu, sizeof(hk_menu));
     log_msg("[VT4-Mod] Installed Loading::Update and MainMenu::Update hooks");
 
+    // 19b. Install hook in OptionMode vtable (0x0078ae00)
+    g_real_optionmode_update = *(OptionMode_Update_t *)0x0078ae00;
+    void *hk_opt = (void *)hk_OptionMode_Update;
+    patch_bytes(0x0078ae00, &hk_opt, sizeof(hk_opt));
+    log_msg("[VT4-Mod] Installed OptionMode::Update hook at 0x0078ae00");
+
     // 18. Hook MessageBoxA and MessageBoxW to prevent assert popups from blocking
     void *hk_mba = (void *)hk_MessageBoxA;
     patch_bytes(0x00788498, &hk_mba, sizeof(hk_mba));
@@ -2106,6 +3001,10 @@ static void apply_vt4_patches(void) {
             log_msg("[VT4-Mod] Custom CRT _invalid_parameter_handler registered");
         }
     }
+
+    // 29. Hook Renderer::CalcPipelineSettings at 0x004b09c0 (8 bytes)
+    install_jmp(0x004b09c0, (void *)hk_Renderer_CalcPipelineSettings, 8);
+    log_msg("[VT4-Mod] Patched 0x004b09c0: Renderer::CalcPipelineSettings hooked (Native 3D + 2048 Shadows)");
 
     log_msg("[VT4-Mod] Startup patches applied cleanly.");
 }
