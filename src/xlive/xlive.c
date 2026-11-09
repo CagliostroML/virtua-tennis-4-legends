@@ -95,6 +95,7 @@ static uint32_t g_cfg_remove_live = 1;
 
 static int g_is_fullscreen = 0;
 static uint32_t g_present_calls = 0;
+static char g_game_dir[MAX_PATH] = { 0 };
 static void sync_menu_indices_from_cfg(void);
 
 static void load_vt4_settings(void) {
@@ -102,6 +103,8 @@ static void load_vt4_settings(void) {
     GetModuleFileNameA(NULL, ini_path, sizeof(ini_path));
     char *last_slash = strrchr(ini_path, '\\');
     if (last_slash) *last_slash = '\0';
+    strncpy(g_game_dir, ini_path, sizeof(g_game_dir) - 1);
+    g_game_dir[sizeof(g_game_dir) - 1] = '\0';
     strncat(ini_path, "\\vt4_settings.ini", sizeof(ini_path) - strlen(ini_path) - 1);
 
     DWORD attr = GetFileAttributesA(ini_path);
@@ -902,11 +905,12 @@ static DWORD g_windowed_style = 0;
 
 static inline int is_key_down(int vk) {
     if (vk < 0 || vk >= 256) return 0;
+    if (g_keys_down[vk]) return 1;
     if (g_game_hwnd) {
         HWND fg = GetForegroundWindow();
         if (fg && fg != g_game_hwnd) return 0;
     }
-    return (g_keys_down[vk] != 0) || ((GetAsyncKeyState(vk) & 0x8000) != 0);
+    return ((GetAsyncKeyState(vk) & 0x8000) != 0);
 }
 
 static void toggle_fullscreen(HWND hwnd) {
@@ -961,6 +965,7 @@ static void toggle_fullscreen(HWND hwnd) {
     }
 }
 
+static int g_screenshot_requested = 0;
 static LRESULT CALLBACK hk_GameWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
         case WM_ACTIVATE: {
@@ -1026,6 +1031,11 @@ static LRESULT CALLBACK hk_GameWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
             break;
         }
         case WM_KEYDOWN: {
+            if (wParam == VK_F10) { // F10 take screenshot
+                g_screenshot_requested = 1;
+                log_msg("[VT4-Mod] Screenshot requested via F10 key");
+                return 0;
+            }
             if (wParam == VK_F11) { // F11 toggle
                 toggle_fullscreen(hwnd);
                 return 0;
@@ -1341,9 +1351,10 @@ static HRESULT __stdcall hk_Present(void *dev, const RECT *src, const RECT *dst,
         }
     }
 
-    if (g_present_calls == 1 || g_present_calls == 60) {
+    if (g_present_calls == 1 || g_present_calls == 60 || g_screenshot_requested) {
+        g_screenshot_requested = 0;
         char path[MAX_PATH];
-        snprintf(path, sizeof(path), "c:\\Users\\acorr\\Documents\\tenis\\game\\vt4_present_%u.png", g_present_calls);
+        snprintf(path, sizeof(path), "%s\\vt4_present_%u.png", g_game_dir, g_present_calls);
         capture_d3d9_screenshot(dev, path);
     }
     return g_real_present(dev, src, dst, dstWnd, dirty);
@@ -2753,6 +2764,203 @@ static int __thiscall hk_CheckInput_455300(void *self, int user) {
     return g_real_455300(self, user);
 }
 
+static int is_loose_file_override(const char *rel_path, char *out_path, size_t out_size) {
+    if (!rel_path || !rel_path[0]) return 0;
+    
+    // Ignore requests for the archive containers themselves
+    if (strstr(rel_path, "resource.bin") != NULL ||
+        strstr(rel_path, "resource.1.bin") != NULL) {
+        return 0;
+    }
+    
+    const char *sub = rel_path;
+    // Strip leading "./" or ".\\"
+    if (sub[0] == '.' && (sub[1] == '/' || sub[1] == '\\')) {
+        sub += 2;
+    }
+    // Strip leading "resource/" or "resource\"
+    if (strnicmp(sub, "resource/", 9) == 0 || strnicmp(sub, "resource\\", 9) == 0) {
+        sub += 9;
+    }
+    // Strip leading "archive/" or "archive\"
+    if (strnicmp(sub, "archive/", 8) == 0 || strnicmp(sub, "archive\\", 8) == 0) {
+        sub += 8;
+    }
+    
+    if (!sub[0]) return 0;
+    
+    char clean[MAX_PATH];
+    strncpy(clean, sub, sizeof(clean) - 1);
+    clean[sizeof(clean) - 1] = '\0';
+    for (char *p = clean; *p; p++) {
+        if (*p == '/') *p = '\\';
+    }
+    
+    char candidate[MAX_PATH * 2];
+    
+    // 1. Check in game/archive/<clean>
+    snprintf(candidate, sizeof(candidate), "%s\\archive\\%s", g_game_dir, clean);
+    DWORD attr = GetFileAttributesA(candidate);
+    if (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
+        if (out_path && out_size > 0) {
+            strncpy(out_path, candidate, out_size - 1);
+            out_path[out_size - 1] = '\0';
+        }
+        return 1;
+    }
+    
+    // 2. Check in game/<clean> (only for subdirectories, to avoid matching root executables/dlls)
+    if (strchr(clean, '\\') != NULL) {
+        snprintf(candidate, sizeof(candidate), "%s\\%s", g_game_dir, clean);
+        attr = GetFileAttributesA(candidate);
+        if (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
+            if (out_path && out_size > 0) {
+                strncpy(out_path, candidate, out_size - 1);
+                out_path[out_size - 1] = '\0';
+            }
+            return 1;
+        }
+    }
+    
+    return 0;
+}
+
+static int has_loose_txt_replacement(const char *rel_path) {
+    if (!rel_path || !rel_path[0]) return 0;
+    size_t len = strlen(rel_path);
+    if (len < 5) return 0;
+    if (_stricmp(rel_path + len - 4, ".bin") != 0) return 0;
+    
+    char txt_path[MAX_PATH];
+    strncpy(txt_path, rel_path, sizeof(txt_path) - 1);
+    txt_path[sizeof(txt_path) - 1] = '\0';
+    strcpy(txt_path + len - 4, ".txt");
+    
+    char resolved[MAX_PATH * 2];
+    return is_loose_file_override(txt_path, resolved, sizeof(resolved));
+}
+
+static uint32_t g_loose_checks = 0;
+static int check_loose_file(const char *rel_path) {
+    if (g_loose_checks < 20) {
+        log_msg("[VT4-Mod] Archive lookup #%u: '%s'", g_loose_checks, rel_path ? rel_path : "NULL");
+        g_loose_checks++;
+    }
+    if (has_loose_txt_replacement(rel_path)) {
+        log_msg("[VT4-Mod] [LOOSE] Archive lookup bypassed .bin for loose .txt: %s", rel_path);
+        return 1; // Mark as loose so engine falls back to loose file handler
+    }
+    char resolved[MAX_PATH * 2];
+    if (is_loose_file_override(rel_path, resolved, sizeof(resolved))) {
+        log_msg("[VT4-Mod] [LOOSE] Archive override detected: %s -> %s", rel_path, resolved);
+        return 1;
+    }
+    return 0;
+}
+
+__attribute__((used)) void *g_fn_check_loose = (void *)check_loose_file;
+
+typedef HANDLE (WINAPI *CreateFileA_t)(LPCSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode,
+                                       LPSECURITY_ATTRIBUTES lpSecurityAttributes, DWORD dwCreationDisposition,
+                                       DWORD dwFlagsAndAttributes, HANDLE hTemplateFile);
+static CreateFileA_t g_real_createfilea = NULL;
+
+static HANDLE WINAPI hk_CreateFileA(LPCSTR lpFileName, DWORD dwDesiredAccess, DWORD dwShareMode,
+                                    LPSECURITY_ATTRIBUTES lpSecurityAttributes, DWORD dwCreationDisposition,
+                                    DWORD dwFlagsAndAttributes, HANDLE hTemplateFile) {
+    if (lpFileName && lpFileName[0]) {
+        if (has_loose_txt_replacement(lpFileName)) {
+            log_msg("[VT4-Mod] [LOOSE] CreateFileA bypassed .bin for loose .txt: %s", lpFileName);
+            SetLastError(ERROR_FILE_NOT_FOUND);
+            return INVALID_HANDLE_VALUE;
+        }
+        char resolved[MAX_PATH * 2];
+        if (is_loose_file_override(lpFileName, resolved, sizeof(resolved))) {
+            log_msg("[VT4-Mod] [LOOSE] CreateFileA redirected: %s -> %s", lpFileName, resolved);
+            return g_real_createfilea(resolved, dwDesiredAccess, dwShareMode,
+                                      lpSecurityAttributes, dwCreationDisposition,
+                                      dwFlagsAndAttributes, hTemplateFile);
+        }
+    }
+    return g_real_createfilea(lpFileName, dwDesiredAccess, dwShareMode,
+                              lpSecurityAttributes, dwCreationDisposition,
+                              dwFlagsAndAttributes, hTemplateFile);
+}
+
+typedef int (__cdecl *fopen_s_t)(FILE **pFile, const char *filename, const char *mode);
+static fopen_s_t g_real_fopens = NULL;
+
+static int __cdecl hk_fopen_s(FILE **pFile, const char *filename, const char *mode) {
+    if (filename && filename[0]) {
+        if (has_loose_txt_replacement(filename)) {
+            log_msg("[VT4-Mod] [LOOSE] fopen_s bypassed .bin for loose .txt: %s", filename);
+            if (pFile) *pFile = NULL;
+            return 2; // ENOENT
+        }
+        char resolved[MAX_PATH * 2];
+        if (is_loose_file_override(filename, resolved, sizeof(resolved))) {
+            log_msg("[VT4-Mod] [LOOSE] fopen_s redirected: %s -> %s", filename, resolved);
+            return g_real_fopens(pFile, resolved, mode);
+        }
+    }
+    return g_real_fopens(pFile, filename, mode);
+}
+
+typedef FILE *(__cdecl *fopen_t)(const char *filename, const char *mode);
+static fopen_t g_real_fopen = NULL;
+
+static FILE *__cdecl hk_fopen(const char *filename, const char *mode) {
+    if (filename && filename[0]) {
+        if (has_loose_txt_replacement(filename)) {
+            log_msg("[VT4-Mod] [LOOSE] fopen bypassed .bin for loose .txt: %s", filename);
+            return NULL;
+        }
+        char resolved[MAX_PATH * 2];
+        if (is_loose_file_override(filename, resolved, sizeof(resolved))) {
+            log_msg("[VT4-Mod] [LOOSE] fopen redirected: %s -> %s", filename, resolved);
+            return g_real_fopen(resolved, mode);
+        }
+    }
+    return g_real_fopen(filename, mode);
+}
+
+typedef BOOL (WINAPI *PathFileExistsA_t)(LPCSTR pszPath);
+static PathFileExistsA_t g_real_pathfileexistsa = NULL;
+
+static BOOL WINAPI hk_PathFileExistsA(LPCSTR pszPath) {
+    if (pszPath && pszPath[0]) {
+        if (has_loose_txt_replacement(pszPath)) {
+            return FALSE;
+        }
+        char resolved[MAX_PATH * 2];
+        if (is_loose_file_override(pszPath, resolved, sizeof(resolved))) {
+            log_msg("[VT4-Mod] [LOOSE] PathFileExistsA redirected: %s -> %s", pszPath, resolved);
+            return TRUE;
+        }
+    }
+    return g_real_pathfileexistsa(pszPath);
+}
+
+static void __attribute__((naked)) hk_Archive_CheckDirectory(void) {
+    __asm__(
+        "pusha\n"
+        "push %ecx\n"
+        "mov _g_fn_check_loose, %eax\n"
+        "call *%eax\n"
+        "add $4, %esp\n"
+        "test %eax, %eax\n"
+        "jz 1f\n"
+        "popa\n"
+        "xor %al, %al\n"
+        "ret $0x18\n"
+        
+        "1:\n"
+        "popa\n"
+        "mov $0x004072d0, %edx\n"
+        "jmp *%edx\n"
+    );
+}
+
 static void apply_vt4_patches(void) {
     DWORD old_code_prot = 0;
     VirtualProtect((void *)0x00401000, 0x00400000, PAGE_EXECUTE_READWRITE, &old_code_prot);
@@ -2776,14 +2984,70 @@ static void apply_vt4_patches(void) {
     patch_bytes(0x0040269e, &h, 4);
     log_msg("[VT4-Mod] Patched resolution: %ux%u (HD display active)", w, h);
 
-    // 4. Enable loose files in game/archive/ before resource.bin in FUN_0042fe20
+    // 4. Loose File Mod Loader: bypass SetCurrentDirectoryA("archive") and route file queries to archive/
+    const uint8_t nops_11[11] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
+    patch_bytes(0x0042fe2e, nops_11, 11);
+    log_msg("[VT4-Mod] Patched 0x0042fe2e: SetCurrentDirectory('archive') bypassed (11 NOPs)");
+
     uint8_t loose_flag = 0;
     patch_bytes(0x0042fe3a, &loose_flag, 1);
+
+    hook_iat(GetModuleHandleA(NULL), "kernel32.dll", "CreateFileA",
+             (void *)hk_CreateFileA, (void **)&g_real_createfilea);
+    if (!g_real_createfilea) {
+        g_real_createfilea = *(CreateFileA_t *)0x00788078;
+        void *hk_cfa = (void *)hk_CreateFileA;
+        patch_bytes(0x00788078, &hk_cfa, sizeof(hk_cfa));
+    }
+    log_msg("[VT4-Mod] CreateFileA hook active (orig=%p)", g_real_createfilea);
+
+    hook_iat(GetModuleHandleA(NULL), "msvcr90.dll", "fopen_s",
+             (void *)hk_fopen_s, (void **)&g_real_fopens);
+    if (!g_real_fopens) {
+        g_real_fopens = *(fopen_s_t *)0x007883c8;
+        void *hk_fos = (void *)hk_fopen_s;
+        patch_bytes(0x007883c8, &hk_fos, sizeof(hk_fos));
+    }
+    log_msg("[VT4-Mod] fopen_s hook active (orig=%p)", g_real_fopens);
+
+    hook_iat(GetModuleHandleA(NULL), "msvcr90.dll", "fopen",
+             (void *)hk_fopen, (void **)&g_real_fopen);
+    if (!g_real_fopen) {
+        g_real_fopen = *(fopen_t *)0x00788414;
+        void *hk_fo = (void *)hk_fopen;
+        patch_bytes(0x00788414, &hk_fo, sizeof(hk_fo));
+    }
+    log_msg("[VT4-Mod] fopen hook active (orig=%p)", g_real_fopen);
+
+    hook_iat(GetModuleHandleA(NULL), "shlwapi.dll", "PathFileExistsA",
+             (void *)hk_PathFileExistsA, (void **)&g_real_pathfileexistsa);
+    if (!g_real_pathfileexistsa) {
+        g_real_pathfileexistsa = *(PathFileExistsA_t *)0x00788464;
+        void *hk_pfe = (void *)hk_PathFileExistsA;
+        patch_bytes(0x00788464, &hk_pfe, sizeof(hk_pfe));
+    }
+    log_msg("[VT4-Mod] PathFileExistsA hook active (orig=%p)", g_real_pathfileexistsa);
+
+    patch_call(0x004079c4, (void *)hk_Archive_CheckDirectory);
+    log_msg("[VT4-Mod] Loose file mod loader active: 0x004079c4 -> hk_Archive_CheckDirectory");
 
     // 5. Unlock all legends & hidden characters (King, Duke, Becker, Edberg, Courier...)
     // FUN_005dfe90 returns BOOL (eax = 1): mov eax, 1; ret 4
     const uint8_t unlock_all_patch[8] = { 0xB8, 0x01, 0x00, 0x00, 0x00, 0xC2, 0x04, 0x00 };
     patch_bytes(0x005dfe90, unlock_all_patch, 8);
+
+    // 5b. Roster Expansion: Assign Boris Becker (11), Patrick Rafter (12), and Stefan Edberg (14)
+    // to slots 21, 22, 23 of the character selection grid (replacing duplicate EDIT00/EDIT01)
+    const uint8_t legends_grid_patch[3] = { 11, 12, 14 };
+    patch_bytes(0x007c5f6c + 21, legends_grid_patch, 3);
+    log_msg("[VT4-Mod] Character Select Grid: Slots 21..23 mapped to Becker (11), Rafter (12), Edberg (14)");
+
+    // 5c. Smooth transition from Court Position Select to Character Select:
+    // In FPPlayerEntry::IsReady (0x005f62d0), once player is active ([esi+0x18] != 0),
+    // return true (al = 1) at 0x005f62e9 to automatically proceed to FPCharaSelect
+    const uint8_t auto_ready_patch[9] = { 0xB0, 0x01, 0x5E, 0xC3, 0x90, 0x90, 0x90, 0x90, 0x90 };
+    patch_bytes(0x005f62e9, auto_ready_patch, 9);
+    log_msg("[VT4-Mod] FPPlayerEntry auto-advance to FPCharaSelect active at 0x005f62e9");
 
     // 6. Fix Sega European Region ESRB infinite loop deadlock
     // In FUN_00431580 (AdvMode ctor), replace call to FUN_0044fc70 at 0x004315d1 with near jmp to 0x0043165c

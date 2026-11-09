@@ -35,20 +35,28 @@ Este documento establece la arquitectura técnica y el plan de ejecución por fa
 
 ---
 
-## 3. Fase 2: Rediseño del Selector de Personajes (Character Select)
-El selector original de VT4 soporta una cuadrícula fija de 24 casillas:
-1. **Inspección de estructuras de roster**:
-   - Estructura `CharacterDef`: ID interno, nombre, modelo 3D (`.mdl`), texturas (`.txp`), estilo de juego (*Strong Backhand*, *Rocket Serve*, etc.), estadísticas y slots de indumentaria.
-2. **Ampliación de cuadrícula / Paginación**:
-   - Modificación de la matriz de selección para admitir pestañas (`ATP Actuales`, `WTA Actuales`, `Leyendas Históricas`) o scroll de varias páginas.
-   - Reemplazo de los retratos 2D en `archive/` o inyección en memoria.
-3. **Desbloqueo de personajes ocultos**:
-   - King y Duke ya han sido desbloqueados directamente mediante hook del método de validación `FUN_005dfe90`.
+## 3. Fase 2: Rediseño del Selector de Personajes & Activación de Leyendas (Completada)
+El selector original de VT4 cuenta con una cuadrícula fija de 24 casillas (`FPCharaSelect`):
+- [x] **Desbloqueo Universal de Leyendas y Jefes**:
+  - Parcheado el método de validación `FUN_005dfe90` (retorna siempre `TRUE`), desbloqueando de inmediato a King, Duke y todas las figuras bloqueadas.
+- [x] **Asignación de Leyendas en Cuadrícula (`0x007c5f6c`)**:
+  - Casillas 21, 22 y 23 reasignadas a **Boris Becker (ID 11)**, **Patrick Rafter (ID 12)** y **Stefan Edberg (ID 14)**, reemplazando los slots duplicados `EDIT00`/`EDIT01`.
+- [x] **Transición Fluida a Selección de Personajes (`0x005f62e9`)**:
+  - Parcheado `FPPlayerEntry::IsReady` (`0x005f62d0`) para avanzar automáticamente tras 30 fotogramas desde Selección de Posición de Pista al Selector de Personajes sin fricción ni bloqueos.
+- [x] **Verificación Visual In-Game en 1080p**:
+  - Validado el renderizado en tiempo real de los modelos 3D y retratos de Boris Becker (polo Puma blanco clásico), Patrick Rafter (camiseta sin mangas Reebok) y Stefan Edberg (equipación Adidas clásica).
 
 ---
 
-## 4. Fase 3: Remasterización de Texturas con Nano Banana & Nuevos Modelos Next-Gen
-1. **Pipeline de Remasterización de Texturas con Nano Banana (AI Upscaling / Generative Diffusion)**:
+## 4. Fase 3: Cargador de Archivos Sueltos (Loose File Loader) & Remasterización con Nano Banana (En Curso)
+1. **Cargador Transparente de Archivos Sueltos (`game/archive/`) - Implementado**:
+   - Intercepción de bajo nivel en `xlive.dll` sin alterar los 3.2 GB originales de `resource.bin` / `resource.1.bin`:
+     - `Archive::OpenFile` (`0x004079c4` -> `hk_Archive_CheckDirectory`): detecta reemplazos en `game/archive/` y redirige al cargador de disco.
+     - `CreateFileA` (IAT `0x00788078`): redirección física de lectura de disco hacia `game/archive/`.
+     - `fopen_s` / `fopen` (IAT `0x007883c8`, `0x00788414`): redirección de flujos CRT.
+     - `PathFileExistsA` (IAT `0x00788464`): detección transparente de archivos modificados.
+     - **Bypass Automático `.bin` -> `.txt`**: cuando existe una base de datos en texto plano (ej. `fwDataDB_Player.txt`), las consultas al binario compilado devuelven `NOT_FOUND` forzando al motor a parsear directamente el texto editable.
+2. **Pipeline de Remasterización de Texturas con Nano Banana (AI Upscaling / Generative Diffusion)**:
    - Extracción masiva de texturas base (`.txp`, `.dds`, `.bin`) de pistas, redes, vestimentas, pieles y raquetas.
    - Procesamiento con **Nano Banana** y modelos generativos de ultra alta resolución para escalar las texturas originales a **2K y 4K**, preservando costuras (*UV seams*), mapas normales y mapas de especularidad.
    - Carga transparente desde la carpeta de archivos sueltos `game/archive/` sin modificar los binarios originales de Sega.
