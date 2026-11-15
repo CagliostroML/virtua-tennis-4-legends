@@ -49,13 +49,14 @@ El selector original de VT4 cuenta con una cuadrícula fija de 24 casillas (`FPC
 ---
 
 ## 4. Fase 3: Cargador de Archivos Sueltos (Loose File Loader) & Remasterización con Nano Banana (En Curso)
-1. **Cargador Transparente de Archivos Sueltos (`game/archive/`) - Implementado**:
+1. **Cargador Transparente de Archivos Sueltos (`game/archive/`) - Implementado y Verificado**:
    - Intercepción de bajo nivel en `xlive.dll` sin alterar los 3.2 GB originales de `resource.bin` / `resource.1.bin`:
-     - `Archive::OpenFile` (`0x004079c4` -> `hk_Archive_CheckDirectory`): detecta reemplazos en `game/archive/` y redirige al cargador de disco.
+     - `Archive::OpenFile` (`0x004079c4` -> `hk_Archive_CheckDirectory`) y `ArchiveDir::FindIndex` (`0x00407380` -> `hk_ArchiveDir_FindIndex`): detectan reemplazos en `game/archive/` (incluidos archivos dentro de subcontenedores donde `vol == -1`) y redirigen al cargador de disco.
+     - Corrección de descompresión en `AsyncLoader` (`0x0040c763` con 7 NOPs y `0x0040c589` limpiando `[esi+0xa9] = 0` en `AsyncLoader::CloseSlot`): evita que archivos sueltos sin comprimir pasen por el descompresor LZSS (`0x0040bc00`) al reutilizar un slot.
      - `CreateFileA` (IAT `0x00788078`): redirección física de lectura de disco hacia `game/archive/`.
      - `fopen_s` / `fopen` (IAT `0x007883c8`, `0x00788414`): redirección de flujos CRT.
      - `PathFileExistsA` (IAT `0x00788464`): detección transparente de archivos modificados.
-     - **Bypass Automático `.bin` -> `.txt`**: cuando existe una base de datos en texto plano (ej. `fwDataDB_Player.txt`), las consultas al binario compilado devuelven `NOT_FOUND` forzando al motor a parsear directamente el texto editable.
+     - **Compilador y Verificador `fwDataDB` (`tools/compile_fwdatadb.py`)**: compila/decompila `.txt` <-> `.bin` con finales de línea LF y verificación exacta byte-a-byte (`30,128` bytes frente a `fwDataDB_Player.bin`), coexistiendo con el bypass `.bin` -> `.txt` cuando se suministra texto suelto (`fwDataDB_Stage.txt`).
 2. **Pipeline de Remasterización de Texturas con Nano Banana (AI Upscaling / Generative Diffusion)**:
    - Extracción masiva de texturas base (`.txp`, `.dds`, `.bin`) de pistas, redes, vestimentas, pieles y raquetas.
    - Procesamiento con **Nano Banana** y modelos generativos de ultra alta resolución para escalar las texturas originales a **2K y 4K**, preservando costuras (*UV seams*), mapas normales y mapas de especularidad.
@@ -72,8 +73,9 @@ El selector original de VT4 cuenta con una cuadrícula fija de 24 casillas (`FPC
 ## 5. Fase 4: Físicas, Animaciones y Pistas de Grand Slam
 1. **Animaciones de Golpeo**:
    - Ajuste de cinemáticas de derecha (*forehand* con efecto látigo de Alcaraz, revés a dos manos plano de Sinner).
-2. **Superficies**:
-   - Ajuste del coeficiente de fricción y bote de pelota para diferenciar netamente la tierra batida de Roland Garros, la hierba rápida de Wimbledon y las pistas duras de Melbourne/US Open.
+2. **Superficies - Implementado (`fwDataDB_Stage.txt`)**:
+   - Configuración diferenciada de bote y velocidad (`BoundY` / `BoundXZ`) por superficie (`CLAY`, `GRASS`, `HARD`, `INDOOR`) en `game/archive/Config/Fraw/fwDataDB/fwDataDB_Stage.txt`.
+   - Todas las pistas desbloqueadas desde el inicio (`Lock = -1` en los 43 registros, incluidos los 32 estadios principales antes de `MinA`; los 27 slots de la cuadrícula de Exhibición verificados sin candado).
 
 ---
 

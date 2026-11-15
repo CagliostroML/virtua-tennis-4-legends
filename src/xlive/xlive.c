@@ -833,14 +833,14 @@ static const uint8_t g_roster_page_tour[24] = {
     26, 26, 27    // Row 7: CARGAR (26), ACTUAL (26), ALEATORIO (27)
 };
 
-// Page 1: Classic Tennis Legends (Becker, Edberg, Rafter + Champions + Intact Slots 21..23)
+// Page 1: Classic Tennis Legends & Secret Characters (Becker, Edberg, Rafter, Courier, King, Duke, Tenniel, Virnie + Stars)
 static const uint8_t g_roster_page_legends[24] = {
     11, 14, 12,   // Row 0: Becker(11), Edberg(14), Rafter(12)
     13, 15, 16,   // Row 1: Courier(13), King(15), Duke(16)
-     0,  1,  2,   // Row 2: Federer(0), Nadal(1), Djokovic(2)
-     3,  5,  4,   // Row 3: Murray(3), Roddick(5), Del Potro(4)
-     6,  7, 10,   // Row 4: Gonzalez(6), Haas(7), Kohlschreiber(10)
-     8,  9, 22,   // Row 5: Seppi(8), Monfils(9), Sharapova(22)
+    24, 25, 22,   // Row 2: Tenniel/VTM(24), Virnie/VTF(25), Sharapova(22)
+     0,  1,  2,   // Row 3: Federer(0), Nadal(1), Djokovic(2)
+     3,  5,  4,   // Row 4: Murray(3), Roddick(5), Del Potro(4)
+     6,  7,  9,   // Row 5: Gonzalez(6), Haas(7), Monfils(9)
     17, 19, 18,   // Row 6: Venus(17), Ivanovic(19), Kuznetsova(18)
     26, 26, 27    // Row 7: CARGAR (26), ACTUAL (26), ALEATORIO (27)
 };
@@ -858,6 +858,7 @@ static const char *g_roster_page_titles[NUM_ROSTER_PAGES] = {
 static int g_current_roster_page = 0;
 static void *g_pCharaSelect = NULL;
 static int g_chara_select_frames = 0;
+static uint32_t g_chara_select_ticks = 0;
 static int g_roster_page_dirty = 0;
 
 static float g_arr_left_rc[4] = { 0 };
@@ -1023,6 +1024,7 @@ static void __thiscall hk_FPCharaSelect_Update(void *self) {
     s_entry_confirmed = 0;
     g_pCharaSelect = self;
     g_chara_select_frames = 30;
+    g_chara_select_ticks++;
 
     static int s_logged_cs = 0;
     if (s_logged_cs++ < 5 || (s_logged_cs % 180) == 0) {
@@ -3062,8 +3064,9 @@ static uint32_t g_nav_last_frame[6] = {0};
 static int      g_nav_val[6] = {0};
 
 static inline int eval_nav_key(int slot, int active, uint32_t delay, uint32_t rate) {
-    if (g_nav_last_frame[slot] != g_present_calls) {
-        g_nav_last_frame[slot] = g_present_calls;
+    uint32_t nav_tick = (g_chara_select_frames > 0 && !g_menu_visible) ? (0x80000000u | g_chara_select_ticks) : g_present_calls;
+    if (g_nav_last_frame[slot] != nav_tick) {
+        g_nav_last_frame[slot] = nav_tick;
         if (active) {
             g_nav_hold[slot]++;
             if (g_nav_hold[slot] == 1) {
@@ -3414,30 +3417,11 @@ static int is_loose_file_override(const char *rel_path, char *out_path, size_t o
     return 0;
 }
 
-static int has_loose_txt_replacement(const char *rel_path) {
-    if (!rel_path || !rel_path[0]) return 0;
-    size_t len = strlen(rel_path);
-    if (len < 5) return 0;
-    if (_stricmp(rel_path + len - 4, ".bin") != 0) return 0;
-    
-    char txt_path[MAX_PATH];
-    strncpy(txt_path, rel_path, sizeof(txt_path) - 1);
-    txt_path[sizeof(txt_path) - 1] = '\0';
-    strcpy(txt_path + len - 4, ".txt");
-    
-    char resolved[MAX_PATH * 2];
-    return is_loose_file_override(txt_path, resolved, sizeof(resolved));
-}
-
 static uint32_t g_loose_checks = 0;
 static int check_loose_file(const char *rel_path) {
     if (g_loose_checks < 20) {
         log_msg("[VT4-Mod] Archive lookup #%u: '%s'", g_loose_checks, rel_path ? rel_path : "NULL");
         g_loose_checks++;
-    }
-    if (has_loose_txt_replacement(rel_path)) {
-        log_msg("[VT4-Mod] [LOOSE] Archive lookup bypassed .bin for loose .txt: %s", rel_path);
-        return 1; // Mark as loose so engine falls back to loose file handler
     }
     char resolved[MAX_PATH * 2];
     if (is_loose_file_override(rel_path, resolved, sizeof(resolved))) {
@@ -3458,11 +3442,6 @@ static HANDLE WINAPI hk_CreateFileA(LPCSTR lpFileName, DWORD dwDesiredAccess, DW
                                     LPSECURITY_ATTRIBUTES lpSecurityAttributes, DWORD dwCreationDisposition,
                                     DWORD dwFlagsAndAttributes, HANDLE hTemplateFile) {
     if (lpFileName && lpFileName[0]) {
-        if (has_loose_txt_replacement(lpFileName)) {
-            log_msg("[VT4-Mod] [LOOSE] CreateFileA bypassed .bin for loose .txt: %s", lpFileName);
-            SetLastError(ERROR_FILE_NOT_FOUND);
-            return INVALID_HANDLE_VALUE;
-        }
         char resolved[MAX_PATH * 2];
         if (is_loose_file_override(lpFileName, resolved, sizeof(resolved))) {
             log_msg("[VT4-Mod] [LOOSE] CreateFileA redirected: %s -> %s", lpFileName, resolved);
@@ -3481,11 +3460,6 @@ static fopen_s_t g_real_fopens = NULL;
 
 static int __cdecl hk_fopen_s(FILE **pFile, const char *filename, const char *mode) {
     if (filename && filename[0]) {
-        if (has_loose_txt_replacement(filename)) {
-            log_msg("[VT4-Mod] [LOOSE] fopen_s bypassed .bin for loose .txt: %s", filename);
-            if (pFile) *pFile = NULL;
-            return 2; // ENOENT
-        }
         char resolved[MAX_PATH * 2];
         if (is_loose_file_override(filename, resolved, sizeof(resolved))) {
             log_msg("[VT4-Mod] [LOOSE] fopen_s redirected: %s -> %s", filename, resolved);
@@ -3500,10 +3474,6 @@ static fopen_t g_real_fopen = NULL;
 
 static FILE *__cdecl hk_fopen(const char *filename, const char *mode) {
     if (filename && filename[0]) {
-        if (has_loose_txt_replacement(filename)) {
-            log_msg("[VT4-Mod] [LOOSE] fopen bypassed .bin for loose .txt: %s", filename);
-            return NULL;
-        }
         char resolved[MAX_PATH * 2];
         if (is_loose_file_override(filename, resolved, sizeof(resolved))) {
             log_msg("[VT4-Mod] [LOOSE] fopen redirected: %s -> %s", filename, resolved);
@@ -3518,9 +3488,6 @@ static PathFileExistsA_t g_real_pathfileexistsa = NULL;
 
 static BOOL WINAPI hk_PathFileExistsA(LPCSTR pszPath) {
     if (pszPath && pszPath[0]) {
-        if (has_loose_txt_replacement(pszPath)) {
-            return FALSE;
-        }
         char resolved[MAX_PATH * 2];
         if (is_loose_file_override(pszPath, resolved, sizeof(resolved))) {
             log_msg("[VT4-Mod] [LOOSE] PathFileExistsA redirected: %s -> %s", pszPath, resolved);
@@ -3546,6 +3513,34 @@ static void __attribute__((naked)) hk_Archive_CheckDirectory(void) {
         "1:\n"
         "popa\n"
         "mov $0x004072d0, %edx\n"
+        "jmp *%edx\n"
+    );
+}
+
+// 0x00407380: int __thiscall ArchiveDir_FindIndex(const char *rel_path /* ecx */, void *dir_table /* [esp+4] */)
+// Prologue (6 bytes): 55 (push ebp) 8b ec (mov ebp, esp) 83 e4 f8 (and esp, -8)
+// Returning -1 (0xffffffff) when a loose file exists in game/archive/ forces all 5 callers
+// (0x004072e1, 0x0040c256, 0x00417b51, 0x00417cc3, 0x00417e12) to take the standalone loose-file path
+// via 0x00405d70 -> hk_CreateFileA, even for files packed inside parent containers (vol == -1).
+static void __attribute__((naked)) hk_ArchiveDir_FindIndex(void) {
+    __asm__(
+        "pusha\n"
+        "push %ecx\n"
+        "mov _g_fn_check_loose, %eax\n"
+        "call *%eax\n"
+        "add $4, %esp\n"
+        "test %eax, %eax\n"
+        "jz 1f\n"
+        "popa\n"
+        "mov $0xffffffff, %eax\n"
+        "ret $4\n"
+
+        "1:\n"
+        "popa\n"
+        "push %ebp\n"
+        "mov %esp, %ebp\n"
+        "and $0xfffffff8, %esp\n"
+        "mov $0x00407386, %edx\n"
         "jmp *%edx\n"
     );
 }
@@ -3680,7 +3675,21 @@ static void apply_vt4_patches(void) {
     log_msg("[VT4-Mod] PathFileExistsA hook active (orig=%p)", g_real_pathfileexistsa);
 
     patch_call(0x004079c4, (void *)hk_Archive_CheckDirectory);
-    log_msg("[VT4-Mod] Loose file mod loader active: 0x004079c4 -> hk_Archive_CheckDirectory");
+    install_jmp(0x00407380, (void *)hk_ArchiveDir_FindIndex, 6);
+    // Bypass forced LZSS flag ([esp+0x24] from 0x0040c280) for standalone loose files ([ebp+0xa9] == 0)
+    // at 0x0040c763 (cmp byte ptr [esp+0x24], 0; jne 0x40c76e -> 7 bytes) so uncompressed loose .bin/.txt/.dds files load raw:
+    patch_nops(0x0040c763, 7);
+    // In AsyncLoader::CloseSlot (0x0040c4a0), at 0x0040c589 (11 bytes + 6 bytes of 0xCC padding):
+    // Clear both [esi + 0xa8] and [esi + 0xa9] (bl == 0) so reused slots don't retain stale LZSS flag [ebp+0xa9]=1
+    const uint8_t clear_async_slot_flags[17] = {
+        0x88, 0x9E, 0xA8, 0x00, 0x00, 0x00, // mov [esi + 0xa8], bl
+        0x88, 0x9E, 0xA9, 0x00, 0x00, 0x00, // mov [esi + 0xa9], bl
+        0x5B,                               // pop ebx
+        0x83, 0xC4, 0x0C,                   // add esp, 0x0c
+        0xC3                                // ret
+    };
+    patch_bytes(0x0040c589, clear_async_slot_flags, sizeof(clear_async_slot_flags));
+    log_msg("[VT4-Mod] Loose file mod loader active: 0x004079c4 -> hk_Archive_CheckDirectory, 0x00407380 -> hk_ArchiveDir_FindIndex, 0x0040c763 NOPped (7 bytes), 0x0040c589 clears [esi+0xa9]");
 
     // 5. Unlock all legends & hidden characters (King, Duke, Becker, Edberg, Courier...)
     // FUN_005dfe90 returns BOOL (eax = 1): mov eax, 1; ret 4
