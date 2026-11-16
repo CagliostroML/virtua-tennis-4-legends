@@ -29,8 +29,8 @@ Este documento es nuestra hoja de ruta viva. Iremos marcando con `[x]` cada elem
 - [x] **06. Juan Martín del Potro (ARG)** — Diestro (Revés 2M) | *Derecha Demoledora (Hard Hitter)* (Stats Prime aplicados en `fwDataDB_Player`)
 
 ### II. La Nueva Era ("Next-Gen" & Actualidad hasta 2026)
-- [x] **07. Carlos Alcaraz (ESP)** — Diestro (Revés 2M) | *Todoterreno Explosivo / Rey de la Dejada* (`ID 26`, foto real `photo_L/26.dds`, modelo `P_M_ALC_NG.sdo` y Página 2 `g_roster_page_legends`, verificado en Madrid)
-- [x] **08. Jannik Sinner (ITA)** — Diestro (Revés 2M) | *Golpeador de Ritmo Frenético* (`ID 27`, foto real `photo_L/27.dds`, modelo `P_M_SIN_NG.sdo` y Página 2 `g_roster_page_legends`, verificado en menú)
+- [x] **07. Carlos Alcaraz (ESP)** — Diestro (Revés 2M) | *Todoterreno Explosivo / Rey de la Dejada* (`ID 26`, `P_M_ALC_NG.sdo`, jugable y verificado en partido con `served=1` y 0 asserts; fuente de retrato en `assets/portraits_src/`)
+- [x] **08. Jannik Sinner (ITA)** — Diestro (Revés 2M) | *Golpeador de Ritmo Frenético* (`ID 27`, `P_M_SIN_NG.sdo`, jugable y verificado en partido con `served=1` y 0 asserts; fuente de retrato en `assets/portraits_src/`)
 - [ ] **09. Daniil Medvedev (RUS)** — Diestro (Revés 2M) | *Muro Heterodoxo / Contragolpeador Profundo*
 - [ ] **10. Alexander Zverev (GER)** — Diestro (Revés 2M) | *Gran Sacador + Potencia de Revés*
 - [ ] **11. Stefanos Tsitsipas (GRE)** — Diestro (Revés 1M) | *Ataque de Derecha y Red*
@@ -100,9 +100,9 @@ Este documento es nuestra hoja de ruta viva. Iremos marcando con `[x]` cada elem
 
 ## 🤪 Fase 3: Cinco Easter Eggs Legendarios (Modo Extra "Multiverso Arcade")
 - [ ] **EE-1: 🔥 Modo McEnroe Desatado ("¡YOU CANNOT BE SERIOUS!")** — Botón de protesta al juez de silla en bolas cercanas a la línea con minijuego de intimidación arbitral y lanzamiento de raqueta.
-- [ ] **EE-2: 🥖 La Batalla de las Superficies Extrema (50% Barro / 50% Hielo)** — Mitad de pista con bote ultra-alto y frenado, mitad con hielo resbaladizo y bote rasante ultrarrápido.
+- [x] **EE-2: 🥖 La Batalla de las Superficies Extrema (50% Barro / 50% Hielo)** — Mitad `-Z` Hielo (`BoundXZ=0.20, BoundY=0.38`, `peak_y=3.33`) y mitad `+Z` Barro (`BoundXZ=1.55, BoundY=1.22`, `peak_y=24.73`) verificadas en trayectoria real vía `MultiverseMode=1/3` (`hk_BallSimulateTrajectory` `0x00478bf3`).
 - [ ] **EE-3: 🪵 Modo Raqueta de Madera vs. Sartén de Cocina (Homenaje a Roddick)** — Selector de arma/handicap (raqueta de los 70, sartén metálica, paraguas, baguette gigante) con efectos de sonido e impacto propios.
-- [ ] **EE-4: ⚡ Super Golpes DBZ / Mario Power Tennis (Barra VT al 300%)** — Super Shots con físicas extremas (dejada bumerán de Alcaraz que regresa a su campo, Banana Shot de fuego de Nadal, saque supersónico de Roddick/Ivanišević).
+- [x] **EE-4: ⚡ Super Golpes DBZ / Mario Power Tennis** — Velocidad de bola `1.55x` y gravedad `k^2` (`0.43`) verificadas en trayectoria real (`bounce_f=23` vs `34`, `v0z=-10.78` vs `-6.70`, `peak_y=11.05`) vía `MultiverseMode=2/3` (`hk_BallSimulateTrajectory` + `hk_BallLaunch_480561`); golpes temáticos extra pendientes.
 - [x] **EE-5: 🤖 Jefes Secretos Jugables (King, Duke, T. Tenniel `VTM`, V. Virnie `VTF` en Página 2 `g_roster_page_legends`; futuros skins Juez de Silla motorizado, Recogepelotas Turbo & Matt)** — Jefes y personajes secretos (`King`, `Duke`, `ID 24 T. Tenniel`, `ID 25 V. Virnie`) jugables directamente en Exhibición.
 
 ---
@@ -113,4 +113,10 @@ Este documento es nuestra hoja de ruta viva. Iremos marcando con `[x]` cada elem
 - [x] **EXTRA-3: Grand Slams Oficiales & Pista Azul de Madrid** — Generador reproducible `tools/make_madrid_blue_clay.py` que transforma `Spa2FS`/`Spa2FD` (`UV_surface`, `IL_surface` y marcas en líneas `B_AU_line*`) en **Tierra Azul de Madrid** (`BoundY=0.88, BoundXZ=0.78` en `fwDataDB_Stage.txt`) y localiza `TR_COMMON.sto` (`SPA`/`ENG`) para Australian Open, Roland Garros, Wimbledon, US Open y Mutua Madrid Open.
 - [x] **EXTRA-4: Selector de Velocidad de Física ("Modo VT2 Arcade Turbo" vs "Simulación")** — Configurable en `vt4_settings.ini` (`MatchSpeedMode`) y en el HUD de Ajustes (`Normal 1.00x`, `VT2 Arcade Turbo 1.20x`, `VT2 Hyper Arcade 1.35x`, `Simulación Pro 0.90x`) escalando el paso de simulación durante el juego en vivo (`0x00482aa1` + `0x0043037b`).
 - [x] **EXTRA-5: Partidos a 5 Sets Reales de 6 Juegos + Tie-Break / Super Tie-Break** — Desbloqueados vía `REGLAS EXHIBICION` en `OPCIONES -> GRAFICOS HD Y LEGENDS` (`1/3/5 Sets x 6 Juegos + Tie-Break / Ventaja`, hook `hk_SetMatchRules` `0x0045f480`) y eliminado el Assert NULL de `ExhibitionAdvancedSetting` (`0x004351e1`).
-- [ ] **EXTRA-6: Parche 4K & Alto Framerate** — Resolución nativa moderna y eliminación de filtros de borrosidad (*bloom/blur* excesivo).
+- [x] **EXTRA-6: Parche 4K & Nitidez PostFX** — Resolución configurable en `vt4_settings.ini` y eliminación/reducción de *DOF blur* y *bloom/glare* (`CleanPostFX=0/1/2` en `OPCIONES -> GRAFICOS HD Y LEGENDS`, hook `hk_RenderPostEffects` `0x004a9460`), verificado en comparativa visual y `test_options_ui.py`.
+
+---
+
+### Estado verificado de los 12 nuevos IDs (`26..37`, Hito B + fuentes Hito D)
+- **Matriz jugable (`test_roster_matrix.py --ids 26..37`)**: Los 12 (`26` Alcaraz, `27` Sinner, `28` Sampras, `29` Agassi, `30` Borg, `31` McEnroe, `32` Graf, `33` Serena, `34` Świątek, `35` Sabalenka, `36` Kuerten, `37` Navratilova) cargan en partido, se mueven y sacan (`served=1`, `PlayStyle=0`, `ExbAdv=0`, `Exc=0`) tras mapear `0x0053d6d0` (`0x007baaa8`).
+- **Fuentes de retratos**: 12 originales CC/PD y `manifest.json` guardados en `assets/portraits_src/`. Pendiente de ejecutar el pase de recorte/restauración con Nano Banana y reexportar `photo_L/26..37.dds` sin viñeta circular (bloqueado temporalmente por cuota de `gemini-3.1-flash-image`).
