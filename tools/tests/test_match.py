@@ -91,11 +91,16 @@ def main():
 
         if not vt4.wait_for_log("Dismissing loading screen", timeout=25.0):
             raise RuntimeError("Did not dismiss loading screen")
-        time.sleep(4.5)
-        vt4.send_key(hwnd, vt4.VK_RETURN, hold=0.10, post_wait=1.2)
-        vt4.send_key(hwnd, vt4.VK_RETURN, hold=0.10, post_wait=1.2)
+        # Wait up to 8s for LiveMatch ready, pressing Enter once to skip intro flyover
+        time.sleep(2.5)
+        for _ in range(4):
+            if "LiveMatch ready at frame " in vt4.read_log():
+                break
+            vt4.send_key(hwnd, vt4.VK_RETURN, hold=0.10, post_wait=1.5)
+        vt4.wait_for_log("LiveMatch ready at frame ", timeout=6.0)
+        time.sleep(3.2)  # Wait for pre-point [1 | 0] badge & ready lock to clear
 
-        # Move slightly left/right, serve with Z -> wait -> Z (topspin serve)
+        # Move slightly left, serve with Z -> wait 0.45s -> Z
         vt4.send_key(hwnd, vt4.VK_A, hold=0.22, post_wait=0.2)
         vt4.send_key(hwnd, vt4.VK_Z, hold=0.12, post_wait=0.45)
         vt4.send_key(hwnd, vt4.VK_Z, hold=0.12, post_wait=0.9)

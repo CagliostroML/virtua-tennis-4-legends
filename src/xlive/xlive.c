@@ -1163,12 +1163,21 @@ static float g_player_bone_scales[38 * 60] = {0};
 typedef void (__thiscall *PlayStyleLoadChar_t)(void *self, int char_id);
 static PlayStyleLoadChar_t g_real_playstyle_loadchar = NULL;
 static const uint8_t g_custom_playstyle_proxy[12] = { 1, 2, 0, 10, 14, 11, 17, 18, 22, 20, 12, 18 };
+static const uint8_t g_custom_anim_proxy[12]      = { 1, 2, 0, 10, 14, 11, 17, 18, 22, 21, 12, 18 };
 
 static void __thiscall hk_PlayStyle_LoadChar(void *self, int char_id) {
     if (char_id >= 26 && char_id < 38) {
         char_id = (int)g_custom_playstyle_proxy[char_id - 26];
     }
     if (g_real_playstyle_loadchar) g_real_playstyle_loadchar(self, char_id);
+}
+
+typedef void (__thiscall *SetServeMotionIdFn_t)(void *self, int id1, int id2);
+static SetServeMotionIdFn_t g_real_set_serve_motion_id = NULL;
+static void __thiscall hk_SetServeMotionId(void *self, int id1, int id2) {
+    if (id1 >= 26 && id1 < 38) id1 = (int)g_custom_anim_proxy[id1 - 26];
+    if (id2 >= 26 && id2 < 38) id2 = (int)g_custom_anim_proxy[id2 - 26];
+    if (g_real_set_serve_motion_id) g_real_set_serve_motion_id(self, id1, id2);
 }
 
 typedef void *(__thiscall *GetMotionDataFn_t)(void *self, int slot, int motion_id);
@@ -3621,6 +3630,9 @@ static void __thiscall hk_LiveMatchTracker_4803e0(void *self) {
         *(int *)((char *)self + 0x78) == 2 &&
         *(uint8_t *)0x008232f6 == 0 &&
         *(int *)0x008232f0 == 0) {
+        if (g_live_match_frame == 0 || g_present_calls > g_live_match_frame + 120) {
+            log_msg("[VT4-Mod] LiveMatch ready at frame %u", g_present_calls);
+        }
         g_live_match_frame = g_present_calls;
     }
     typedef void (__thiscall *Orig_t)(void *);
@@ -4586,9 +4598,8 @@ static void apply_vt4_patches(void) {
     // Clone signature motion preset table (0x007a5958[26]) -> g_player_anim_presets[38]
     memcpy(g_player_anim_presets, (const void *)0x007a5958, 26 * 20);
     // Assign closest signature serve/forehand/backhand motion tuples from pro icons
-    static const uint8_t proxy_anim[12] = { 1, 2, 0, 10, 14, 11, 17, 18, 22, 20, 12, 18 };
     for (int i = 0; i < 12; i++) {
-        memcpy(&g_player_anim_presets[(26 + i) * 5], &g_player_anim_presets[proxy_anim[i] * 5], 20);
+        memcpy(&g_player_anim_presets[(26 + i) * 5], &g_player_anim_presets[g_custom_anim_proxy[i] * 5], 20);
     }
     uintptr_t ap_base = (uintptr_t)g_player_anim_presets;
     static const uint32_t ap_f0_refs[15] = {
@@ -4612,6 +4623,10 @@ static void apply_vt4_patches(void) {
     // Hook PlayStyleParameter::LoadCharacter(char_id) at 0x00542260 (keep 0x005422ee at 0x21 for 33 PlayStyles!)
     g_real_playstyle_loadchar = (PlayStyleLoadChar_t)make_trampoline(0x00542260, 6);
     install_jmp(0x00542260, (void *)hk_PlayStyle_LoadChar, 6);
+
+    // Map serve/return motion table indices (0x007baaa8[28]) for IDs 26..37 in 0x0053d6d0
+    g_real_set_serve_motion_id = (SetServeMotionIdFn_t)make_trampoline(0x0053d6d0, 6);
+    install_jmp(0x0053d6d0, (void *)hk_SetServeMotionId, 6);
 
     // Safe fallback + logging for GetMotionData (0x004e06f0)
     g_real_get_motion_data = (GetMotionDataFn_t)make_trampoline(0x004e06f0, 6);

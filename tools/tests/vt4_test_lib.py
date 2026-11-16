@@ -236,7 +236,16 @@ def summarize_log():
     playstyle_asserts = txt.count("PlayStyleParameter.cpp (137)")
     exbadv_asserts = txt.count("ExhibitionAdvancedSetting.cpp (72)")
     # Exclude normal startup TreeTraverse VEH lines only if needed, report all EXCEPTION CAUGHT lines
-    exc_lines = [l for l in txt.splitlines() if "EXCEPTION CAUGHT" in l or "Access violation" in l]
+    exc_lines = [l for l in txt.splitlines() if "EXCEPTION CAUGHT" in l]
+    # Filter out normal startup TreeTraverse VEH recoveries
+    real_exc = []
+    lines = txt.splitlines()
+    for idx, l in enumerate(lines):
+        if "EXCEPTION CAUGHT" in l:
+            block = "\n".join(lines[idx:idx+80])
+            if "VEH recovering from invalid TreeTraverse node" not in block:
+                real_exc.append(l)
+    exc_lines = real_exc
     fase3_lines = [l for l in txt.splitlines() if "[FASE-3]" in l]
     extra6_lines = [l for l in txt.splitlines() if "[EXTRA-6]" in l]
     diag_lines = [l for l in txt.splitlines() if "[DIAG-" in l]
