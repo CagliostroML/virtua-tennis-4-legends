@@ -29,8 +29,8 @@ Este documento es nuestra hoja de ruta viva. Iremos marcando con `[x]` cada elem
 - [x] **06. Juan Martín del Potro (ARG)** — Diestro (Revés 2M) | *Derecha Demoledora (Hard Hitter)* (Stats Prime aplicados en `fwDataDB_Player`)
 
 ### II. La Nueva Era ("Next-Gen" & Actualidad hasta 2026)
-- [ ] **07. Carlos Alcaraz (ESP)** — Diestro (Revés 2M) | *Todoterreno Explosivo / Rey de la Dejada*
-- [ ] **08. Jannik Sinner (ITA)** — Diestro (Revés 2M) | *Golpeador de Ritmo Frenético*
+- [x] **07. Carlos Alcaraz (ESP)** — Diestro (Revés 2M) | *Todoterreno Explosivo / Rey de la Dejada* (`ID 26`, foto real `photo_L/26.dds`, modelo `P_M_ALC_NG.sdo` y Página 2 `g_roster_page_legends`, verificado en Madrid)
+- [x] **08. Jannik Sinner (ITA)** — Diestro (Revés 2M) | *Golpeador de Ritmo Frenético* (`ID 27`, foto real `photo_L/27.dds`, modelo `P_M_SIN_NG.sdo` y Página 2 `g_roster_page_legends`, verificado en menú)
 - [ ] **09. Daniil Medvedev (RUS)** — Diestro (Revés 2M) | *Muro Heterodoxo / Contragolpeador Profundo*
 - [ ] **10. Alexander Zverev (GER)** — Diestro (Revés 2M) | *Gran Sacador + Potencia de Revés*
 - [ ] **11. Stefanos Tsitsipas (GRE)** — Diestro (Revés 1M) | *Ataque de Derecha y Red*
@@ -42,7 +42,7 @@ Este documento es nuestra hoja de ruta viva. Iremos marcando con `[x]` cada elem
 - [x] **15. Andy Roddick (USA)** — Diestro (Revés 2M) | *Gran Sacador (249 km/h) + Derecha* (Stats Prime aplicados en `fwDataDB_Player`)
 - [ ] **16. Lleyton Hewitt (AUS)** — Diestro (Revés 2M) | *Velocista Incansable / Globos y Passing*
 - [ ] **17. Marat Safin (RUS)** — Diestro (Revés 2M) | *Potencia Pura / Revés a dos manos letal*
-- [ ] **18. Gustavo "Guga" Kuerten (BRA)** — Diestro (Revés 1M) | *Rey de la Tierra / Revés Liftado 1M*
+- [x] **18. Gustavo "Guga" Kuerten (BRA)** — Diestro (Revés 1M) | *Rey de la Tierra / Revés Liftado 1M* (`ID 36`, foto real `photo_L/36.dds`, modelo `P_M_KUE_LG.sdo` y Página 2)
 - [ ] **19. Juan Carlos Ferrero (ESP)** — Diestro (Revés 2M) | *El Mosquito (Velocidad + Derecha Cruzada)*
 - [ ] **20. Carlos Moyá (ESP)** — Diestro (Revés 2M) | *Derecha Invertida Demoledora*
 - [ ] **21. David Ferrer (ESP)** — Diestro (Revés 2M) | *Muro Físico / Restador Incansable*
@@ -57,8 +57,8 @@ Este documento es nuestra hoja de ruta viva. Iremos marcando con `[x]` cada elem
 - [ ] **30. Robin Söderling / Tomas Berdych** — Diestro (Revés 2M) | *Cañonero Plano*
 
 ### IV. Leyendas de los 90s (Pistas Rápidas vs. Tierra Batida)
-- [ ] **31. Pete Sampras (USA)** — Diestro (Revés 1M) | *Saque y Volea Definitivo + Smash en Salto*
-- [ ] **32. Andre Agassi (USA)** — Diestro (Revés 2M) | *El Mejor Restador / Ataque de Fondo*
+- [x] **31. Pete Sampras (USA)** — Diestro (Revés 1M) | *Saque y Volea Definitivo + Smash en Salto* (`ID 28`, foto real `photo_L/28.dds`, modelo `P_M_SAM_LG.sdo` y Página 2)
+- [x] **32. Andre Agassi (USA)** — Diestro (Revés 2M) | *El Mejor Restador / Ataque de Fondo* (`ID 29`, foto real `photo_L/29.dds`, modelo `P_M_AGA_LG.sdo` y Página 2)
 - [x] **33. Jim Courier (USA)** — Diestro (Revés 2M) | *Fuerza Bruta desde el Fondo* (Stats Prime y Página 2 `g_roster_page_legends`)
 - [x] **34. Boris Becker (GER)** — Diestro (Revés 1M) | *"Boom Boom" (Saque + Volea en Plancha)* (Stats Prime y Página 2 `g_roster_page_legends`)
 - [x] **35. Stefan Edberg (SWE)** — Diestro (Revés 1M) | *Saque Kick y Volea Elegante* (Stats Prime y Página 2 `g_roster_page_legends`)
@@ -69,8 +69,8 @@ Este documento es nuestra hoja de ruta viva. Iremos marcando con `[x]` cada elem
 - [x] **40. Sergi Bruguera / Alex Corretja / Patrick Rafter** — Leyendas de Grand Slam 90s (*Patrick Rafter*: stats Prime en `fwDataDB_Player` + Página 2 `g_roster_page_legends`; pendientes Bruguera / Corretja)
 
 ### V. Los Pioneros (Años 70 y 80) + Jefes SEGA
-- [ ] **41. Björn Borg (SWE)** — Diestro (Revés 2M) | *El Hombre de Hielo (Resistencia infinita + Topspin)*
-- [ ] **42. John McEnroe (USA)** — Zurdo (Revés 1M) | *Toque Mágico en la Red + Saque de Espaldas*
+- [x] **41. Björn Borg (SWE)** — Diestro (Revés 2M) | *El Hombre de Hielo (Resistencia infinita + Topspin)* (`ID 30`, foto real `photo_L/30.dds`, modelo `P_M_BOR_LG.sdo` y Página 2)
+- [x] **42. John McEnroe (USA)** — Zurdo (Revés 1M) | *Toque Mágico en la Red + Saque de Espaldas* (`ID 31`, foto real `photo_L/31.dds`, modelo `P_M_MCE_LG.sdo` y Página 2)
 - [ ] **43. Ivan Lendl (CZE/USA)** — Diestro (Revés 1M) | *Padre del Tenis Moderno de Potencia*
 - [ ] **44. Jimmy Connors (USA)** — Zurdo (Revés 2M) | *Golpeo Plano Rasante y Agresividad Total*
 - [ ] **45. Mats Wilander (SWE)** — Diestro (Revés 2M) | *Táctico de Acero*
@@ -79,9 +79,9 @@ Este documento es nuestra hoja de ruta viva. Iremos marcando con `[x]` cada elem
 - [x] **48. King & Duke (SEGA Bosses)** — Jefes finales míticos de *Virtua Tennis* (Desbloqueados de serie vía parche `FUN_005dfe90`)
 
 ### VI. Leyendas WTA (Las Grandes Reinas de la Historia)
-- [ ] **49. Serena Williams (USA)** — *Potencia y Saque Total*
-- [ ] **50. Steffi Graf (GER)** — *Golden Slam (Derecha Invertida + Revés Cortado Letal)*
-- [ ] **51. Martina Navratilova (USA)** — *Zurda de Saque y Volea Implacable*
+- [x] **49. Serena Williams (USA)** — *Potencia y Saque Total* (`ID 33`, foto real `photo_L/33.dds`, modelo `P_W_SER_NG.sdo` y Página 2)
+- [x] **50. Steffi Graf (GER)** — *Golden Slam (Derecha Invertida + Revés Cortado Letal)* (`ID 32`, foto real `photo_L/32.dds`, modelo `P_W_GRA_LG.sdo` y Página 2)
+- [x] **51. Martina Navratilova (USA)** — *Zurda de Saque y Volea Implacable* (`ID 37`, foto real `photo_L/37.dds`, modelo `P_W_NAV_LG.sdo` y Página 2)
 - [ ] **52. Chris Evert (USA)** — *Precisión Milimétrica de Fondo*
 - [ ] **53. Monica Seles (YUG/USA)** — *Doble Golpe a Dos Manos Ultra-Agresivo*
 - [ ] **54. Arantxa Sánchez Vicario (ESP)** — *Defensa Imposible en Tierra Batida*
@@ -91,9 +91,9 @@ Este documento es nuestra hoja de ruta viva. Iremos marcando con `[x]` cada elem
 - [ ] **58. Maria Sharapova (RUS)** — *Cañonera sin Cuartel*
 - [ ] **59. Justine Henin (BEL)** — *El Mejor Revés a Una Mano Femenino*
 - [ ] **60. Kim Clijsters (BEL)** — *Elasticidad y Potencia*
-- [ ] **61. Caroline Wozniacki / Ana Ivanovic / Svetlana Kuznetsova / Laura Robson** *(Base VT4)*
-- [ ] **62. Iga Świątek (POL)** — *Topspin y Dominio Absoluto en Tierra*
-- [ ] **63. Aryna Sabalenka (BLR)** — *Potencia Bruta Actual*
+- [ ] **61. Caroline Wozniacki / Ana Ivanovic / Svetlana Kuznetsova / Laura Robson** *(Laura Robson desbloqueada en Página 2 `g_roster_page_legends`; pendientes Wozniacki/Ivanovic/Kuznetsova)*
+- [x] **62. Iga Świątek (POL)** — *Topspin y Dominio Absoluto en Tierra* (`ID 34`, foto real `photo_L/34.dds`, modelo `P_W_SWI_NG.sdo` y Página 2)
+- [x] **63. Aryna Sabalenka (BLR)** — *Potencia Bruta Actual* (`ID 35`, foto real `photo_L/35.dds`, modelo `P_W_SAB_NG.sdo` y Página 2)
 - [ ] **64. Paula Badosa / Simona Halep** — *Circuito Moderno WTA*
 
 ---

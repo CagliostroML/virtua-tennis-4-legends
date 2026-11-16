@@ -1067,15 +1067,15 @@ static const uint8_t g_roster_page_tour[24] = {
     26, 26, 27    // Row 7: CARGAR (26), ACTUAL (26), ALEATORIO (27)
 };
 
-// Page 1: Classic Tennis Legends & Secret Characters (Becker, Edberg, Rafter, Courier, King, Duke, Tenniel, Virnie + Stars)
+// Page 1: Classic Tennis Legends & Next-Gen Superstars (All 21 cards unique, zero duplicates!)
 static const uint8_t g_roster_page_legends[24] = {
     11, 14, 12,   // Row 0: Becker(11), Edberg(14), Rafter(12)
-    13, 15, 16,   // Row 1: Courier(13), King(15), Duke(16)
-    24, 25, 22,   // Row 2: Tenniel/VTM(24), Virnie/VTF(25), Wozniacki(22)
-     0,  1,  2,   // Row 3: Federer(0), Nadal(1), Djokovic(2)
-     3,  5,  4,   // Row 4: Murray(3), Roddick(5), Del Potro(4)
-     6,  7,  9,   // Row 5: Monfils(6), Gonzalez(7), Seppi(9)
-    17, 19, 18,   // Row 6: Sharapova(17), Kuznetsova(19), Venus(18)
+    13, 26, 27,   // Row 1: Courier(13), Alcaraz(26), Sinner(27)
+    28, 29, 30,   // Row 2: Sampras(28), Agassi(29), Borg(30)
+    31, 32, 33,   // Row 3: McEnroe(31), Graf(32), Serena(33)
+    34, 35, 36,   // Row 4: Swiatek(34), Sabalenka(35), Kuerten(36)
+    37, 15, 16,   // Row 5: Navratilova(37), King(15), Duke(16)
+    24, 25, 23,   // Row 6: Tenniel/VTM(24), Virnie/VTF(25), Robson(23)
     26, 26, 27    // Row 7: CARGAR (26), ACTUAL (26), ALEATORIO (27)
 };
 
@@ -1086,8 +1086,61 @@ static const uint8_t *g_roster_pages[NUM_ROSTER_PAGES] = {
 
 static const char *g_roster_page_titles[NUM_ROSTER_PAGES] = {
     "PAGINA 1/2: CIRCUITO ATP & WTA WORLD TOUR",
-    "PAGINA 2/2: LEYENDAS CLASICAS (BECKER, EDBERG, RAFTER...)"
+    "PAGINA 2/2: LEYENDAS & NEXT-GEN (ALCARAZ, SINNER, SAMPRAS...)"
 };
+
+// ----------------------------------------------------------------------------
+// Fase 2 Extended Roster Metadata (char_id 26..37)
+// ----------------------------------------------------------------------------
+static const char *g_custom_card_names[12] = {
+    "Alcaraz", "Sinner", "Sampras", "Agassi", "Borg", "McEnroe",
+    "Graf", "Serena", "Swiatek", "Sabalenka", "Kuerten", "Navratilova"
+};
+static const char *g_custom_banner_names[12] = {
+    "C. Alcaraz", "J. Sinner", "P. Sampras", "A. Agassi", "B. Borg", "J. McEnroe",
+    "S. Graf", "S. Williams", "I. Swiatek", "A. Sabalenka", "G. Kuerten", "M. Navratilova"
+};
+static const char *g_custom_full_names[12] = {
+    "Carlos Alcaraz", "Jannik Sinner", "Pete Sampras", "Andre Agassi",
+    "Bjorn Borg", "John McEnroe", "Steffi Graf", "Serena Williams",
+    "Iga Swiatek", "Aryna Sabalenka", "Gustavo Kuerten", "Martina Navratilova"
+};
+static const uint8_t g_custom_lefty[12]     = { 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1 };
+static const uint8_t g_custom_bh2[12]       = { 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0 };
+static const uint8_t g_custom_bio_proxy[12] = { 1, 9, 5, 5, 14, 5, 17, 18, 22, 17, 1, 18 };
+static int32_t g_player_flags[38] = {0};
+static uint32_t g_player_anim_presets[38 * 5] = {0};
+
+static int __stdcall hk_GetPlayerFlag(int id) {
+    if (id >= 0 && id < 38) return g_player_flags[id];
+    return 200;
+}
+
+typedef void (__stdcall *SetFrawLit_t)(int cell_id, const char *text);
+typedef void (__stdcall *SetFrawTable_t)(int cell_id, int table_id, int row_id);
+static SetFrawTable_t g_real_set_fraw_table = NULL;
+
+static void __stdcall hk_SetFrawTableText(int cell_id, int table_id, int row_id) {
+    if (row_id >= 26 && row_id < 38) {
+        int idx = row_id - 26;
+        if (table_id == 2) {
+            ((SetFrawLit_t)0x005300c0)(cell_id, g_custom_card_names[idx]);
+            return;
+        }
+        if (table_id == 4) {
+            ((SetFrawLit_t)0x005300c0)(cell_id, g_custom_banner_names[idx]);
+            return;
+        }
+        if (table_id == 8) {
+            row_id = g_custom_lefty[idx] ? 1 : 0;
+        } else if (table_id == 10) {
+            row_id = g_custom_bh2[idx] ? 2 : 0;
+        } else if (table_id == 7 || table_id == 11 || table_id == 13) {
+            row_id = (int)g_custom_bio_proxy[idx];
+        }
+    }
+    if (g_real_set_fraw_table) g_real_set_fraw_table(cell_id, table_id, row_id);
+}
 
 static int g_current_roster_page = 0;
 static void *g_pCharaSelect = NULL;
@@ -4354,6 +4407,53 @@ static void apply_vt4_patches(void) {
     patch_bytes(0x005e03cd, disable_region_lock, 1);
     patch_bytes(0x005df62b, disable_region_lock, 1);
     log_msg("[VT4-Mod] Character Select UI patches active (fraw cell map, persistent hover labels, unlocked slots)");
+
+    // 5e. Fase 2 Roster Expansion (12 new Legends & Next-Gen IDs 26..37)
+    memcpy(g_player_flags, (const void *)0x00820c18, 26 * sizeof(int32_t));
+    static const int32_t new_flags[12] = { 44, 24, 73, 73, 45, 73, 16, 73, 37, 5, 76, 73 };
+    memcpy(&g_player_flags[26], new_flags, sizeof(new_flags));
+    install_jmp(0x00452720, (void *)hk_GetPlayerFlag, 11);
+
+    // Clone signature motion preset table (0x007a5958[26]) -> g_player_anim_presets[38]
+    memcpy(g_player_anim_presets, (const void *)0x007a5958, 26 * 20);
+    // Assign closest signature serve/forehand/backhand motion tuples from pro icons
+    static const uint8_t proxy_anim[12] = { 1, 2, 0, 10, 14, 11, 17, 18, 22, 20, 12, 18 };
+    for (int i = 0; i < 12; i++) {
+        memcpy(&g_player_anim_presets[(26 + i) * 5], &g_player_anim_presets[proxy_anim[i] * 5], 20);
+    }
+    uintptr_t ap_base = (uintptr_t)g_player_anim_presets;
+    static const uint32_t ap_f0_refs[15] = {
+        0x4e0918, 0x4e1661, 0x4e1668, 0x4e16fa, 0x4e1827, 0x4e182e, 0x4e18b6,
+        0x4e1b1f, 0x4e1b8d, 0x4e1c5d, 0x4e1c9f, 0x4e1e6f, 0x4e1ecf, 0x4e1fa0, 0x4e1fdf
+    };
+    for (int i = 0; i < 15; i++) { uint32_t v = (uint32_t)ap_base; patch_bytes(ap_f0_refs[i], &v, 4); }
+    { uint32_t v1 = (uint32_t)(ap_base + 4); patch_bytes(0x4e171a, &v1, 4); patch_bytes(0x4e18d6, &v1, 4); }
+    { uint32_t v2 = (uint32_t)(ap_base + 8); patch_bytes(0x4e173c, &v2, 4); patch_bytes(0x4e18f8, &v2, 4); }
+    { uint32_t v3 = (uint32_t)(ap_base + 12); patch_bytes(0x4e175e, &v3, 4); patch_bytes(0x4e191a, &v3, 4); }
+    { uint32_t v4 = (uint32_t)(ap_base + 16); patch_bytes(0x4e1780, &v4, 4); patch_bytes(0x4e193c, &v4, 4); }
+
+    // Extend all hardcoded pro-count bounds (0x1a -> 0x26 = 38) in PlayerDB helpers, PlayStyle lookup, and CharaSelect
+    {
+        const uint8_t max_ps = 0x26;
+        patch_bytes(0x005422ee, &max_ps, 1);
+        static const uint32_t db_cap_imm8[8] = {
+            0x00533403, 0x00533533, 0x00533677, 0x005338a3, 0x005339b3, 0x00533a89, 0x00533b32, 0x005df6a5
+        };
+        for (int i = 0; i < 8; i++) patch_bytes(db_cap_imm8[i], &max_ps, 1);
+        // Prevent GetFinalSelectedCharId (0x005dff30) from hijacking char_id 26 (Alcaraz) into edit_slot + 26 = 25
+        const uint8_t jmp_op = 0xEB;
+        patch_bytes(0x005dff33, &jmp_op, 1);
+    }
+
+    uint8_t *tramp_5300e0 = (uint8_t *)make_trampoline(0x005300e0, 9);
+    if (tramp_5300e0 && tramp_5300e0[2] == 0xE8) {
+        // Relocate relative call 0x006684c0 inside trampoline bytes [2..6]
+        uint32_t fixed_rel = (uint32_t)(0x006684c0u - ((uintptr_t)tramp_5300e0 + 7u));
+        memcpy(&tramp_5300e0[3], &fixed_rel, 4);
+    }
+    g_real_set_fraw_table = (SetFrawTable_t)tramp_5300e0;
+    install_jmp(0x005300e0, (void *)hk_SetFrawTableText, 9);
+    log_msg("[VT4-Mod] Fase 2 Roster Expansion active: IDs 26..37 (Alcaraz..Navratilova) DB/flags/names/anims hooked");
 
     // 6. Fix Sega European Region ESRB infinite loop deadlock
     // In FUN_00431580 (AdvMode ctor), replace call to FUN_0044fc70 at 0x004315d1 with near jmp to 0x0043165c
