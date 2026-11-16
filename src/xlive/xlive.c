@@ -96,6 +96,7 @@ static uint32_t g_cfg_anisotropic = 16;
 static uint32_t g_cfg_remove_live = 1;
 static uint32_t g_cfg_classic_tv_cam = 0; // 0=Off, 1=Lock Classic VT2 TV Camera & disable ShotCamera zoom
 static uint32_t g_cfg_match_speed_mode = 0; // 0=Normal 1.0x, 1=VT2 Turbo 1.20x, 2=VT2 Hyper 1.35x, 3=Pro Sim 0.90x
+static uint32_t g_cfg_exb_rules = 0; // 0=Manual/Estandar, 1=3 Sets x 6J + TB, 2=Grand Slam 5 Sets x 6J + TB, 3=5 Sets Ventaja
 
 static int g_is_fullscreen = 0;
 static int g_vp_is_full_hd = 0;
@@ -154,6 +155,8 @@ static void load_vt4_settings(void) {
     g_cfg_classic_tv_cam = GetPrivateProfileIntA("Gameplay", "ClassicTVCamera", 0, ini_path) ? 1 : 0;
     g_cfg_match_speed_mode = GetPrivateProfileIntA("Gameplay", "MatchSpeedMode", 0, ini_path);
     if (g_cfg_match_speed_mode > 3) g_cfg_match_speed_mode = 0;
+    g_cfg_exb_rules = GetPrivateProfileIntA("Gameplay", "ExhibitionRules", 0, ini_path);
+    if (g_cfg_exb_rules > 3) g_cfg_exb_rules = 0;
 
     if (g_cfg_width <= 0) g_cfg_width = 1920;
     if (g_cfg_height <= 0) g_cfg_height = 1080;
@@ -169,7 +172,7 @@ static void load_vt4_settings(void) {
 // Phase 1B: Settings Menu, Options Integration & Direct3D 9 RenderTarget Scaling
 // ============================================================================
 
-#define NUM_SETTINGS_ITEMS 9
+#define NUM_SETTINGS_ITEMS 10
 
 typedef struct {
     uint32_t w, h;
@@ -237,6 +240,19 @@ static const struct {
 };
 #define NUM_SPEED_CHOICES (sizeof(s_speed_choices) / sizeof(s_speed_choices[0]))
 
+static const struct {
+    int sets;
+    int games;
+    int tiebreak;
+    const char *desc;
+} s_exb_rules_choices[] = {
+    { 1, 2, 0, "Manual / Estandar (VT4 / Avanzadas)" },
+    { 3, 6, 1, "Torneo 3 Sets x 6 Juegos + TB" },
+    { 5, 6, 1, "Grand Slam 5 Sets x 6J + Tie-Break" },
+    { 5, 6, 0, "5 Sets x 6J Ventaja (Sin Tie-Break)" }
+};
+#define NUM_EXB_RULES_CHOICES (sizeof(s_exb_rules_choices) / sizeof(s_exb_rules_choices[0]))
+
 static int s_idx_res = 0;
 static int s_idx_win = 0;
 static int s_idx_msaa = 2; // 4x default
@@ -245,6 +261,7 @@ static int s_idx_aniso = 3; // 16x default
 static int s_idx_live = 1;
 static int s_idx_tvcam = 0;
 static int s_idx_speed = 0;
+static int s_idx_exbrules = 0;
 
 static int g_menu_visible = 0;
 static int g_menu_selection = 0;
@@ -253,6 +270,21 @@ static int g_option_mode_active = 0;
 static uint32_t g_option_mode_last_frame = 0;
 static int g_menu_opened_by_optionmode = 0;
 static uint32_t g_menu_close_cooldown_frame = 0;
+static int g_opt_root_sel = 0;
+static uint32_t g_opt_root_last_frame = 0;
+static int g_opt_legends_sub = 0;
+static void *g_opt_mode_ptr = NULL;
+
+static inline void play_vt4_menu_se(int se_id) {
+    ((void (__cdecl *)(int, int))0x0045e480)(se_id, 0);
+}
+
+static void close_legends_settings_menu(void) {
+    g_menu_visible = 0;
+    g_menu_opened_by_optionmode = 0;
+    g_opt_legends_sub = 0;
+    g_menu_close_cooldown_frame = g_present_calls;
+}
 
 static void sync_menu_indices_from_cfg(void) {
     s_idx_res = 0;
@@ -285,6 +317,7 @@ static void sync_menu_indices_from_cfg(void) {
     s_idx_live = g_cfg_remove_live ? 1 : 0;
     s_idx_tvcam = g_cfg_classic_tv_cam ? 1 : 0;
     s_idx_speed = (g_cfg_match_speed_mode < (uint32_t)NUM_SPEED_CHOICES) ? (int)g_cfg_match_speed_mode : 0;
+    s_idx_exbrules = (g_cfg_exb_rules < (uint32_t)NUM_EXB_RULES_CHOICES) ? (int)g_cfg_exb_rules : 0;
 }
 
 static void update_config_txt(void) {
@@ -392,11 +425,15 @@ static void save_vt4_settings(void) {
     WritePrivateProfileStringA("Gameplay", "ClassicTVCamera", val, ini_path);
     snprintf(val, sizeof(val), "%u", g_cfg_match_speed_mode);
     WritePrivateProfileStringA("Gameplay", "MatchSpeedMode", val, ini_path);
+    snprintf(val, sizeof(val), "%u", g_cfg_exb_rules);
+    WritePrivateProfileStringA("Gameplay", "ExhibitionRules", val, ini_path);
 
     log_msg("[VT4-Mod] Settings saved to %s", ini_path);
 }
 
 static void (__cdecl *g_real_set_match_cam)(int cam_type, int apply_now) = NULL;
+
+static void apply_exhibition_rule_preset(void);
 
 static void apply_and_save_menu_settings(void *dev) {
     g_cfg_width = s_res_choices[s_idx_res].w;
@@ -408,8 +445,10 @@ static void apply_and_save_menu_settings(void *dev) {
     g_cfg_remove_live = s_idx_live;
     g_cfg_classic_tv_cam = s_idx_tvcam ? 1 : 0;
     g_cfg_match_speed_mode = (uint32_t)s_idx_speed;
+    g_cfg_exb_rules = (uint32_t)s_idx_exbrules;
 
     save_vt4_settings();
+    apply_exhibition_rule_preset();
     update_config_txt();
 
     *(uint32_t *)0x00a75d24 = g_cfg_width;
@@ -482,12 +521,14 @@ static int handle_settings_menu_input(int vk, void *dev) {
         case VK_UP:
         case 'W': {
             g_menu_selection = (g_menu_selection - 1 + NUM_SETTINGS_ITEMS) % NUM_SETTINGS_ITEMS;
+            play_vt4_menu_se(3);
             log_msg("[VT4-Mod] Menu Nav: Up -> selection=%d", g_menu_selection);
             return 1;
         }
         case VK_DOWN:
         case 'S': {
             g_menu_selection = (g_menu_selection + 1) % NUM_SETTINGS_ITEMS;
+            play_vt4_menu_se(3);
             log_msg("[VT4-Mod] Menu Nav: Down -> selection=%d", g_menu_selection);
             return 1;
         }
@@ -502,7 +543,9 @@ static int handle_settings_menu_input(int vk, void *dev) {
                 case 5: s_idx_live = !s_idx_live; break;
                 case 6: s_idx_tvcam = !s_idx_tvcam; break;
                 case 7: s_idx_speed = (s_idx_speed - 1 + (int)NUM_SPEED_CHOICES) % (int)NUM_SPEED_CHOICES; break;
+                case 8: s_idx_exbrules = (s_idx_exbrules - 1 + (int)NUM_EXB_RULES_CHOICES) % (int)NUM_EXB_RULES_CHOICES; break;
             }
+            play_vt4_menu_se(4);
             log_msg("[VT4-Mod] Menu Value Left: item %d changed", g_menu_selection);
             return 1;
         }
@@ -517,20 +560,22 @@ static int handle_settings_menu_input(int vk, void *dev) {
                 case 5: s_idx_live = !s_idx_live; break;
                 case 6: s_idx_tvcam = !s_idx_tvcam; break;
                 case 7: s_idx_speed = (s_idx_speed + 1) % (int)NUM_SPEED_CHOICES; break;
+                case 8: s_idx_exbrules = (s_idx_exbrules + 1) % (int)NUM_EXB_RULES_CHOICES; break;
             }
+            play_vt4_menu_se(4);
             log_msg("[VT4-Mod] Menu Value Right: item %d changed", g_menu_selection);
             return 1;
         }
         case VK_RETURN:
         case VK_SPACE: {
             apply_and_save_menu_settings(dev);
+            play_vt4_menu_se(5);
             return 1;
         }
         case VK_ESCAPE:
         case VK_BACK: {
-            g_menu_visible = 0;
-            g_menu_opened_by_optionmode = 0;
-            g_menu_close_cooldown_frame = g_present_calls;
+            close_legends_settings_menu();
+            play_vt4_menu_se(6);
             log_msg("[VT4-Mod] Menu closed by ESC/Back");
             return 1;
         }
@@ -629,14 +674,19 @@ static void end_overlay_state(void *dev) {
 
 static void ensure_d3d9_device_hooks(void *dev);
 
+typedef HRESULT (WINAPI *D3DXCreateTextureFromFileA_t)(void *pDevice, LPCSTR pSrcFile, void **ppTexture);
+static D3DXCreateTextureFromFileA_t g_d3dx_createtex = NULL;
+static void *g_pCrestTex = NULL;
+
 static void __attribute__((noinline)) init_menu_fonts(void *dev) {
     if (!dev) dev = g_d3d_device;
     if (!dev || !*(void ***)dev) return;
-    if (!g_d3dx_createfont || !g_d3dx_createsprite) {
+    if (!g_d3dx_createfont || !g_d3dx_createsprite || !g_d3dx_createtex) {
         HMODULE hD3DX = LoadLibraryA("d3dx9_43.dll");
         if (hD3DX) {
             g_d3dx_createfont = (D3DXCreateFontA_t)GetProcAddress(hD3DX, "D3DXCreateFontA");
             g_d3dx_createsprite = (D3DXCreateSprite_t)GetProcAddress(hD3DX, "D3DXCreateSprite");
+            g_d3dx_createtex = (D3DXCreateTextureFromFileA_t)GetProcAddress(hD3DX, "D3DXCreateTextureFromFileA");
         } else {
             static int s_d3dx_miss = 0;
             if (!s_d3dx_miss) {
@@ -644,6 +694,12 @@ static void __attribute__((noinline)) init_menu_fonts(void *dev) {
                 log_msg("[VT4-Mod] init_menu_fonts: LoadLibraryA(d3dx9_43.dll) failed (%lu)", (unsigned long)GetLastError());
             }
         }
+    }
+    if (g_d3dx_createtex && !g_pCrestTex && g_game_dir[0]) {
+        char crest_path[MAX_PATH];
+        snprintf(crest_path, sizeof(crest_path), "%s\\archive\\vt4_legends_crest.png", g_game_dir);
+        HRESULT hr_c = g_d3dx_createtex(dev, crest_path, &g_pCrestTex);
+        log_msg("[VT4-Mod] Loaded Nano Banana crest texture '%s': %p (hr=0x%08lx)", crest_path, g_pCrestTex, (unsigned long)hr_c);
     }
     if (g_d3dx_createsprite && !g_pSprite) {
         HRESULT hr_sp = g_d3dx_createsprite(dev, &g_pSprite);
@@ -720,13 +776,18 @@ static void draw_screen_quad(void *dev, float x1, float y1, float x2, float y2, 
     }
 }
 
+static void draw_textured_quad(void *dev, void *tex, float x1, float y1, float x2, float y2, DWORD color);
+
 static void render_settings_hud(void *dev) {
     if (!dev) return;
-    if (!g_menu_visible) return;
 
+    int in_opt_root = (!g_menu_visible && !g_opt_legends_sub &&
+                       g_opt_mode_ptr && g_present_calls <= g_opt_root_last_frame + 2 &&
+                       *(int *)((char *)g_opt_mode_ptr + 0x94) == 0 &&
+                       *(void **)((char *)g_opt_mode_ptr + 0x8c) != NULL);
+
+    if (!g_menu_visible && !in_opt_root) return;
     if (!begin_overlay_state(dev)) return;
-
-    if (g_menu_saved_banner_timer > 0) g_menu_saved_banner_timer--;
 
     init_menu_fonts(dev);
     ensure_d3d9_device_hooks(dev);
@@ -737,41 +798,131 @@ static void render_settings_hud(void *dev) {
     uint32_t full_vp[6] = { 0, 0, g_cfg_width, g_cfg_height, 0, 0x3f800000 };
     if (set_vp) set_vp(dev, full_vp);
 
-    float box_w = 820.0f;
-    float box_h = 625.0f;
-    float box_x = ((float)g_cfg_width - box_w) * 0.5f;
-    float box_y = ((float)g_cfg_height - box_h) * 0.5f;
+    float sx = (float)g_cfg_width / 1280.0f;
+    float sy = (float)g_cfg_height / 720.0f;
 
-    // 1. Drop shadow
-    draw_screen_quad(dev, box_x + 8.0f, box_y + 8.0f, box_x + box_w + 8.0f, box_y + box_h + 8.0f, 0x88000000);
+    // Mode A: Native 4th item row + Nano Banana VT4 LEGENDS crest inside OPCIONES
+    if (in_opt_root) {
+        if (g_pCrestTex) {
+            float cx = 928.0f * sx, cy = 360.0f * sy, rad = 165.0f * sy;
+            draw_textured_quad(dev, g_pCrestTex, cx - rad, cy - rad, cx + rad, cy + rad, 0xF5FFFFFF);
+        }
 
-    // 2. Main backdrop panel
-    draw_screen_quad(dev, box_x, box_y, box_x + box_w, box_y + box_h, 0xEB0A101C);
+        float x1 = 138.0f * sx, x2 = 594.0f * sx;
+        float y1 = 330.0f * sy, y2 = 376.0f * sy;
+        int sel = (g_opt_root_sel == 3);
+        DWORD bg = sel ? 0xF28416DE : 0xECECECEF;
+        DWORD border = sel ? 0xFFD4A0FF : 0xFF848684;
+        DWORD txt_col = sel ? 0xFFFFFFFF : 0xFF60626A;
 
-    // 3. Header bar
-    draw_screen_quad(dev, box_x, box_y, box_x + box_w, box_y + 70.0f, 0xF014223A);
+        draw_screen_quad(dev, x1, y1, x2, y2, bg);
+        draw_screen_quad(dev, x1, y1, x2, y1 + 1.5f * sy, border);
+        draw_screen_quad(dev, x1, y2 - 1.5f * sy, x2, y2, border);
+        if (sel) {
+            draw_screen_quad(dev, x1, y1, x1 + 6.0f * sx, y2, 0xFFE870FF);
+        }
 
-    // 4. Border lines
-    draw_screen_quad(dev, box_x, box_y, box_x + box_w, box_y + 2.0f, 0xFF3575D5);
-    draw_screen_quad(dev, box_x, box_y + box_h - 2.0f, box_x + box_w, box_y + box_h, 0xFF3575D5);
-    draw_screen_quad(dev, box_x, box_y, box_x + 2.0f, box_y + box_h, 0xFF3575D5);
-    draw_screen_quad(dev, box_x + box_w - 2.0f, box_y, box_x + box_w, box_y + box_h, 0xFF3575D5);
+        if (g_pFontTitle && g_pSprite) {
+            void **svtbl = *(void ***)g_pSprite;
+            typedef HRESULT (__stdcall *SpriteBegin_t)(void *, DWORD);
+            typedef HRESULT (__stdcall *SpriteEnd_t)(void *);
+            SpriteBegin_t sp_begin = (SpriteBegin_t)svtbl[8];
+            SpriteEnd_t sp_end = (SpriteEnd_t)svtbl[11];
+            if (sp_begin && sp_begin(g_pSprite, 0x10) >= 0) {
+                RECT r = { (LONG)(x1 + 30.0f * sx), (LONG)y1, (LONG)(x2 - 30.0f * sx), (LONG)y2 };
+                draw_font_text(g_pFontTitle, "GRAFICOS HD Y LEGENDS", &r, txt_col, 1);
+                if (sp_end) sp_end(g_pSprite);
+            }
+        }
 
-    // 5. Header separator
-    draw_screen_quad(dev, box_x, box_y + 70.0f, box_x + box_w, box_y + 72.0f, 0xFF4585E5);
+        end_overlay_state(dev);
+        ensure_d3d9_device_hooks(dev);
+        return;
+    }
 
-    // 6. Highlight bar for selected item
-    float item_y_start = box_y + 90.0f;
-    float item_h = 44.0f;
-    float sel_y = item_y_start + (float)g_menu_selection * item_h;
+    if (g_menu_saved_banner_timer > 0) g_menu_saved_banner_timer--;
 
-    draw_screen_quad(dev, box_x + 20.0f, sel_y, box_x + box_w - 20.0f, sel_y + item_h - 4.0f, 0xCC1E4B88);
-    draw_screen_quad(dev, box_x + 20.0f, sel_y, box_x + 26.0f, sel_y + item_h - 4.0f, 0xFFFFD700);
+    // Mode B: Native-styled Left-Column Settings ("OPCIONES DE JUEGO" look)
+    int native_style = (g_opt_legends_sub != 0);
+    if (native_style) {
+        // Sleek VT4 frosted silver background + right ring halo + Nano Banana Crest + bottom Elegir/Atras bar
+        draw_screen_quad(dev, 0.0f, 0.0f, (float)g_cfg_width, (float)g_cfg_height, 0xFFEBEDF2);
+        draw_screen_quad(dev, 600.0f * sx, 0.0f, (float)g_cfg_width, (float)g_cfg_height, 0xFFE2E4EA);
+        draw_screen_quad(dev, 600.0f * sx, 0.0f, 610.0f * sx, (float)g_cfg_height, 0xFF8416DE);
+        draw_screen_quad(dev, 0.0f, 656.0f * sy, (float)g_cfg_width, (float)g_cfg_height, 0xFFE0E2E8);
+        draw_screen_quad(dev, 0.0f, 656.0f * sy, (float)g_cfg_width, 658.0f * sy, 0xFF9E9FA6);
+        if (g_pCrestTex) {
+            float cx = 935.0f * sx, cy = 296.0f * sy, rad = 172.0f * sy;
+            draw_textured_quad(dev, g_pCrestTex, cx - rad, cy - rad, cx + rad, cy + rad, 0xFFFFFFFF);
+        }
+    }
 
-    // 7. Footer separator
-    draw_screen_quad(dev, box_x, box_y + box_h - 55.0f, box_x + box_w, box_y + box_h - 53.0f, 0xFF2A4A7A);
+    float col_x1 = native_style ? (120.0f * sx) : (((float)g_cfg_width - 540.0f) * 0.5f);
+    float col_x2 = native_style ? (575.0f * sx) : (col_x1 + 540.0f);
+    float row_start_y = native_style ? (124.0f * sy) : (((float)g_cfg_height - 560.0f) * 0.5f + 56.0f);
+    float row_pitch = 51.0f * sy;
 
-    // 8. Render Text
+    if (!native_style) {
+        draw_screen_quad(dev, col_x1 - 18.0f * sx, row_start_y - 60.0f * sy,
+                         col_x2 + 18.0f * sx, row_start_y + NUM_SETTINGS_ITEMS * row_pitch + 38.0f * sy, 0xEBEDF0F5);
+        draw_screen_quad(dev, col_x1 - 18.0f * sx, row_start_y - 60.0f * sy,
+                         col_x2 + 18.0f * sx, row_start_y - 57.0f * sy, 0xFF8416DE);
+    }
+
+    const char *item_labels[NUM_SETTINGS_ITEMS] = {
+        "RESOLUCION",
+        "MODO DE PANTALLA",
+        "ANTI-ALIASING (MSAA)",
+        "SINCRONIZACION (VSYNC)",
+        "FILTRADO ANISOTROPICO",
+        "MODO LIVE",
+        "CAMARA TV CLASICA (VT2)",
+        "VELOCIDAD DE FISICA",
+        "REGLAS EXHIBICION",
+        "GUARDAR Y APLICAR CAMBIOS"
+    };
+
+    const char *item_hints[NUM_SETTINGS_ITEMS] = {
+        "Resolucion interna 3D y de ventana/pantalla",
+        "Ventana sin bordes o Pantalla Completa",
+        "Suavizado 3D nativo de bordes (MSAA)",
+        "Evita cortes verticales sincronizando a 60 Hz",
+        "Nitidez de pistas y texturas en angulo",
+        "Muestra u oculta el acceso online GFWL LIVE",
+        "Fija camara TV estilo VT2 sin zooms de Super Golpe",
+        "Ajusta el ritmo Arcade VT2 (1.20x/1.35x) o Pro",
+        "Partidos Exhibicion: 1/3/5 Sets de 6 Juegos y Tie-Break",
+        "Guarda vt4_settings.ini y aplica los ajustes ahora"
+    };
+
+    for (int i = 0; i < NUM_SETTINGS_ITEMS; i++) {
+        float y0 = row_start_y + (float)i * row_pitch;
+        int is_sel = (i == g_menu_selection);
+        if (i == NUM_SETTINGS_ITEMS - 1) {
+            float by1 = y0 + 4.0f * sy;
+            float by2 = y0 + 36.0f * sy;
+            DWORD bg = is_sel ? 0xF2129850 : 0xEA2B5A40;
+            DWORD bd = is_sel ? 0xFF40FF98 : 0xFF559070;
+            draw_screen_quad(dev, col_x1, by1, col_x2, by2, bg);
+            draw_screen_quad(dev, col_x1, by1, col_x2, by1 + 1.5f * sy, bd);
+            draw_screen_quad(dev, col_x1, by2 - 1.5f * sy, col_x2, by2, bd);
+        } else {
+            float top_y1 = y0;
+            float top_y2 = y0 + 22.0f * sy;
+            float bot_y1 = top_y2;
+            float bot_y2 = y0 + 45.0f * sy;
+            DWORD top_bg = is_sel ? 0xF28416DE : 0xFFF5F6F9;
+            DWORD bot_bg = is_sel ? 0xF53B0660 : 0xFF5E6068;
+            DWORD div_ln = is_sel ? 0xFFD098FF : 0xFF989AA2;
+            draw_screen_quad(dev, col_x1, top_y1, col_x2, top_y2, top_bg);
+            draw_screen_quad(dev, col_x1, bot_y1, col_x2, bot_y2, bot_bg);
+            draw_screen_quad(dev, col_x1, top_y1, col_x2, top_y1 + 1.0f, div_ln);
+            draw_screen_quad(dev, col_x1 + 14.0f * sx, top_y1 + 7.0f * sy,
+                             col_x1 + 22.0f * sx, top_y1 + 15.0f * sy,
+                             is_sel ? 0xFFFFFFFF : 0xFF7A7C84);
+        }
+    }
+
     if (g_pFont && g_pFontTitle && g_pSprite) {
         void **svtbl = *(void ***)g_pSprite;
         typedef HRESULT (__stdcall *SpriteBegin_t)(void *, DWORD);
@@ -781,51 +932,30 @@ static void render_settings_hud(void *dev) {
         HRESULT hr_sb = sp_begin ? sp_begin(g_pSprite, 0x10) : -1;
 
         RECT r;
-
-        // Title
-        r.left = (LONG)(box_x + 30.0f);
-        r.top = (LONG)(box_y + 12.0f);
-        r.right = (LONG)(box_x + box_w - 30.0f);
-        r.bottom = (LONG)(box_y + 40.0f);
-        draw_font_text(g_pFontTitle, "VIRTUA TENNIS 4: LEGENDS & NEXT-GEN EDITION", &r, 0xFFFFD700, 1);
-
-        // Subtitle
-        r.top = (LONG)(box_y + 42.0f);
-        r.bottom = (LONG)(box_y + 66.0f);
-        draw_font_text(g_pFont, "AJUSTES GRAFICOS HD Y OPCIONES DEL MOD", &r, 0xFF80D0FF, 1);
-
-        // Render each item
-        const char *item_labels[NUM_SETTINGS_ITEMS] = {
-            "Resolucion de Pantalla:",
-            "Modo de Pantalla:",
-            "Anti-Aliasing 3D (MSAA):",
-            "Sincronizacion (VSync):",
-            "Filtrado Anisotropico:",
-            "Ocultar Modo LIVE:",
-            "Camara TV Clasica (VT2):",
-            "Velocidad de Fisica:",
-            "[ GUARDAR Y APLICAR CAMBIOS ]"
-        };
+        r.left = (LONG)(col_x1 + 24.0f * sx);
+        r.top = (LONG)(row_start_y - 44.0f * sy);
+        r.right = (LONG)(col_x2 + 20.0f * sx);
+        r.bottom = (LONG)(row_start_y - 8.0f * sy);
+        draw_font_text(g_pFontTitle, "GRAFICOS HD Y LEGENDS", &r, 0xFF5C5E66, 0);
 
         char val_buf[128];
         for (int i = 0; i < NUM_SETTINGS_ITEMS; i++) {
-            float cur_y = item_y_start + (float)i * item_h + 8.0f;
+            float y0 = row_start_y + (float)i * row_pitch;
             int is_sel = (i == g_menu_selection);
-            DWORD lbl_col = is_sel ? 0xFFFFFFFF : 0xFFB0C4DE;
-            DWORD val_col = is_sel ? 0xFFFFD700 : 0xFF40E0D0;
-
-            if (i == 8) {
-                r.left = (LONG)(box_x + 40.0f);
-                r.top = (LONG)cur_y;
-                r.right = (LONG)(box_x + box_w - 40.0f);
-                r.bottom = (LONG)(cur_y + 30.0f);
-                DWORD act_col = is_sel ? 0xFF00FF88 : 0xFF50C070;
-                draw_font_text(g_pFontTitle, item_labels[i], &r, act_col, 1);
+            if (i == NUM_SETTINGS_ITEMS - 1) {
+                r.left = (LONG)(col_x1 + 10.0f * sx);
+                r.top = (LONG)(y0 + 4.0f * sy);
+                r.right = (LONG)(col_x2 - 10.0f * sx);
+                r.bottom = (LONG)(y0 + 36.0f * sy);
+                draw_font_text(g_pFontTitle, item_labels[i], &r, 0xFFFFFFFF, 1);
             } else {
-                r.left = (LONG)(box_x + 45.0f);
-                r.top = (LONG)cur_y;
-                r.right = (LONG)(box_x + 360.0f);
-                r.bottom = (LONG)(cur_y + 30.0f);
+                DWORD lbl_col = is_sel ? 0xFFFFFFFF : 0xFF60626C;
+                DWORD val_col = is_sel ? 0xFFFFFFFF : 0xFFEAEAF0;
+
+                r.left = (LONG)(col_x1 + 30.0f * sx);
+                r.top = (LONG)y0;
+                r.right = (LONG)(col_x2 - 12.0f * sx);
+                r.bottom = (LONG)(y0 + 22.0f * sy);
                 draw_font_text(g_pFont, item_labels[i], &r, lbl_col, 0);
 
                 switch (i) {
@@ -837,46 +967,56 @@ static void render_settings_hud(void *dev) {
                     case 5: snprintf(val_buf, sizeof(val_buf), "< %s >", s_live_choices[s_idx_live]); break;
                     case 6: snprintf(val_buf, sizeof(val_buf), "< %s >", s_tvcam_choices[s_idx_tvcam]); break;
                     case 7: snprintf(val_buf, sizeof(val_buf), "< %s >", s_speed_choices[s_idx_speed].desc); break;
+                    case 8: snprintf(val_buf, sizeof(val_buf), "< %s >", s_exb_rules_choices[s_idx_exbrules].desc); break;
                 }
-
-                r.left = (LONG)(box_x + 360.0f);
-                r.right = (LONG)(box_x + box_w - 45.0f);
-                draw_font_text(g_pFont, val_buf, &r, val_col, 2);
+                r.left = (LONG)(col_x1 + 12.0f * sx);
+                r.top = (LONG)(y0 + 22.0f * sy);
+                r.right = (LONG)(col_x2 - 12.0f * sx);
+                r.bottom = (LONG)(y0 + 45.0f * sy);
+                draw_font_text(g_pFont, val_buf, &r, val_col, 1);
             }
         }
 
-        // Footer navigation controls
-        r.left = (LONG)(box_x + 30.0f);
-        r.top = (LONG)(box_y + box_h - 45.0f);
-        r.right = (LONG)(box_x + box_w - 30.0f);
-        r.bottom = (LONG)(box_y + box_h - 10.0f);
-        draw_font_text(g_pFont, "[FLECHAS / WASD] Navegar    [ENTER / ESPACIO] Guardar    [ESC / F2] Cerrar",
-                       &r, 0xFF9BB0C8, 1);
+        // Info pill & footer inside native_style
+        if (native_style && g_menu_selection >= 0 && g_menu_selection < NUM_SETTINGS_ITEMS) {
+            float hx1 = 640.0f * sx, hx2 = 1230.0f * sx;
+            float hy1 = 550.0f * sy, hy2 = 592.0f * sy;
+            draw_screen_quad(dev, hx1, hy1, hx2, hy2, 0xFFD8DBE4);
+            r.left = (LONG)(hx1 + 12.0f * sx);
+            r.top = (LONG)hy1;
+            r.right = (LONG)(hx2 - 12.0f * sx);
+            r.bottom = (LONG)hy2;
+            draw_font_text(g_pFont, item_hints[g_menu_selection], &r, 0xFF383A44, 1);
 
-        // Saved feedback banner
+            r.left = (LONG)(640.0f * sx);
+            r.top = (LONG)(662.0f * sy);
+            r.right = (LONG)(1230.0f * sx);
+            r.bottom = (LONG)(710.0f * sy);
+            draw_font_text(g_pFontTitle, "Elegir [Enter]       Cambiar [< / >]       Atras [ESC]", &r, 0xFF40424A, 1);
+        }
+
+        // Saved feedback pill cleanly positioned without blocking menu bars
         if (g_menu_saved_banner_timer > 0) {
-            float ban_w = 600.0f;
-            float ban_h = 45.0f;
-            float ban_x = ((float)g_cfg_width - ban_w) * 0.5f;
-            float ban_y = box_y + box_h + 15.0f;
-
-            draw_screen_quad(dev, ban_x, ban_y, ban_x + ban_w, ban_y + ban_h, 0xF00A2515);
-            draw_screen_quad(dev, ban_x, ban_y, ban_x + ban_w, ban_y + 2.0f, 0xFF00FF7F);
-            draw_screen_quad(dev, ban_x, ban_y + ban_h - 2.0f, ban_x + ban_w, ban_y + ban_h, 0xFF00FF7F);
-
-            r.left = (LONG)ban_x;
-            r.top = (LONG)(ban_y + 10.0f);
-            r.right = (LONG)(ban_x + ban_w);
-            r.bottom = (LONG)(ban_y + 35.0f);
-            draw_font_text(g_pFontTitle, "AJUSTES GUARDADOS Y APLICADOS CON EXITO", &r, 0xFF00FF88, 1);
+            float bx1 = native_style ? (640.0f * sx) : col_x1;
+            float bx2 = native_style ? (1230.0f * sx) : col_x2;
+            float by1 = native_style ? (496.0f * sy) : (row_start_y + NUM_SETTINGS_ITEMS * row_pitch + 8.0f * sy);
+            float by2 = by1 + 42.0f * sy;
+            draw_screen_quad(dev, bx1, by1, bx2, by2, 0xF0105832);
+            draw_screen_quad(dev, bx1, by1, bx2, by1 + 2.0f, 0xFF00FF88);
+            draw_screen_quad(dev, bx1, by2 - 2.0f, bx2, by2, 0xFF00FF88);
+            r.left = (LONG)bx1;
+            r.top = (LONG)by1;
+            r.right = (LONG)bx2;
+            r.bottom = (LONG)by2;
+            draw_font_text(g_pFontTitle, "AJUSTES GUARDADOS Y APLICADOS", &r, 0xFF80FFB8, 1);
         }
 
         HRESULT hr_se = sp_end ? sp_end(g_pSprite) : -1;
         static int s_hud_draw_logged = 0;
         if (!s_hud_draw_logged) {
             s_hud_draw_logged = 1;
-            log_msg("[VT4-Mod] render_settings_hud first draw complete: sb=%p sprite=%p font=%p fontTitle=%p sp_begin=0x%08lx sp_end=0x%08lx",
-                    g_pOverlaySB, g_pSprite, g_pFont, g_pFontTitle, (unsigned long)hr_sb, (unsigned long)hr_se);
+            log_msg("[VT4-Mod] render_settings_hud first draw complete: native=%d crest=%p sb=%p sp_begin=0x%08lx sp_end=0x%08lx",
+                    native_style, g_pCrestTex, g_pOverlaySB, (unsigned long)hr_sb, (unsigned long)hr_se);
         }
     }
 
@@ -1101,6 +1241,7 @@ static int __thiscall hk_FPPlayerEntry_IsReady(void *self) {
     }
     if (esi && (uintptr_t)esi > 0x10000) {
         if (s_entry_confirmed || esi[0x18] != 0) {
+            apply_exhibition_rule_preset();
             if (*(int *)(esi + 0x30) < 1) {
                 *(int *)(esi + 0x30) = 2;
                 *(int *)(esi + 0x34) = 0;
@@ -1359,13 +1500,67 @@ static void __fastcall hk_Renderer_CalcPipelineSettings(PipelineSettings *settin
 
 typedef void (__thiscall *OptionMode_Update_t)(void *);
 static OptionMode_Update_t g_real_optionmode_update = NULL;
+static OptionMode_Update_t g_real_opt_add_submenus = NULL;
+static OptionMode_Update_t g_real_opt_inner_update = NULL;
+typedef void (__thiscall *OptEnterSubmenu_t)(void *, const char *);
+static OptEnterSubmenu_t g_real_opt_enter_submenu = NULL;
+typedef void (__thiscall *FPSubMenu_SetSel_t)(void *, int);
+static FPSubMenu_SetSel_t g_real_fpsubmenu_setsel = NULL;
+
+static void __thiscall hk_OptionMode_AddSubmenus(void *this_ptr) {
+    if (g_real_opt_add_submenus) {
+        g_real_opt_add_submenus(this_ptr);
+    }
+    if (this_ptr) {
+        void *parent_seq = *(void **)((char *)this_ptr + 4);
+        void *carousel = (void *)((char *)this_ptr + 8);
+        typedef void (__thiscall *AddSeqItem_t)(void *, const char *, void *, int);
+        ((AddSeqItem_t)0x00634e80)(carousel, "LegendsHD", parent_seq, 1);
+        log_msg("[VT4-Mod] OptionMode: injected native row 3 ('LegendsHD' / GRAFICOS HD Y LEGENDS)");
+    }
+}
+
+static void __thiscall hk_FPSubMenu_SetSel(void *this_ptr, int sel) {
+    if (g_opt_mode_ptr && *(void **)((char *)g_opt_mode_ptr + 0x8c) == this_ptr) {
+        g_opt_root_sel = sel;
+    }
+    if (g_real_fpsubmenu_setsel) {
+        g_real_fpsubmenu_setsel(this_ptr, sel);
+    }
+}
+
+static void __thiscall hk_OptionMode_EnterSubmenu(void *this_ptr, const char *name) {
+    if (name && strcmp(name, "LegendsHD") == 0) {
+        g_opt_legends_sub = 1;
+        g_menu_visible = 1;
+        g_menu_opened_by_optionmode = 1;
+        log_msg("[VT4-Mod] Entered native OptionMode submenu -> GRAFICOS HD Y LEGENDS");
+        return;
+    }
+    if (g_real_opt_enter_submenu) {
+        g_real_opt_enter_submenu(this_ptr, name);
+    }
+}
+
+static void __thiscall hk_OptionMode_InnerUpdate(void *this_ptr) {
+    g_opt_mode_ptr = this_ptr;
+    g_opt_root_last_frame = g_present_calls;
+    if (g_opt_legends_sub) {
+        if (!g_menu_visible) {
+            g_opt_legends_sub = 0;
+        } else {
+            return;
+        }
+    }
+    if (g_real_opt_inner_update) {
+        g_real_opt_inner_update(this_ptr);
+    }
+}
 
 static void __thiscall hk_OptionMode_Update(void *this_ptr) {
     if (!g_option_mode_active) {
         g_option_mode_active = 1;
-        g_menu_visible = 1;
-        g_menu_opened_by_optionmode = 1;
-        log_msg("[VT4-Mod] Entered OptionMode (Ajustes) -> opened HD Graphics & AA menu");
+        log_msg("[VT4-Mod] Entered OptionMode (Ajustes) natively (TAB/F2 optional overlay)");
     }
     g_option_mode_last_frame = g_present_calls;
     if (g_real_optionmode_update) {
@@ -1639,8 +1834,7 @@ static LRESULT CALLBACK hk_GameWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                 if (!(lParam & (1 << 30))) {
                     g_menu_visible = !g_menu_visible;
                     if (!g_menu_visible) {
-                        g_menu_opened_by_optionmode = 0;
-                        g_menu_close_cooldown_frame = g_present_calls;
+                        close_legends_settings_menu();
                     }
                     log_msg("[VT4-Mod] F2 pressed: g_menu_visible=%d", g_menu_visible);
                 }
@@ -1650,8 +1844,7 @@ static LRESULT CALLBACK hk_GameWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                 if (!(lParam & (1 << 30))) {
                     g_menu_visible = !g_menu_visible;
                     if (!g_menu_visible) {
-                        g_menu_opened_by_optionmode = 0;
-                        g_menu_close_cooldown_frame = g_present_calls;
+                        close_legends_settings_menu();
                     }
                     log_msg("[VT4-Mod] TAB in OptionMode: g_menu_visible=%d", g_menu_visible);
                 }
@@ -2947,65 +3140,68 @@ static BOOL WINAPI hk_GetKeyboardState(PBYTE lpKeyState) {
     // Map physical inputs to VT4 internal virtual button codes:
     // 0x94 = Menu Up, 0x90 = D-pad Up, 0x8E = Analog Up
     if (is_key_down(VK_UP) || is_key_down('W')) {
+        lpKeyState[VK_UP] |= 0x80;
         lpKeyState[0x94] |= 0x80;
         lpKeyState[0x90] |= 0x80;
         lpKeyState[0x8E] |= 0x80;
     }
     // 0x95 = Menu Down, 0x91 = D-pad Down, 0x8F = Analog Down
     if (is_key_down(VK_DOWN) || is_key_down('S')) {
+        lpKeyState[VK_DOWN] |= 0x80;
         lpKeyState[0x95] |= 0x80;
         lpKeyState[0x91] |= 0x80;
         lpKeyState[0x8F] |= 0x80;
     }
     // 0x96 = Menu Left, 0x92 = D-pad Left, 0x8C = Analog Left
     if (is_key_down(VK_LEFT) || is_key_down('A')) {
+        lpKeyState[VK_LEFT] |= 0x80;
         lpKeyState[0x96] |= 0x80;
         lpKeyState[0x92] |= 0x80;
         lpKeyState[0x8C] |= 0x80;
     }
     // 0x97 = Menu Right, 0x93 = D-pad Right, 0x8D = Analog Right
     if (is_key_down(VK_RIGHT) || is_key_down('D')) {
+        lpKeyState[VK_RIGHT] |= 0x80;
         lpKeyState[0x97] |= 0x80;
         lpKeyState[0x93] |= 0x80;
         lpKeyState[0x8D] |= 0x80;
     }
 
-    // Confirm / Select / A button: Enter, Space, 'C'
-    if (is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || is_key_down('C')) {
+    // Keep physical menu keys distinct from in-match shot/pause keys so 'C' (Lob) or Enter
+    // never fires VK_SPACE (Pause), and 'Z' (Topspin) never fires VK_ESCAPE.
+    if (is_key_down(VK_RETURN)) {
         lpKeyState[VK_RETURN] |= 0x80;
+        lpKeyState[0x81] |= 0x80; // Button A (Menu confirm)
+    }
+    if (is_key_down(VK_SPACE)) {
         lpKeyState[VK_SPACE] |= 0x80;
-        lpKeyState['C'] |= 0x80;
-        lpKeyState[0x81] |= 0x80; // Button A
-        lpKeyState[0x50] |= 0x80; // Start
+        lpKeyState[0x50] |= 0x80; // Start / Pause
+    }
+    if (is_key_down('P')) {
+        lpKeyState[0x50] |= 0x80; // Start / Pause
     }
 
-    // Cancel / Back / B button: Escape, 'Z', Backspace
-    if (is_key_down(VK_ESCAPE) || is_key_down('Z') || is_key_down(VK_BACK)) {
+    if (is_key_down(VK_ESCAPE) || is_key_down(VK_BACK)) {
         lpKeyState[VK_ESCAPE] |= 0x80;
+        lpKeyState[0x80] |= 0x80; // Button B (Cancel)
+    }
+
+    // Match/Menu shots: Z/J=Topspin, X/L=Slice, C/K=Lob, V/I=Dropshot
+    if (is_key_down('Z') || is_key_down('J')) {
         lpKeyState['Z'] |= 0x80;
         lpKeyState[0x80] |= 0x80; // Button B
     }
-
-    // Button X: 'X' / 'L'
     if (is_key_down('X') || is_key_down('L')) {
         lpKeyState['X'] |= 0x80;
-        lpKeyState[0x82] |= 0x80;
+        lpKeyState[0x82] |= 0x80; // Button X
     }
-
-    // Button Y: 'V' / 'I'
+    if (is_key_down('C') || is_key_down('K')) {
+        lpKeyState['C'] |= 0x80;
+        lpKeyState[0x81] |= 0x80; // Button A
+    }
     if (is_key_down('V') || is_key_down('I')) {
         lpKeyState['V'] |= 0x80;
-        lpKeyState[0x83] |= 0x80;
-    }
-
-    // Dual WASD action keys: 'J' -> 'Z' (Topspin/Serve), 'K' -> 'C' (Lob)
-    if (is_key_down('J')) {
-        lpKeyState['Z'] |= 0x80;
-        lpKeyState[0x80] |= 0x80;
-    }
-    if (is_key_down('K')) {
-        lpKeyState['C'] |= 0x80;
-        lpKeyState[0x81] |= 0x80;
+        lpKeyState[0x83] |= 0x80; // Button Y
     }
 
     // LB / RB: Q / E
@@ -3067,8 +3263,8 @@ static int is_mapped_button_down(int button) {
             return is_key_down('Q');
         case 0x85: // RB
             return is_key_down('E');
-        case 0x50: // Start / Pause
-            return is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || is_key_down('P');
+        case 0x50: // Start / Pause (never hijack Enter as Pause during live matches)
+            return is_key_down(VK_SPACE) || is_key_down('P');
 
         // Pass-through for standard VK codes if checked directly
         case VK_RETURN:
@@ -3316,6 +3512,67 @@ static void __cdecl hk_FrameStep_42fa90(int ticks, int flag) {
     g_match_speed_acc -= (float)run_ticks;
     // Clear flag (arg2=0) when run_ticks > 1 so 0x0042fad4 does not clamp subticks back to 1
     real_step(run_ticks, run_ticks > 1 ? 0 : flag);
+}
+
+// ----------------------------------------------------------------------------
+// EXTRA-5: Exhibition Rules Unlock & Preset Hooks (0x004351e1 & 0x00436e20)
+// Allows full 5 Sets x 6 Games + Tie-Break inside Exhibition + fixes Advanced Settings Assert
+// ----------------------------------------------------------------------------
+static void apply_exhibition_rule_preset(void) {
+    if (g_cfg_exb_rules == 0 || g_cfg_exb_rules >= (uint32_t)NUM_EXB_RULES_CHOICES) return;
+    typedef void *(__cdecl *GetRulesFn_t)(void);
+    typedef void (__cdecl *SetRulesFn_t)(const void *);
+    uint32_t buf[5];
+    memcpy(buf, ((GetRulesFn_t)0x0045f4b0)(), sizeof(buf));
+    uint32_t want_sets = (uint32_t)s_exb_rules_choices[g_cfg_exb_rules].sets;
+    uint32_t want_games = (uint32_t)s_exb_rules_choices[g_cfg_exb_rules].games;
+    uint32_t want_tb_bit = s_exb_rules_choices[g_cfg_exb_rules].tiebreak ? 0u : 2u;
+    if (buf[1] == want_sets && buf[2] == want_games && (buf[4] & 2u) == want_tb_bit) return;
+    buf[1] = want_sets;
+    buf[2] = want_games;
+    if (s_exb_rules_choices[g_cfg_exb_rules].tiebreak) {
+        buf[4] &= ~2u; // bit 1 = 0 -> Tie-Break ON
+    } else {
+        buf[4] |= 2u;  // bit 1 = 1 -> Tie-Break OFF (advantage set)
+    }
+    ((SetRulesFn_t)0x0045f480)(buf);
+    log_msg("[VT4-Mod] Applied Exhibition Rules preset #%u: Sets=%u Games=%u TieBreak=%d (flags=0x%x)",
+            g_cfg_exb_rules, buf[1], buf[2], s_exb_rules_choices[g_cfg_exb_rules].tiebreak, buf[4]);
+}
+
+typedef int (__cdecl *ExModeResetFn_t)(void);
+static ExModeResetFn_t g_real_exmode_reset = NULL;
+static int __cdecl hk_ExMode_ResetDefaults(void) {
+    int r = g_real_exmode_reset ? g_real_exmode_reset() : 0;
+    apply_exhibition_rule_preset();
+    return r;
+}
+
+typedef void (__cdecl *SetRulesFn_orig_t)(const void *);
+static SetRulesFn_orig_t g_real_set_rules = NULL;
+static void __cdecl hk_SetMatchRules(const uint32_t *in_buf) {
+    uint32_t tmp[5];
+    memcpy(tmp, in_buf, sizeof(tmp));
+    void *ret = __builtin_return_address(0);
+    static uint32_t s_last_sets = 0xFFFFFFFFu, s_last_games = 0xFFFFFFFFu, s_last_flags = 0xFFFFFFFFu;
+    if (g_cfg_exb_rules > 0 && g_cfg_exb_rules < (uint32_t)NUM_EXB_RULES_CHOICES) {
+        uintptr_t ra = (uintptr_t)ret;
+        // Preserve preset when Exhibition initializes/resets or exits Exhibition menus
+        if (ra >= 0x00434000 && ra <= 0x00437000) {
+            tmp[1] = (uint32_t)s_exb_rules_choices[g_cfg_exb_rules].sets;
+            tmp[2] = (uint32_t)s_exb_rules_choices[g_cfg_exb_rules].games;
+            if (s_exb_rules_choices[g_cfg_exb_rules].tiebreak) tmp[4] &= ~2u;
+            else tmp[4] |= 2u;
+        }
+    }
+    if (tmp[1] != s_last_sets || tmp[2] != s_last_games || tmp[4] != s_last_flags) {
+        s_last_sets = tmp[1];
+        s_last_games = tmp[2];
+        s_last_flags = tmp[4];
+        log_msg("[VT4-Mod] MatchRules active (caller=%p): valid=%u Sets=%u Games=%u TieBreak=%d flags=0x%x",
+                ret, tmp[0], tmp[1], tmp[2], (tmp[4] & 2u) ? 0 : 1, tmp[4]);
+    }
+    if (g_real_set_rules) g_real_set_rules(tmp);
 }
 
 // ----------------------------------------------------------------------------
@@ -3614,9 +3871,8 @@ static int __thiscall hk_MenuInput_Cancel(void *self, int user) {
         if (!active && eval_nav_key(5, real_cancel, 30, 20)) {
             log_msg("[VT4-Mod] Menu closed by hk_MenuInput_Cancel (real_cancel=%d, self=%p, user=%d, frame=%u)",
                     real_cancel, self, user, g_present_calls);
-            g_menu_visible = 0;
-            g_menu_opened_by_optionmode = 0;
-            g_menu_close_cooldown_frame = g_present_calls;
+            close_legends_settings_menu();
+            play_vt4_menu_se(6);
         } else {
             eval_nav_key(5, active, 30, 20);
         }
@@ -3642,17 +3898,27 @@ static int __thiscall hk_MenuInput_Cancel(void *self, int user) {
     return 0;
 }
 
-// 0x00455080 (Analog X) & 0x00454F80 (Analog Y) stick hooks
+// 0x00454F80 (Analog X: Left=-1.0, Right=+1.0) & 0x00455080 (Analog Y: Up=-1.0, Down=+1.0)
+typedef float (__thiscall *AnalogAxisFn_t)(void *self, int user);
+static AnalogAxisFn_t g_real_analog_x = NULL;
+static AnalogAxisFn_t g_real_analog_y = NULL;
+
 static float __thiscall hk_AnalogX(void *self, int user) {
-    if (is_key_down(VK_LEFT) || is_key_down('A')) return -1.0f;
-    if (is_key_down(VK_RIGHT) || is_key_down('D')) return 1.0f;
-    return 0.0f;
+    if (g_menu_visible) return 0.0f;
+    if (user <= 0) {
+        if (is_key_down(VK_LEFT) || is_key_down('A')) return -1.0f;
+        if (is_key_down(VK_RIGHT) || is_key_down('D')) return 1.0f;
+    }
+    return g_real_analog_x ? g_real_analog_x(self, user) : 0.0f;
 }
 
 static float __thiscall hk_AnalogY(void *self, int user) {
-    if (is_key_down(VK_UP) || is_key_down('W')) return 1.0f;
-    if (is_key_down(VK_DOWN) || is_key_down('S')) return -1.0f;
-    return 0.0f;
+    if (g_menu_visible) return 0.0f;
+    if (user <= 0) {
+        if (is_key_down(VK_UP) || is_key_down('W')) return -1.0f;
+        if (is_key_down(VK_DOWN) || is_key_down('S')) return 1.0f;
+    }
+    return g_real_analog_y ? g_real_analog_y(self, user) : 0.0f;
 }
 
 static void __attribute__((naked)) hk_Safe45a920(void) {
@@ -4198,7 +4464,15 @@ static void apply_vt4_patches(void) {
     g_real_optionmode_update = *(OptionMode_Update_t *)0x0078ae00;
     void *hk_opt = (void *)hk_OptionMode_Update;
     patch_bytes(0x0078ae00, &hk_opt, sizeof(hk_opt));
-    log_msg("[VT4-Mod] Installed Loading, MainMenu, and OptionMode::Update (real=%p) hooks", g_real_optionmode_update);
+    g_real_opt_add_submenus = (OptionMode_Update_t)make_trampoline(0x00443540, 7);
+    install_jmp(0x00443540, (void *)hk_OptionMode_AddSubmenus, 7);
+    g_real_opt_enter_submenu = (OptEnterSubmenu_t)make_trampoline(0x004435b0, 6);
+    install_jmp(0x004435b0, (void *)hk_OptionMode_EnterSubmenu, 6);
+    g_real_opt_inner_update = (OptionMode_Update_t)make_trampoline(0x004438e0, 7);
+    install_jmp(0x004438e0, (void *)hk_OptionMode_InnerUpdate, 7);
+    g_real_fpsubmenu_setsel = (FPSubMenu_SetSel_t)make_trampoline(0x005e92a0, 6);
+    install_jmp(0x005e92a0, (void *)hk_FPSubMenu_SetSel, 6);
+    log_msg("[VT4-Mod] Installed Loading, MainMenu, and Native OptionMode (Row 3 LegendsHD) hooks");
 
     // 18. Hook MessageBoxA and MessageBoxW to prevent assert popups from blocking
     void *hk_mba = (void *)hk_MessageBoxA;
@@ -4268,9 +4542,11 @@ static void apply_vt4_patches(void) {
     g_real_menu_cancel = (MenuInputFn_t)make_trampoline(0x00455440, 7);
     install_jmp(0x00455440, (void *)hk_MenuInput_Cancel, 7);
 
-    // 25. Analog stick hooks for sliders / smooth movement (0x00454F80 Analog Y, 0x00455080 Analog X)
-    install_jmp(0x00454F80, (void *)hk_AnalogY, 6);
-    install_jmp(0x00455080, (void *)hk_AnalogX, 6);
+    // 25. Analog stick hooks for movement & sliders (0x00454F80 Analog X, 0x00455080 Analog Y)
+    g_real_analog_x = (AnalogAxisFn_t)make_trampoline(0x00454F80, 6);
+    install_jmp(0x00454F80, (void *)hk_AnalogX, 6);
+    g_real_analog_y = (AnalogAxisFn_t)make_trampoline(0x00455080, 6);
+    install_jmp(0x00455080, (void *)hk_AnalogY, 6);
 
     log_msg("[VT4-Mod] Central Menu Navigation & Analog hooks installed (100%% synchronized frame-cached routing)");
 
@@ -4301,7 +4577,14 @@ static void apply_vt4_patches(void) {
     install_jmp(0x00558890, (void *)hk_ShotCamera_Trigger, 8);
     patch_call(0x00482aa1, (void *)hk_LiveMatchTracker_4803e0);
     patch_call(0x0043037b, (void *)hk_FrameStep_42fa90);
-    log_msg("[VT4-Mod] In-match P1 keyboard, fwInputMgr, Classic TV Cam & Speed hooks active");
+    // EXTRA-5: Fix ExhibitionAdvancedSetting NULL! assert (push 0 instead of 1 at 0x004351e0)
+    const uint8_t push0_arg = 0x00;
+    patch_bytes(0x004351e1, &push0_arg, 1);
+    g_real_exmode_reset = (ExModeResetFn_t)make_trampoline(0x00436e20, 6);
+    install_jmp(0x00436e20, (void *)hk_ExMode_ResetDefaults, 6);
+    g_real_set_rules = (SetRulesFn_orig_t)make_trampoline(0x0045f480, 8);
+    install_jmp(0x0045f480, (void *)hk_SetMatchRules, 8);
+    log_msg("[VT4-Mod] In-match P1 keyboard, fwInputMgr, Classic TV Cam, Speed & EXTRA-5 ExbRules hooks active");
 
     // 27. Neutralize focus loss / blanking: force IsWindowFocused (0x00404dc0) to ALWAYS return TRUE
     const uint8_t ret_true3_focus[3] = { 0xB0, 0x01, 0xC3 }; // mov al, 1; ret
