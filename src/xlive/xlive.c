@@ -3111,7 +3111,7 @@ static int fwkbd_bit_down(int bit_idx) {
         case 'C':       return is_key_down('C') || is_key_down('K');
         case 'V':       return is_key_down('V') || is_key_down('I');
         case 'B':       return is_key_down('B');
-        case VK_SPACE:  return is_key_down(VK_SPACE) || is_key_down(VK_ESCAPE);
+        case VK_SPACE:  return is_key_down(VK_SPACE);
         case VK_ESCAPE: return is_key_down(VK_ESCAPE);
         default:
             if (bit_idx > 0 && bit_idx < 256) return is_key_down(bit_idx);
@@ -3197,6 +3197,18 @@ static int __thiscall hk_FwInput_IsBitReleased(void *self, int bit_idx) {
         if (g_fwkbd_prev[bit_idx] && !g_fwkbd_cur[bit_idx]) return 1;
     }
     return g_real_fwinput_isbitreleased ? g_real_fwinput_isbitreleased(self, bit_idx) : 0;
+}
+
+// Live-match pause check hook (0x00480492 -> 0x00455710): allows both SPACE and ESC to pause gameplay
+// without aliasing ESC to VK_SPACE (0x00455590 confirm/start) inside menus.
+static uint8_t __thiscall hk_MatchPauseCheck(void *self, int user_id) {
+    typedef uint8_t (__thiscall *OrigPause_t)(void *, int);
+    if (((OrigPause_t)0x00455710)(self, user_id)) return 1;
+    if (!g_menu_visible && user_id == 0) {
+        fwkbd_sync_bit(VK_ESCAPE);
+        if (!g_fwkbd_prev[VK_ESCAPE] && g_fwkbd_cur[VK_ESCAPE]) return 1;
+    }
+    return 0;
 }
 
 // ----------------------------------------------------------------------------
@@ -3477,6 +3489,9 @@ static int __thiscall hk_MenuInput_Decide(void *self, int user) {
         return 0;
     }
     eval_nav_key(4, 0, 30, 20);
+    if (is_key_down(VK_ESCAPE) || is_key_down('Z') || is_key_down(VK_BACK)) {
+        return 0;
+    }
     if (g_real_menu_decide) {
         return g_real_menu_decide(self, user);
     }
@@ -4172,6 +4187,7 @@ static void apply_vt4_patches(void) {
     install_jmp(0x0062bf90, (void *)hk_FwInput_IsBitPressed, 8);
     g_real_fwinput_isbitreleased = (FwInputBitFn_t)make_trampoline(0x0062bfe0, 8);
     install_jmp(0x0062bfe0, (void *)hk_FwInput_IsBitReleased, 8);
+    patch_call(0x00480492, (void *)hk_MatchPauseCheck);
     log_msg("[VT4-Mod] In-match P1 keyboard, fwInputMgr & fwInputDevice hooks active (Arrows+ZXCV & WASD+JKLI, Camera=B)");
 
     // 27. Neutralize focus loss / blanking: force IsWindowFocused (0x00404dc0) to ALWAYS return TRUE
