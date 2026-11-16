@@ -3764,23 +3764,26 @@ static void __fastcall hk_BallSimulateTrajectory(
     float *start_pos, float *vel, float arg3, uint32_t arg4, uint32_t arg5) {
     typedef void (__fastcall *SimTrajFn_t)(void *, void *, float *, float *, float, uint32_t, uint32_t);
     SimTrajFn_t real_sim = (SimTrajFn_t)0x00477740;
-    if (!ball_phys || !vel || g_cfg_multiverse_mode == 0) {
+    if (!ball_phys || !vel || (g_cfg_multiverse_mode == 0 && !g_cfg_debug_log)) {
         real_sim(ball_phys, edx_unused, start_pos, vel, arg3, arg4, arg5);
         return;
     }
 
     float orig_grav = *(float *)((char *)ball_phys + 0x65cc);
     float orig_bxz = *(float *)((char *)ball_phys + 0x65ec);
-    float orig_by = *(float *)((char *)ball_phys + 0x65f4);
+    float orig_by = *(float *)((char *)ball_phys + 0x65f0);
+    float v0z = vel[2];
 
     // EE-2: 50% Ice (-Z far half: low fast skid) / 50% Mud (+Z near half: high sticky clay pop)
+    // Note: in 0x4781b8..0x47822e, larger BoundXZ (0x65ec) applies stronger XZ bounce friction (slower),
+    // and BoundY (0x65f0) scales vertical bounce restitution.
     if (g_cfg_multiverse_mode == 1 || g_cfg_multiverse_mode == 3) {
-        if (vel[2] < 0.0f) {
-            *(float *)((char *)ball_phys + 0x65ec) = 1.42f;
-            *(float *)((char *)ball_phys + 0x65f4) = 0.42f;
+        if (v0z < 0.0f) {
+            *(float *)((char *)ball_phys + 0x65ec) = 0.20f;
+            *(float *)((char *)ball_phys + 0x65f0) = 0.38f;
         } else {
-            *(float *)((char *)ball_phys + 0x65ec) = 0.54f;
-            *(float *)((char *)ball_phys + 0x65f4) = 1.24f;
+            *(float *)((char *)ball_phys + 0x65ec) = 1.55f;
+            *(float *)((char *)ball_phys + 0x65f0) = 1.22f;
         }
     }
 
@@ -3793,20 +3796,60 @@ static void __fastcall hk_BallSimulateTrajectory(
         *(float *)((char *)ball_phys + 0x65cc) = orig_grav * (k * k);
     }
 
-    static uint32_t s_mv_log_count = 0;
-    if (s_mv_log_count < 6) {
-        s_mv_log_count++;
-        log_msg("[VT4-Mod] [FASE-3] Multiverse mode=%u shot vz=%.2f -> BoundXZ=%.2f BoundY=%.2f Grav=%.2f",
-                g_cfg_multiverse_mode, vel[2],
-                *(float *)((char *)ball_phys + 0x65ec),
-                *(float *)((char *)ball_phys + 0x65f4),
-                *(float *)((char *)ball_phys + 0x65cc));
+    if (g_cfg_multiverse_mode != 0) {
+        static uint32_t s_mv_log_count = 0;
+        if (s_mv_log_count < 8) {
+            s_mv_log_count++;
+            log_msg("[VT4-Mod] [FASE-3] Multiverse mode=%u shot vz=%.2f -> BoundXZ=%.2f BoundY=%.2f Grav=%.2f",
+                    g_cfg_multiverse_mode, vel[2],
+                    *(float *)((char *)ball_phys + 0x65ec),
+                    *(float *)((char *)ball_phys + 0x65f0),
+                    *(float *)((char *)ball_phys + 0x65cc));
+        }
     }
 
     real_sim(ball_phys, edx_unused, start_pos, vel, arg3, arg4, arg5);
+
+    if (g_cfg_debug_log) {
+        static uint32_t s_traj_logs = 0;
+        if (s_traj_logs < 12) {
+            s_traj_logs++;
+            uint32_t nframes = *(uint32_t *)((char *)ball_phys + 0x65fc);
+            const char *base = (const char *)ball_phys;
+            int bounce_f = -1;
+            float bz = 0.0f, vy_pre = 0.0f, vy_post = 0.0f, vz_pre = 0.0f, vz_post = 0.0f, peak_y = 0.0f;
+            for (uint32_t f = 1; f < nframes && f < 599; f++) {
+                const float *prev = (const float *)(base + (f - 1) * 40);
+                const float *cur  = (const float *)(base + f * 40);
+                if (bounce_f < 0 && prev[6] < 0.0f && cur[6] > 0.0f) {
+                    bounce_f = (int)f;
+                    bz = cur[2];
+                    vy_pre = prev[6];
+                    vy_post = cur[6];
+                    vz_pre = prev[7];
+                    vz_post = cur[7];
+                } else if (bounce_f >= 0) {
+                    if (cur[1] > peak_y) peak_y = cur[1];
+                    if (cur[6] < 0.0f) break;
+                }
+            }
+            log_msg("[DIAG-TRAJ] mv=%u n=%u v0z=%.2f bounce_f=%d bz=%.2f vy=%.3f->%.3f vz=%.3f->%.3f peak_y=%.2f",
+                    g_cfg_multiverse_mode, nframes, vel[2], bounce_f, bz,
+                    vy_pre, vy_post, vz_pre, vz_post, peak_y);
+        }
+    }
+
     *(float *)((char *)ball_phys + 0x65cc) = orig_grav;
     *(float *)((char *)ball_phys + 0x65ec) = orig_bxz;
-    *(float *)((char *)ball_phys + 0x65f4) = orig_by;
+    *(float *)((char *)ball_phys + 0x65f0) = orig_by;
+}
+
+static void __thiscall hk_BallLaunch_480561(void *ball_phys, void *hit_info, void *player_anim) {
+    typedef void (__thiscall *OrigLaunch_t)(void *, void *, void *);
+    ((OrigLaunch_t)0x00478c20)(ball_phys, hit_info, player_anim);
+    if ((g_cfg_multiverse_mode == 2 || g_cfg_multiverse_mode == 3) && hit_info) {
+        *(float *)((char *)hit_info + 0x18) *= 1.55f;
+    }
 }
 
 // ----------------------------------------------------------------------------
@@ -4886,6 +4929,7 @@ static void apply_vt4_patches(void) {
     g_real_render_postfx = (RenderPostFXFn_t)make_trampoline(0x004a9460, 6);
     install_jmp(0x004a9460, (void *)hk_RenderPostEffects, 6);
     patch_call(0x00478bf3, (void *)hk_BallSimulateTrajectory);
+    patch_call(0x00480561, (void *)hk_BallLaunch_480561);
     log_msg("[VT4-Mod] In-match P1 keyboard, fwInputMgr, Classic TV Cam, Speed, EXTRA-5, EXTRA-6 (PostFX) & Fase 3 Multiverse hooks active");
 
     // 27. Neutralize focus loss / blanking: force IsWindowFocused (0x00404dc0) to ALWAYS return TRUE
