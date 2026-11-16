@@ -97,6 +97,9 @@ static uint32_t g_cfg_remove_live = 1;
 static uint32_t g_cfg_classic_tv_cam = 0; // 0=Off, 1=Lock Classic VT2 TV Camera & disable ShotCamera zoom
 static uint32_t g_cfg_match_speed_mode = 0; // 0=Normal 1.0x, 1=VT2 Turbo 1.20x, 2=VT2 Hyper 1.35x, 3=Pro Sim 0.90x
 static uint32_t g_cfg_exb_rules = 0; // 0=Manual/Estandar, 1=3 Sets x 6J + TB, 2=Grand Slam 5 Sets x 6J + TB, 3=5 Sets Ventaja
+static uint32_t g_cfg_clean_postfx = 1; // 0=Original SEGA (Bloom+Blur), 1=Ultra Nitido (Sin Bloom/Blur), 2=Suave (35% Glare)
+static uint32_t g_cfg_multiverse_mode = 0; // 0=Off, 1=EE-2 Batalla Hielo/Barro, 2=EE-4 Super Golpes DBZ 300%, 3=Ambos!
+static uint32_t g_cfg_debug_log = 0; // 0=Off (normal), 1=Enable diagnostic hook logs ([DIAG-*])
 
 static int g_is_fullscreen = 0;
 static int g_vp_is_full_hd = 0;
@@ -131,7 +134,9 @@ static void load_vt4_settings(void) {
                        "; Sincronizacion Vertical: 1 = Activado (60 FPS estables sin cortes), 0 = Desactivado\n"
                        "VSync=1\n"
                        "; Filtrado Anisotropico para texturas de pista ultra nitidas: 16 = Ultra Nitido, 0 = Normal\n"
-                       "AnisotropicFiltering=16\n\n"
+                       "AnisotropicFiltering=16\n"
+                       "; Nitidez PostFX (EXTRA-6): 0 = Bloom+Blur Original, 1 = Ultra Nitido (Sin Bloom/Blur), 2 = Suave 35%%\n"
+                       "CleanPostFX=1\n\n"
                        "[Menu]\n"
                        "; Quitar el modo LIVE / Red (servidor GFWL inactivo) del menu principal\n"
                        "RemoveLiveMode=1\n\n"
@@ -139,7 +144,9 @@ static void load_vt4_settings(void) {
                        "; Fijar Camara TV Clasica (estilo VT2, desactiva zooms de Super Golpe): 0 = Normal, 1 = Activo\n"
                        "ClassicTVCamera=0\n"
                        "; Velocidad de Fisica en Partido: 0 = Normal (1.00x), 1 = VT2 Arcade Turbo (1.20x), 2 = VT2 Hyper (1.35x), 3 = Simulacion Pro (0.90x)\n"
-                       "MatchSpeedMode=0\n");
+                       "MatchSpeedMode=0\n"
+                       "; Multiverso Arcade (Fase 3): 0 = Off, 1 = EE-2 Batalla Hielo/Barro, 2 = EE-4 Super Golpes 300%%, 3 = Ambos\n"
+                       "MultiverseMode=0\n");
             fclose(f);
             log_msg("[VT4-Mod] Created modern settings configuration file: %s", ini_path);
         }
@@ -151,20 +158,25 @@ static void load_vt4_settings(void) {
     g_cfg_antialiasing = GetPrivateProfileIntA("Graphics", "AntiAliasing", 4, ini_path);
     g_cfg_vsync = GetPrivateProfileIntA("Graphics", "VSync", 1, ini_path);
     g_cfg_anisotropic = GetPrivateProfileIntA("Graphics", "AnisotropicFiltering", 16, ini_path);
+    g_cfg_clean_postfx = GetPrivateProfileIntA("Graphics", "CleanPostFX", 1, ini_path);
+    if (g_cfg_clean_postfx > 2) g_cfg_clean_postfx = 1;
     g_cfg_remove_live = GetPrivateProfileIntA("Menu", "RemoveLiveMode", 1, ini_path);
     g_cfg_classic_tv_cam = GetPrivateProfileIntA("Gameplay", "ClassicTVCamera", 0, ini_path) ? 1 : 0;
     g_cfg_match_speed_mode = GetPrivateProfileIntA("Gameplay", "MatchSpeedMode", 0, ini_path);
     if (g_cfg_match_speed_mode > 3) g_cfg_match_speed_mode = 0;
     g_cfg_exb_rules = GetPrivateProfileIntA("Gameplay", "ExhibitionRules", 0, ini_path);
     if (g_cfg_exb_rules > 3) g_cfg_exb_rules = 0;
+    g_cfg_multiverse_mode = GetPrivateProfileIntA("Gameplay", "MultiverseMode", 0, ini_path);
+    if (g_cfg_multiverse_mode > 3) g_cfg_multiverse_mode = 0;
+    g_cfg_debug_log = GetPrivateProfileIntA("Debug", "DebugLog", 0, ini_path) ? 1 : 0;
 
     if (g_cfg_width <= 0) g_cfg_width = 1920;
     if (g_cfg_height <= 0) g_cfg_height = 1080;
 
-    log_msg("[VT4-Mod] Settings loaded: %ux%u (windowed=%u msaa=%u vsync=%u aniso=%u remove_live=%u tv_lock=%u speed=%u)",
+    log_msg("[VT4-Mod] Settings loaded: %ux%u (windowed=%u msaa=%u vsync=%u aniso=%u cleanfx=%u remove_live=%u tv_lock=%u speed=%u mv=%u)",
             g_cfg_width, g_cfg_height, g_cfg_windowed, g_cfg_antialiasing,
-            g_cfg_vsync, g_cfg_anisotropic, g_cfg_remove_live,
-            g_cfg_classic_tv_cam, g_cfg_match_speed_mode);
+            g_cfg_vsync, g_cfg_anisotropic, g_cfg_clean_postfx, g_cfg_remove_live,
+            g_cfg_classic_tv_cam, g_cfg_match_speed_mode, g_cfg_multiverse_mode);
     sync_menu_indices_from_cfg();
 }
 
@@ -172,7 +184,7 @@ static void load_vt4_settings(void) {
 // Phase 1B: Settings Menu, Options Integration & Direct3D 9 RenderTarget Scaling
 // ============================================================================
 
-#define NUM_SETTINGS_ITEMS 10
+#define NUM_SETTINGS_ITEMS 12
 
 typedef struct {
     uint32_t w, h;
@@ -182,6 +194,7 @@ typedef struct {
 static const ResChoice s_res_choices[] = {
     { 1920, 1080, "1920x1080 (Full HD 1080p)" },
     { 2560, 1440, "2560x1440 (2K QHD 1440p)" },
+    { 3440, 1440, "3440x1440 (21:9 Ultrawide)" },
     { 3840, 2160, "3840x2160 (4K UHD 2160p)" },
     { 1280, 720,  "1280x720 (HD 720p)" }
 };
@@ -204,7 +217,7 @@ static const struct {
 #define NUM_MSAA_CHOICES (sizeof(s_msaa_choices) / sizeof(s_msaa_choices[0]))
 
 static const char *s_vsync_choices[] = {
-    "Desactivado (Sin limite)",
+    "Desactivado (Baja Latencia / Sin Limite)",
     "Activado (60 FPS)"
 };
 
@@ -218,6 +231,13 @@ static const struct {
     { 16, "16x Ultra (Pistas nitidas)" }
 };
 #define NUM_ANISO_CHOICES (sizeof(s_aniso_choices) / sizeof(s_aniso_choices[0]))
+
+static const char *s_postfx_choices[] = {
+    "Original SEGA (Bloom + Blur DOF)",
+    "Ultra Nitido 4K (Sin Bloom ni Blur)",
+    "Suave Cinematografico (35% Glare)"
+};
+#define NUM_POSTFX_CHOICES (sizeof(s_postfx_choices) / sizeof(s_postfx_choices[0]))
 
 static const char *s_live_choices[] = {
     "Desactivado",
@@ -253,15 +273,25 @@ static const struct {
 };
 #define NUM_EXB_RULES_CHOICES (sizeof(s_exb_rules_choices) / sizeof(s_exb_rules_choices[0]))
 
+static const char *s_multiverse_choices[] = {
+    "Desactivado (Fisicas Reales)",
+    "EE-2: Superficies 50% Hielo / Barro",
+    "EE-4: Super Golpes DBZ (300%)",
+    "EE-2 + EE-4: Caos Multiverso Total"
+};
+#define NUM_MULTIVERSE_CHOICES (sizeof(s_multiverse_choices) / sizeof(s_multiverse_choices[0]))
+
 static int s_idx_res = 0;
 static int s_idx_win = 0;
 static int s_idx_msaa = 2; // 4x default
 static int s_idx_vsync = 1;
 static int s_idx_aniso = 3; // 16x default
+static int s_idx_postfx = 1; // Clean sharp 4K default
 static int s_idx_live = 1;
 static int s_idx_tvcam = 0;
 static int s_idx_speed = 0;
 static int s_idx_exbrules = 0;
+static int s_idx_multiverse = 0;
 
 static int g_menu_visible = 0;
 static int g_menu_selection = 0;
@@ -314,10 +344,12 @@ static void sync_menu_indices_from_cfg(void) {
         }
     }
 
+    s_idx_postfx = (g_cfg_clean_postfx < (uint32_t)NUM_POSTFX_CHOICES) ? (int)g_cfg_clean_postfx : 1;
     s_idx_live = g_cfg_remove_live ? 1 : 0;
     s_idx_tvcam = g_cfg_classic_tv_cam ? 1 : 0;
     s_idx_speed = (g_cfg_match_speed_mode < (uint32_t)NUM_SPEED_CHOICES) ? (int)g_cfg_match_speed_mode : 0;
     s_idx_exbrules = (g_cfg_exb_rules < (uint32_t)NUM_EXB_RULES_CHOICES) ? (int)g_cfg_exb_rules : 0;
+    s_idx_multiverse = (g_cfg_multiverse_mode < (uint32_t)NUM_MULTIVERSE_CHOICES) ? (int)g_cfg_multiverse_mode : 0;
 }
 
 static void update_config_txt(void) {
@@ -419,6 +451,8 @@ static void save_vt4_settings(void) {
     WritePrivateProfileStringA("Graphics", "VSync", val, ini_path);
     snprintf(val, sizeof(val), "%u", g_cfg_anisotropic);
     WritePrivateProfileStringA("Graphics", "AnisotropicFiltering", val, ini_path);
+    snprintf(val, sizeof(val), "%u", g_cfg_clean_postfx);
+    WritePrivateProfileStringA("Graphics", "CleanPostFX", val, ini_path);
     snprintf(val, sizeof(val), "%u", g_cfg_remove_live);
     WritePrivateProfileStringA("Menu", "RemoveLiveMode", val, ini_path);
     snprintf(val, sizeof(val), "%u", g_cfg_classic_tv_cam);
@@ -427,6 +461,8 @@ static void save_vt4_settings(void) {
     WritePrivateProfileStringA("Gameplay", "MatchSpeedMode", val, ini_path);
     snprintf(val, sizeof(val), "%u", g_cfg_exb_rules);
     WritePrivateProfileStringA("Gameplay", "ExhibitionRules", val, ini_path);
+    snprintf(val, sizeof(val), "%u", g_cfg_multiverse_mode);
+    WritePrivateProfileStringA("Gameplay", "MultiverseMode", val, ini_path);
 
     log_msg("[VT4-Mod] Settings saved to %s", ini_path);
 }
@@ -442,10 +478,12 @@ static void apply_and_save_menu_settings(void *dev) {
     g_cfg_antialiasing = s_msaa_choices[s_idx_msaa].val;
     g_cfg_vsync = s_idx_vsync;
     g_cfg_anisotropic = s_aniso_choices[s_idx_aniso].val;
+    g_cfg_clean_postfx = (uint32_t)s_idx_postfx;
     g_cfg_remove_live = s_idx_live;
     g_cfg_classic_tv_cam = s_idx_tvcam ? 1 : 0;
     g_cfg_match_speed_mode = (uint32_t)s_idx_speed;
     g_cfg_exb_rules = (uint32_t)s_idx_exbrules;
+    g_cfg_multiverse_mode = (uint32_t)s_idx_multiverse;
 
     save_vt4_settings();
     apply_exhibition_rule_preset();
@@ -540,10 +578,12 @@ static int handle_settings_menu_input(int vk, void *dev) {
                 case 2: s_idx_msaa = (s_idx_msaa - 1 + (int)NUM_MSAA_CHOICES) % (int)NUM_MSAA_CHOICES; break;
                 case 3: s_idx_vsync = !s_idx_vsync; break;
                 case 4: s_idx_aniso = (s_idx_aniso - 1 + (int)NUM_ANISO_CHOICES) % (int)NUM_ANISO_CHOICES; break;
-                case 5: s_idx_live = !s_idx_live; break;
-                case 6: s_idx_tvcam = !s_idx_tvcam; break;
-                case 7: s_idx_speed = (s_idx_speed - 1 + (int)NUM_SPEED_CHOICES) % (int)NUM_SPEED_CHOICES; break;
-                case 8: s_idx_exbrules = (s_idx_exbrules - 1 + (int)NUM_EXB_RULES_CHOICES) % (int)NUM_EXB_RULES_CHOICES; break;
+                case 5: s_idx_postfx = (s_idx_postfx - 1 + (int)NUM_POSTFX_CHOICES) % (int)NUM_POSTFX_CHOICES; break;
+                case 6: s_idx_live = !s_idx_live; break;
+                case 7: s_idx_tvcam = !s_idx_tvcam; break;
+                case 8: s_idx_speed = (s_idx_speed - 1 + (int)NUM_SPEED_CHOICES) % (int)NUM_SPEED_CHOICES; break;
+                case 9: s_idx_exbrules = (s_idx_exbrules - 1 + (int)NUM_EXB_RULES_CHOICES) % (int)NUM_EXB_RULES_CHOICES; break;
+                case 10: s_idx_multiverse = (s_idx_multiverse - 1 + (int)NUM_MULTIVERSE_CHOICES) % (int)NUM_MULTIVERSE_CHOICES; break;
             }
             play_vt4_menu_se(4);
             log_msg("[VT4-Mod] Menu Value Left: item %d changed", g_menu_selection);
@@ -557,10 +597,12 @@ static int handle_settings_menu_input(int vk, void *dev) {
                 case 2: s_idx_msaa = (s_idx_msaa + 1) % (int)NUM_MSAA_CHOICES; break;
                 case 3: s_idx_vsync = !s_idx_vsync; break;
                 case 4: s_idx_aniso = (s_idx_aniso + 1) % (int)NUM_ANISO_CHOICES; break;
-                case 5: s_idx_live = !s_idx_live; break;
-                case 6: s_idx_tvcam = !s_idx_tvcam; break;
-                case 7: s_idx_speed = (s_idx_speed + 1) % (int)NUM_SPEED_CHOICES; break;
-                case 8: s_idx_exbrules = (s_idx_exbrules + 1) % (int)NUM_EXB_RULES_CHOICES; break;
+                case 5: s_idx_postfx = (s_idx_postfx + 1) % (int)NUM_POSTFX_CHOICES; break;
+                case 6: s_idx_live = !s_idx_live; break;
+                case 7: s_idx_tvcam = !s_idx_tvcam; break;
+                case 8: s_idx_speed = (s_idx_speed + 1) % (int)NUM_SPEED_CHOICES; break;
+                case 9: s_idx_exbrules = (s_idx_exbrules + 1) % (int)NUM_EXB_RULES_CHOICES; break;
+                case 10: s_idx_multiverse = (s_idx_multiverse + 1) % (int)NUM_MULTIVERSE_CHOICES; break;
             }
             play_vt4_menu_se(4);
             log_msg("[VT4-Mod] Menu Value Right: item %d changed", g_menu_selection);
@@ -859,14 +901,14 @@ static void render_settings_hud(void *dev) {
 
     float col_x1 = native_style ? (120.0f * sx) : (((float)g_cfg_width - 540.0f) * 0.5f);
     float col_x2 = native_style ? (575.0f * sx) : (col_x1 + 540.0f);
-    float row_start_y = native_style ? (124.0f * sy) : (((float)g_cfg_height - 560.0f) * 0.5f + 56.0f);
-    float row_pitch = 51.0f * sy;
+    float row_start_y = native_style ? (104.0f * sy) : (((float)g_cfg_height - 580.0f) * 0.5f + 48.0f);
+    float row_pitch = 44.0f * sy;
 
     if (!native_style) {
-        draw_screen_quad(dev, col_x1 - 18.0f * sx, row_start_y - 60.0f * sy,
-                         col_x2 + 18.0f * sx, row_start_y + NUM_SETTINGS_ITEMS * row_pitch + 38.0f * sy, 0xEBEDF0F5);
-        draw_screen_quad(dev, col_x1 - 18.0f * sx, row_start_y - 60.0f * sy,
-                         col_x2 + 18.0f * sx, row_start_y - 57.0f * sy, 0xFF8416DE);
+        draw_screen_quad(dev, col_x1 - 18.0f * sx, row_start_y - 54.0f * sy,
+                         col_x2 + 18.0f * sx, row_start_y + NUM_SETTINGS_ITEMS * row_pitch + 32.0f * sy, 0xEBEDF0F5);
+        draw_screen_quad(dev, col_x1 - 18.0f * sx, row_start_y - 54.0f * sy,
+                         col_x2 + 18.0f * sx, row_start_y - 51.0f * sy, 0xFF8416DE);
     }
 
     const char *item_labels[NUM_SETTINGS_ITEMS] = {
@@ -875,23 +917,27 @@ static void render_settings_hud(void *dev) {
         "ANTI-ALIASING (MSAA)",
         "SINCRONIZACION (VSYNC)",
         "FILTRADO ANISOTROPICO",
+        "BLOOM Y BORROSIDAD (EXTRA-6)",
         "MODO LIVE",
         "CAMARA TV CLASICA (VT2)",
         "VELOCIDAD DE FISICA",
         "REGLAS EXHIBICION",
+        "MULTIVERSO ARCADE (FASE 3)",
         "GUARDAR Y APLICAR CAMBIOS"
     };
 
     const char *item_hints[NUM_SETTINGS_ITEMS] = {
-        "Resolucion interna 3D y de ventana/pantalla",
+        "Resolucion interna 3D (HD, QHD, Ultrawide, 4K UHD)",
         "Ventana sin bordes o Pantalla Completa",
         "Suavizado 3D nativo de bordes (MSAA)",
-        "Evita cortes verticales sincronizando a 60 Hz",
+        "Desactivar VSync libera latencia y framerate en Present",
         "Nitidez de pistas y texturas en angulo",
+        "Elimina o suaviza el Bloom/Glare y blur DOF de SEGA",
         "Muestra u oculta el acceso online GFWL LIVE",
         "Fija camara TV estilo VT2 sin zooms de Super Golpe",
         "Ajusta el ritmo Arcade VT2 (1.20x/1.35x) o Pro",
         "Partidos Exhibicion: 1/3/5 Sets de 6 Juegos y Tie-Break",
+        "Easter Eggs: Batalla Hielo/Barro (EE-2) y Super Golpes 300% (EE-4)",
         "Guarda vt4_settings.ini y aplica los ajustes ahora"
     };
 
@@ -899,8 +945,8 @@ static void render_settings_hud(void *dev) {
         float y0 = row_start_y + (float)i * row_pitch;
         int is_sel = (i == g_menu_selection);
         if (i == NUM_SETTINGS_ITEMS - 1) {
-            float by1 = y0 + 4.0f * sy;
-            float by2 = y0 + 36.0f * sy;
+            float by1 = y0 + 3.0f * sy;
+            float by2 = y0 + 33.0f * sy;
             DWORD bg = is_sel ? 0xF2129850 : 0xEA2B5A40;
             DWORD bd = is_sel ? 0xFF40FF98 : 0xFF559070;
             draw_screen_quad(dev, col_x1, by1, col_x2, by2, bg);
@@ -908,17 +954,17 @@ static void render_settings_hud(void *dev) {
             draw_screen_quad(dev, col_x1, by2 - 1.5f * sy, col_x2, by2, bd);
         } else {
             float top_y1 = y0;
-            float top_y2 = y0 + 22.0f * sy;
+            float top_y2 = y0 + 19.0f * sy;
             float bot_y1 = top_y2;
-            float bot_y2 = y0 + 45.0f * sy;
+            float bot_y2 = y0 + 40.0f * sy;
             DWORD top_bg = is_sel ? 0xF28416DE : 0xFFF5F6F9;
             DWORD bot_bg = is_sel ? 0xF53B0660 : 0xFF5E6068;
             DWORD div_ln = is_sel ? 0xFFD098FF : 0xFF989AA2;
             draw_screen_quad(dev, col_x1, top_y1, col_x2, top_y2, top_bg);
             draw_screen_quad(dev, col_x1, bot_y1, col_x2, bot_y2, bot_bg);
             draw_screen_quad(dev, col_x1, top_y1, col_x2, top_y1 + 1.0f, div_ln);
-            draw_screen_quad(dev, col_x1 + 14.0f * sx, top_y1 + 7.0f * sy,
-                             col_x1 + 22.0f * sx, top_y1 + 15.0f * sy,
+            draw_screen_quad(dev, col_x1 + 14.0f * sx, top_y1 + 6.0f * sy,
+                             col_x1 + 22.0f * sx, top_y1 + 13.0f * sy,
                              is_sel ? 0xFFFFFFFF : 0xFF7A7C84);
         }
     }
@@ -933,9 +979,9 @@ static void render_settings_hud(void *dev) {
 
         RECT r;
         r.left = (LONG)(col_x1 + 24.0f * sx);
-        r.top = (LONG)(row_start_y - 44.0f * sy);
+        r.top = (LONG)(row_start_y - 38.0f * sy);
         r.right = (LONG)(col_x2 + 20.0f * sx);
-        r.bottom = (LONG)(row_start_y - 8.0f * sy);
+        r.bottom = (LONG)(row_start_y - 6.0f * sy);
         draw_font_text(g_pFontTitle, "GRAFICOS HD Y LEGENDS", &r, 0xFF5C5E66, 0);
 
         char val_buf[128];
@@ -944,9 +990,9 @@ static void render_settings_hud(void *dev) {
             int is_sel = (i == g_menu_selection);
             if (i == NUM_SETTINGS_ITEMS - 1) {
                 r.left = (LONG)(col_x1 + 10.0f * sx);
-                r.top = (LONG)(y0 + 4.0f * sy);
+                r.top = (LONG)(y0 + 3.0f * sy);
                 r.right = (LONG)(col_x2 - 10.0f * sx);
-                r.bottom = (LONG)(y0 + 36.0f * sy);
+                r.bottom = (LONG)(y0 + 33.0f * sy);
                 draw_font_text(g_pFontTitle, item_labels[i], &r, 0xFFFFFFFF, 1);
             } else {
                 DWORD lbl_col = is_sel ? 0xFFFFFFFF : 0xFF60626C;
@@ -955,7 +1001,7 @@ static void render_settings_hud(void *dev) {
                 r.left = (LONG)(col_x1 + 30.0f * sx);
                 r.top = (LONG)y0;
                 r.right = (LONG)(col_x2 - 12.0f * sx);
-                r.bottom = (LONG)(y0 + 22.0f * sy);
+                r.bottom = (LONG)(y0 + 19.0f * sy);
                 draw_font_text(g_pFont, item_labels[i], &r, lbl_col, 0);
 
                 switch (i) {
@@ -964,15 +1010,17 @@ static void render_settings_hud(void *dev) {
                     case 2: snprintf(val_buf, sizeof(val_buf), "< %s >", s_msaa_choices[s_idx_msaa].desc); break;
                     case 3: snprintf(val_buf, sizeof(val_buf), "< %s >", s_vsync_choices[s_idx_vsync]); break;
                     case 4: snprintf(val_buf, sizeof(val_buf), "< %s >", s_aniso_choices[s_idx_aniso].desc); break;
-                    case 5: snprintf(val_buf, sizeof(val_buf), "< %s >", s_live_choices[s_idx_live]); break;
-                    case 6: snprintf(val_buf, sizeof(val_buf), "< %s >", s_tvcam_choices[s_idx_tvcam]); break;
-                    case 7: snprintf(val_buf, sizeof(val_buf), "< %s >", s_speed_choices[s_idx_speed].desc); break;
-                    case 8: snprintf(val_buf, sizeof(val_buf), "< %s >", s_exb_rules_choices[s_idx_exbrules].desc); break;
+                    case 5: snprintf(val_buf, sizeof(val_buf), "< %s >", s_postfx_choices[s_idx_postfx]); break;
+                    case 6: snprintf(val_buf, sizeof(val_buf), "< %s >", s_live_choices[s_idx_live]); break;
+                    case 7: snprintf(val_buf, sizeof(val_buf), "< %s >", s_tvcam_choices[s_idx_tvcam]); break;
+                    case 8: snprintf(val_buf, sizeof(val_buf), "< %s >", s_speed_choices[s_idx_speed].desc); break;
+                    case 9: snprintf(val_buf, sizeof(val_buf), "< %s >", s_exb_rules_choices[s_idx_exbrules].desc); break;
+                    case 10: snprintf(val_buf, sizeof(val_buf), "< %s >", s_multiverse_choices[s_idx_multiverse]); break;
                 }
                 r.left = (LONG)(col_x1 + 12.0f * sx);
-                r.top = (LONG)(y0 + 22.0f * sy);
+                r.top = (LONG)(y0 + 19.0f * sy);
                 r.right = (LONG)(col_x2 - 12.0f * sx);
-                r.bottom = (LONG)(y0 + 45.0f * sy);
+                r.bottom = (LONG)(y0 + 40.0f * sy);
                 draw_font_text(g_pFont, val_buf, &r, val_col, 1);
             }
         }
@@ -1110,6 +1158,39 @@ static const uint8_t g_custom_bh2[12]       = { 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0,
 static const uint8_t g_custom_bio_proxy[12] = { 1, 9, 5, 5, 14, 5, 17, 18, 22, 17, 1, 18 };
 static int32_t g_player_flags[38] = {0};
 static uint32_t g_player_anim_presets[38 * 5] = {0};
+static float g_player_bone_scales[38 * 60] = {0};
+
+typedef void (__thiscall *PlayStyleLoadChar_t)(void *self, int char_id);
+static PlayStyleLoadChar_t g_real_playstyle_loadchar = NULL;
+static const uint8_t g_custom_playstyle_proxy[12] = { 1, 2, 0, 10, 14, 11, 17, 18, 22, 20, 12, 18 };
+
+static void __thiscall hk_PlayStyle_LoadChar(void *self, int char_id) {
+    if (char_id >= 26 && char_id < 38) {
+        char_id = (int)g_custom_playstyle_proxy[char_id - 26];
+    }
+    if (g_real_playstyle_loadchar) g_real_playstyle_loadchar(self, char_id);
+}
+
+typedef void *(__thiscall *GetMotionDataFn_t)(void *self, int slot, int motion_id);
+static GetMotionDataFn_t g_real_get_motion_data = NULL;
+static void *__thiscall hk_GetMotionData(void *self, int slot, int motion_id) {
+    void *res = g_real_get_motion_data ? g_real_get_motion_data(self, slot, motion_id) : NULL;
+    if ((uintptr_t)res < 0x10000u) {
+        if (g_cfg_debug_log) {
+            static int s_bad_mot_logs = 0;
+            if (s_bad_mot_logs < 16) {
+                s_bad_mot_logs++;
+                log_msg("[VT4-Mod] [DIAG-MOT] GetMotionData(self=%p, slot=%d, motion_id=%d/0x%x) -> BAD ptr=%p caller=%p",
+                        self, slot, motion_id, motion_id, res, __builtin_return_address(0));
+            }
+        }
+        // Safe fallback to common motion (0 for slot 0 AthleteCommonMan, 0x50 for slot 3 BallCommonMan)
+        int fb = (slot == 3) ? 0x50 : 0;
+        void *res2 = g_real_get_motion_data ? g_real_get_motion_data(self, slot, fb) : NULL;
+        if ((uintptr_t)res2 >= 0x10000u) return res2;
+    }
+    return res;
+}
 
 static int __stdcall hk_GetPlayerFlag(int id) {
     if (id >= 0 && id < 38) return g_player_flags[id];
@@ -3491,6 +3572,8 @@ static int __thiscall hk_FwInput_IsBitPressed(void *self, int bit_idx) {
     return g_real_fwinput_isbitpressed ? g_real_fwinput_isbitpressed(self, bit_idx) : 0;
 }
 
+static uint32_t g_live_match_frame = 0;
+
 static int __thiscall hk_FwInput_IsBitReleased(void *self, int bit_idx) {
     if (is_fw_keyboard_device(self) && bit_idx >= 0 && bit_idx < 256) {
         if (g_menu_visible) return 0;
@@ -3516,7 +3599,6 @@ static uint8_t __thiscall hk_MatchPauseCheck(void *self, int user_id) {
 // Phase 4 Extra QoL: Classic VT2 TV Camera Lock (0x0054CA10, 0x00558890)
 // & Match Physics Speed Multiplier (0x00482AA1 tracker + 0x0043037B stepper)
 // ----------------------------------------------------------------------------
-static uint32_t g_live_match_frame = 0;
 static float g_match_speed_acc = 0.0f;
 
 static void __cdecl hk_SetMatchCamera(int cam_type, int apply_now) {
@@ -3626,6 +3708,93 @@ static void __cdecl hk_SetMatchRules(const uint32_t *in_buf) {
                 ret, tmp[0], tmp[1], tmp[2], (tmp[4] & 2u) ? 0 : 1, tmp[4]);
     }
     if (g_real_set_rules) g_real_set_rules(tmp);
+}
+
+// ----------------------------------------------------------------------------
+// EXTRA-6: Post-Effect Bloom / Glare & DOF Blur Reduction Hook (0x004a9460)
+// Eliminates blurry SEGA DOF softness & excessive bloom halos on demand
+// ----------------------------------------------------------------------------
+typedef void (__fastcall *RenderPostFXFn_t)(void *self, void *edx_unused);
+static RenderPostFXFn_t g_real_render_postfx = NULL;
+
+static void __fastcall hk_RenderPostEffects(void *self, void *edx_unused) {
+    if (!g_real_render_postfx) return;
+    if (g_cfg_clean_postfx == 0 || !self) {
+        g_real_render_postfx(self, edx_unused);
+        return;
+    }
+    float orig_glare = *(float *)((char *)self + 0xf10);
+    uint8_t orig_dof = *(uint8_t *)((char *)self + 0xf14);
+    if (g_cfg_clean_postfx == 1) {
+        *(float *)((char *)self + 0xf10) = 0.0f;
+        *(uint8_t *)((char *)self + 0xf14) = 0;
+    } else if (g_cfg_clean_postfx == 2) {
+        *(float *)((char *)self + 0xf10) = orig_glare * 0.35f;
+        *(uint8_t *)((char *)self + 0xf14) = 0;
+    }
+    static uint32_t s_last_pfx = 0xFFFFFFFFu;
+    if (s_last_pfx != g_cfg_clean_postfx) {
+        s_last_pfx = g_cfg_clean_postfx;
+        log_msg("[VT4-Mod] [EXTRA-6] PostFX sharpness active: mode=%u (glare=%.3f->%.3f, dof=%u->0)",
+                g_cfg_clean_postfx, orig_glare, *(float *)((char *)self + 0xf10), (unsigned)orig_dof);
+    }
+    g_real_render_postfx(self, edx_unused);
+    *(float *)((char *)self + 0xf10) = orig_glare;
+    *(uint8_t *)((char *)self + 0xf14) = orig_dof;
+}
+
+// ----------------------------------------------------------------------------
+// Fase 3 Easter Eggs: EE-2 Extreme Surface Battle (Mud/Ice) & EE-4 DBZ Super Shots
+// Hook on 0x00478bf3 (call 0x00477740 BallPhysics::SimulateTrajectory)
+// ----------------------------------------------------------------------------
+static void __fastcall hk_BallSimulateTrajectory(
+    void *ball_phys, void *edx_unused,
+    float *start_pos, float *vel, float arg3, uint32_t arg4, uint32_t arg5) {
+    typedef void (__fastcall *SimTrajFn_t)(void *, void *, float *, float *, float, uint32_t, uint32_t);
+    SimTrajFn_t real_sim = (SimTrajFn_t)0x00477740;
+    if (!ball_phys || !vel || g_cfg_multiverse_mode == 0) {
+        real_sim(ball_phys, edx_unused, start_pos, vel, arg3, arg4, arg5);
+        return;
+    }
+
+    float orig_grav = *(float *)((char *)ball_phys + 0x65cc);
+    float orig_bxz = *(float *)((char *)ball_phys + 0x65ec);
+    float orig_by = *(float *)((char *)ball_phys + 0x65f4);
+
+    // EE-2: 50% Ice (-Z far half: low fast skid) / 50% Mud (+Z near half: high sticky clay pop)
+    if (g_cfg_multiverse_mode == 1 || g_cfg_multiverse_mode == 3) {
+        if (vel[2] < 0.0f) {
+            *(float *)((char *)ball_phys + 0x65ec) = 1.42f;
+            *(float *)((char *)ball_phys + 0x65f4) = 0.42f;
+        } else {
+            *(float *)((char *)ball_phys + 0x65ec) = 0.54f;
+            *(float *)((char *)ball_phys + 0x65f4) = 1.24f;
+        }
+    }
+
+    // EE-4: DBZ 300% Super Shots — scale vel by k and gravity by k^2 so spatial arc lands in-bounds!
+    if (g_cfg_multiverse_mode == 2 || g_cfg_multiverse_mode == 3) {
+        const float k = 1.55f;
+        vel[0] *= k;
+        vel[1] *= k;
+        vel[2] *= k;
+        *(float *)((char *)ball_phys + 0x65cc) = orig_grav * (k * k);
+    }
+
+    static uint32_t s_mv_log_count = 0;
+    if (s_mv_log_count < 6) {
+        s_mv_log_count++;
+        log_msg("[VT4-Mod] [FASE-3] Multiverse mode=%u shot vz=%.2f -> BoundXZ=%.2f BoundY=%.2f Grav=%.2f",
+                g_cfg_multiverse_mode, vel[2],
+                *(float *)((char *)ball_phys + 0x65ec),
+                *(float *)((char *)ball_phys + 0x65f4),
+                *(float *)((char *)ball_phys + 0x65cc));
+    }
+
+    real_sim(ball_phys, edx_unused, start_pos, vel, arg3, arg4, arg5);
+    *(float *)((char *)ball_phys + 0x65cc) = orig_grav;
+    *(float *)((char *)ball_phys + 0x65ec) = orig_bxz;
+    *(float *)((char *)ball_phys + 0x65f4) = orig_by;
 }
 
 // ----------------------------------------------------------------------------
@@ -4432,10 +4601,25 @@ static void apply_vt4_patches(void) {
     { uint32_t v3 = (uint32_t)(ap_base + 12); patch_bytes(0x4e175e, &v3, 4); patch_bytes(0x4e191a, &v3, 4); }
     { uint32_t v4 = (uint32_t)(ap_base + 16); patch_bytes(0x4e1780, &v4, 4); patch_bytes(0x4e193c, &v4, 4); }
 
-    // Extend all hardcoded pro-count bounds (0x1a -> 0x26 = 38) in PlayerDB helpers, PlayStyle lookup, and CharaSelect
+    // Clone 60-float bone scale table (0x007b9230[26]) -> g_player_bone_scales[38] matched to each star's base .sdo skeleton
+    memcpy(g_player_bone_scales, (const void *)0x007b9230, 26 * 240);
+    static const uint8_t proxy_bone_base[12] = { 1, 2, 0, 10, 14, 11, 17, 18, 22, 21, 12, 23 };
+    for (int i = 0; i < 12; i++) {
+        memcpy(&g_player_bone_scales[(26 + i) * 60], &g_player_bone_scales[proxy_bone_base[i] * 60], 240);
+    }
+    { uint32_t bs_addr = (uint32_t)(uintptr_t)g_player_bone_scales; patch_bytes(0x0053d661, &bs_addr, 4); }
+
+    // Hook PlayStyleParameter::LoadCharacter(char_id) at 0x00542260 (keep 0x005422ee at 0x21 for 33 PlayStyles!)
+    g_real_playstyle_loadchar = (PlayStyleLoadChar_t)make_trampoline(0x00542260, 6);
+    install_jmp(0x00542260, (void *)hk_PlayStyle_LoadChar, 6);
+
+    // Safe fallback + logging for GetMotionData (0x004e06f0)
+    g_real_get_motion_data = (GetMotionDataFn_t)make_trampoline(0x004e06f0, 6);
+    install_jmp(0x004e06f0, (void *)hk_GetMotionData, 6);
+
+    // Extend all hardcoded pro-count bounds (0x1a -> 0x26 = 38) in PlayerDB helpers and CharaSelect
     {
         const uint8_t max_ps = 0x26;
-        patch_bytes(0x005422ee, &max_ps, 1);
         static const uint32_t db_cap_imm8[8] = {
             0x00533403, 0x00533533, 0x00533677, 0x005338a3, 0x005339b3, 0x00533a89, 0x00533b32, 0x005df6a5
         };
@@ -4684,7 +4868,10 @@ static void apply_vt4_patches(void) {
     install_jmp(0x00436e20, (void *)hk_ExMode_ResetDefaults, 6);
     g_real_set_rules = (SetRulesFn_orig_t)make_trampoline(0x0045f480, 8);
     install_jmp(0x0045f480, (void *)hk_SetMatchRules, 8);
-    log_msg("[VT4-Mod] In-match P1 keyboard, fwInputMgr, Classic TV Cam, Speed & EXTRA-5 ExbRules hooks active");
+    g_real_render_postfx = (RenderPostFXFn_t)make_trampoline(0x004a9460, 6);
+    install_jmp(0x004a9460, (void *)hk_RenderPostEffects, 6);
+    patch_call(0x00478bf3, (void *)hk_BallSimulateTrajectory);
+    log_msg("[VT4-Mod] In-match P1 keyboard, fwInputMgr, Classic TV Cam, Speed, EXTRA-5, EXTRA-6 (PostFX) & Fase 3 Multiverse hooks active");
 
     // 27. Neutralize focus loss / blanking: force IsWindowFocused (0x00404dc0) to ALWAYS return TRUE
     const uint8_t ret_true3_focus[3] = { 0xB0, 0x01, 0xC3 }; // mov al, 1; ret
