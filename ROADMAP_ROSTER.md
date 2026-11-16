@@ -29,8 +29,8 @@ Este documento es nuestra hoja de ruta viva. Iremos marcando con `[x]` cada elem
 - [x] **06. Juan Martín del Potro (ARG)** — Diestro (Revés 2M) | *Derecha Demoledora (Hard Hitter)* (Stats Prime aplicados en `fwDataDB_Player`)
 
 ### II. La Nueva Era ("Next-Gen" & Actualidad hasta 2026)
-- [x] **07. Carlos Alcaraz (ESP)** — Diestro (Revés 2M) | *Todoterreno Explosivo / Rey de la Dejada* (`ID 26`, `P_M_ALC_NG.sdo`, jugable y verificado en partido con `served=1` y 0 asserts; fuente de retrato en `assets/portraits_src/`)
-- [x] **08. Jannik Sinner (ITA)** — Diestro (Revés 2M) | *Golpeador de Ritmo Frenético* (`ID 27`, `P_M_SIN_NG.sdo`, jugable y verificado en partido con `served=1` y 0 asserts; fuente de retrato en `assets/portraits_src/`)
+- [x] **07. Carlos Alcaraz (ESP)** — Diestro (Revés 2M) | *Todoterreno Explosivo / Rey de la Dejada* (`ID 26`, `P_M_ALC_NG.sdo`, retrato `photo_L/26.dds` sin viñeta vía PhotoCraft, jugable y verificado en partido con `0` asserts)
+- [x] **08. Jannik Sinner (ITA)** — Diestro (Revés 2M) | *Golpeador de Ritmo Frenético* (`ID 27`, `P_M_SIN_NG.sdo`, retrato `photo_L/27.dds` sin viñeta vía PhotoCraft, jugable y verificado en partido con `0` asserts)
 - [ ] **09. Daniil Medvedev (RUS)** — Diestro (Revés 2M) | *Muro Heterodoxo / Contragolpeador Profundo*
 - [ ] **10. Alexander Zverev (GER)** — Diestro (Revés 2M) | *Gran Sacador + Potencia de Revés*
 - [ ] **11. Stefanos Tsitsipas (GRE)** — Diestro (Revés 1M) | *Ataque de Derecha y Red*
@@ -117,6 +117,6 @@ Este documento es nuestra hoja de ruta viva. Iremos marcando con `[x]` cada elem
 
 ---
 
-### Estado verificado de los 12 nuevos IDs (`26..37`, Hito B + fuentes Hito D)
+### Estado verificado de los 12 nuevos IDs (`26..37`, Hito B + Hito D)
 - **Matriz jugable (`test_roster_matrix.py --ids 26..37`)**: Los 12 (`26` Alcaraz, `27` Sinner, `28` Sampras, `29` Agassi, `30` Borg, `31` McEnroe, `32` Graf, `33` Serena, `34` Świątek, `35` Sabalenka, `36` Kuerten, `37` Navratilova) cargan en partido, se mueven y sacan (`served=1`, `PlayStyle=0`, `ExbAdv=0`, `Exc=0`) tras mapear `0x0053d6d0` (`0x007baaa8`).
-- **Fuentes de retratos**: 12 originales CC/PD y `manifest.json` guardados en `assets/portraits_src/`. Pendiente de ejecutar el pase de recorte/restauración con Nano Banana y reexportar `photo_L/26..37.dds` sin viñeta circular (bloqueado temporalmente por cuota de `gemini-3.1-flash-image`).
+- **Retratos `photo_L/26..37.dds` (Hito D completado)**: 12 originales CC/PD y `manifest.json` en `assets/portraits_src/` (incluyendo `29` Agassi Indian Wells 2006 en pista y `32` Graf Wimbledon 2009 en color), recortados con **PhotoCraft CLI** y normalizados en `tools/build_legends_roster.py` al encuadre oficial VT4 (`256x256` BGRA 32bpp sin mipmaps, `262,272` bytes, `pf_flags=0x41`, cero viñeta circular), con verificación en `Página 2/2` dentro del juego (`0` asserts, `0` excepciones).

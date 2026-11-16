@@ -21,7 +21,8 @@ from compile_fwdatadb import compile_fwdatadb, decompile_fwdatadb
 from dxt_codec import encode_dds
 from make_madrid_blue_clay import recolor_dds_blocks
 
-REAL_PHOTOS_DIR = r"C:\Users\acorr\.gemini\antigravity\brain\22a1c44f-d683-498e-b4f7-f89eb5b5386f\scratch\portraits_real"
+PORTRAITS_SRC_DIR = os.path.join(REPO_ROOT, "assets", "portraits_src")
+PHOTOCRAFT_CLI = r"C:\Program Files\ArtCraft\PhotoCraft\photocraft-cli.exe"
 
 # 12 New Legends & Next-Gen Superstars mapped to fwDataDB_Player IDs 26..37
 NEW_STARS = [
@@ -127,7 +128,8 @@ NEW_STARS = [
 def update_player_db():
     tpl_txt = os.path.join(REPO_ROOT, "extracted", "Config", "Fraw", "fwDataDB", "fwDataDB_Player.txt")
     bin_path = os.path.join(REPO_ROOT, "game", "archive", "Config", "Fraw", "fwDataDB", "fwDataDB_Player.bin")
-    tmp_txt = os.path.join(os.path.dirname(REAL_PHOTOS_DIR), "fwDataDB_Player_expanded.txt")
+    import tempfile
+    tmp_txt = os.path.join(tempfile.gettempdir(), "fwDataDB_Player_expanded.txt")
 
     lines = decompile_fwdatadb(bin_path, template_path=tpl_txt)
     by_slot_key = {s["id"]: s for s in NEW_STARS}
@@ -167,37 +169,344 @@ def update_player_db():
     print(f"Updated {bin_path} with 12 Legends & Next-Gen players (IDs 26..37)")
 
 
+def _portrait_pre_crop(src_path, box, round_dims=True, pad_top=0):
+    im = Image.open(src_path).convert("RGB")
+    w, h = im.size
+    cr = im.crop((int(box[0] * w), int(box[1] * h), int(box[2] * w), int(box[3] * h)))
+    cw, ch = cr.size
+    sc = 512.0 / max(cw, ch)
+    if round_dims:
+        nw, nh = int(round(cw * sc)), int(round(ch * sc))
+    else:
+        nw, nh = int(cw * sc), int(ch * sc)
+    rs = cr.resize((nw, nh), Image.Resampling.LANCZOS)
+    sq = Image.new("RGB", (512, 512 + pad_top), rs.getpixel((256 if pad_top else 0, 2 if pad_top else 0)))
+    sq.paste(rs, ((512 - nw) // 2, 512 - nh + pad_top))
+    return sq
+
+
+def _run_photocraft(cli_path, in_path, out_path, cmds):
+    import json
+    import subprocess
+
+    args = [cli_path, "run", in_path]
+    for cid, params in cmds:
+        args += ["--cmd", cid]
+        if params is not None:
+            args += ["--params", json.dumps(params)]
+    args += ["--out", out_path]
+    res = subprocess.run(args, capture_output=True, text=True)
+    if res.returncode != 0:
+        raise RuntimeError(f"PhotoCraft failed on {in_path}:\n{res.stdout}\n{res.stderr}")
+    return Image.open(out_path).convert("RGBA")
+
+
+def _erase_poly(im, pts, blur=0.8):
+    from PIL import ImageChops, ImageDraw, ImageFilter
+
+    r, g, b, a = im.split()
+    m = Image.new("L", im.size, 255)
+    ImageDraw.Draw(m).polygon([tuple(p) for p in pts], fill=0)
+    if blur > 0:
+        m = m.filter(ImageFilter.GaussianBlur(blur))
+    a = ImageChops.multiply(a, m)
+    return Image.merge("RGBA", (r, g, b, a))
+
+
+def _erase_rect(im, x0, y0, x1, y1, blur=0.5):
+    return _erase_poly(im, [(x0, y0), (x1, y0), (x1, y1), (x0, y1)], blur=blur)
+
+
+def _erase_yellow_green_grass(im, x0, y0, x1, y1):
+    from PIL import ImageChops, ImageFilter
+
+    px = im.load()
+    m = Image.new("L", im.size, 255)
+    mpx = m.load()
+    for y in range(max(0, y0), min(im.height, y1)):
+        for x in range(max(0, x0), min(im.width, x1)):
+            r, g, b, a = px[x, y]
+            if a > 0 and g >= r - 6 and (g - b) > 22 and not (r > 185 and b > 155):
+                mpx[x, y] = 0
+    m = m.filter(ImageFilter.GaussianBlur(0.8))
+    r, g, b, a = im.split()
+    a = ImageChops.multiply(a, m)
+    return Image.merge("RGBA", (r, g, b, a))
+
+
+def _frame_vt4_portrait(im, box):
+    cr = im.crop(box).convert("RGBa")
+    rs = cr.resize((256, 256), Image.Resampling.LANCZOS).convert("RGBA")
+    r, g, b, a = rs.split()
+    a = a.point(lambda v: 0 if v <= 6 else v)
+    return Image.merge("RGBA", (r, g, b, a))
+
+
 def build_real_portraits():
+    import json
+    import shutil
+    import tempfile
+    from PIL import ImageChops, ImageEnhance, ImageFilter
+
+    cli = os.environ.get("PHOTOCRAFT_CLI") or shutil.which("photocraft-cli") or PHOTOCRAFT_CLI
+    if not os.path.isfile(cli):
+        raise FileNotFoundError(f"PhotoCraft CLI not found at {cli}; set PHOTOCRAFT_CLI")
+
+    manifest_path = os.path.join(PORTRAITS_SRC_DIR, "manifest.json")
+    with open(manifest_path, "r", encoding="utf-8") as f:
+        src_by_id = {int(item["id"]): os.path.join(PORTRAITS_SRC_DIR, item["orig_file"]) for item in json.load(f)}
+
     out_dir = os.path.join(REPO_ROOT, "game", "archive", "HIGH", "Frontend", "VR", "photo_L")
     os.makedirs(out_dir, exist_ok=True)
-    for st in NEW_STARS:
-        src = os.path.join(REAL_PHOTOS_DIR, st["photo"])
-        im = Image.open(src).convert("RGBA")
-        w, h = im.size
-        s = min(w, h)
-        # Upper-center crop centered on face
-        sq = im.crop(((w - s) // 2, 0, (w - s) // 2 + s, s)).resize((256, 256), Image.Resampling.LANCZOS)
-        # Apply soft elliptical edge fade so real photos blend cleanly into the silver VT4 panel
-        px = bytearray(sq.tobytes())
-        for y in range(256):
-            dy = (y - 124.0) / 120.0
-            for x in range(256):
-                dx = (x - 127.5) / 116.0
-                r = math.sqrt(dx * dx + dy * dy)
-                if r >= 0.98:
-                    alpha = 0
-                elif r > 0.78:
-                    t = (0.98 - r) / 0.20
-                    alpha = int(255 * (t * t * (3.0 - 2.0 * t)))
-                else:
-                    alpha = 255
-                px[(y * 256 + x) * 4 + 3] = alpha
-        vignetted = Image.frombytes("RGBA", (256, 256), bytes(px))
-        dds = encode_dds(vignetted, b"RGBA")
-        out_path = os.path.join(out_dir, f"{st['id']}.dds")
-        with open(out_path, "wb") as f:
-            f.write(dds)
-        print(f"Wrote {out_path} ({len(dds)} bytes)")
+
+    # Per-ID pre-crop boxes (from repo assets/portraits_src/) and PhotoCraft cutout recipes matching VT4 bust framing
+    pre_specs = {
+        26: ((0.22, 0.30, 0.72, 0.96), True,  0),
+        27: ((0.02, 0.00, 0.98, 0.82), True,  0),
+        28: ((0.22, 0.14, 0.82, 0.56), True,  0),
+        29: ((0.14, 0.03, 0.72, 0.44), True,  0),
+        30: ((0.00, 0.04, 1.00, 0.82), True,  0),
+        31: ((0.36, 0.21, 0.65, 0.62), True,  0),
+        32: ((0.10, 0.04, 0.86, 0.56), False, 0),
+        33: ((0.32, 0.11, 0.84, 0.45), False, 0),
+        34: ((0.02, 0.00, 0.98, 0.78), True,  0),
+        35: ((0.02, 0.04, 0.98, 0.72), True,  48),
+        36: ((0.05, 0.12, 0.92, 0.66), True,  0),
+        37: ((0.04, 0.06, 0.92, 0.72), True,  0),
+    }
+
+    pc_cmds = {
+        26: [
+            ("layer.removeBackground", {"refine": True}),
+            ("select.rect", {"x": 0, "y": 115, "width": 106, "height": 397}),
+            ("edit.fill", {"contents": "black", "target": "mask"}),
+            ("select.deselect", None),
+            ("layer.layerMask.apply", None),
+            ("layer.matting.colorDecontaminate", {"amount": 80, "radius": 3}),
+        ],
+        27: [
+            ("layer.removeBackground", {"refine": True}),
+            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 9, "hardness": 0.9,
+                              "points": [[48, 0], [54, 42], [68, 138]]}),
+            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 8, "hardness": 0.9,
+                              "points": [[54, 42], [75, 62], [104, 65], [136, 48], [172, 2]]}),
+            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 9, "hardness": 0.9,
+                              "points": [[136, 48], [105, 92], [76, 138]]}),
+            ("select.rect", {"x": 0, "y": 374, "width": 182, "height": 138}),
+            ("edit.fill", {"contents": "black", "target": "mask"}),
+            ("select.deselect", None),
+            ("layer.layerMask.apply", None),
+            ("layer.matting.colorDecontaminate", {"amount": 80, "radius": 3}),
+        ],
+        28: [
+            ("layer.removeBackground", {"refine": True}),
+            ("select.rect", {"x": 0, "y": 0, "width": 122, "height": 512}),
+            ("edit.fill", {"contents": "black", "target": "mask"}),
+            ("select.deselect", None),
+            ("layer.layerMask.apply", None),
+            ("layer.matting.colorDecontaminate", {"amount": 80, "radius": 3}),
+            ("filter.sharpen.smartSharpen", {"amount": 85, "radius": 1.0, "reduceNoise": 30}),
+        ],
+        29: [
+            ("layer.removeBackground", {"refine": True}),
+            ("layer.layerMask.apply", None),
+            ("layer.matting.colorDecontaminate", {"amount": 80, "radius": 3}),
+        ],
+        30: [
+            ("layer.removeBackground", {"refine": True}),
+            ("select.rect", {"x": 486, "y": 0, "width": 26, "height": 512}),
+            ("select.rect", {"x": 445, "y": 390, "width": 67, "height": 122, "mode": "add"}),
+            ("edit.fill", {"contents": "black", "target": "mask"}),
+            ("select.deselect", None),
+            ("layer.layerMask.apply", None),
+            ("filter.sharpen.smartSharpen", {"amount": 80, "radius": 1.0, "reduceNoise": 30}),
+        ],
+        31: [
+            ("image.autoContrast", None),
+            ("layer.layerMask.hideAll", None),
+            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 3, "hardness": 0.85, "fill": True,
+                              "points": [
+                                  [254, 128], [280, 114], [316, 120], [332, 140], [326, 174], [320, 192],
+                                  [350, 210], [390, 242], [428, 266], [462, 266], [486, 212], [512, 210],
+                                  [512, 240], [488, 258], [468, 282], [422, 288], [375, 260], [342, 272],
+                                  [332, 345], [332, 418], [314, 444], [344, 480], [366, 512], [202, 512],
+                                  [218, 476], [192, 456], [194, 428], [206, 360], [206, 276], [174, 284],
+                                  [125, 312], [64, 344], [38, 340], [46, 322], [112, 294], [172, 254],
+                                  [214, 198], [264, 194], [258, 184], [250, 158], [252, 142]
+                              ]}),
+            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 9, "hardness": 0.9,
+                              "points": [
+                                  [286, 42], [322, 40], [365, 62], [392, 95], [392, 124],
+                                  [358, 132], [312, 110], [282, 72], [286, 42]
+                              ]}),
+            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 11, "hardness": 0.9,
+                              "points": [[376, 126], [426, 165], [476, 206]]}),
+            ("layer.layerMask.apply", None),
+            ("filter.sharpen.smartSharpen", {"amount": 80, "radius": 1.0, "reduceNoise": 25}),
+        ],
+        32: [
+            ("layer.removeBackground", {"refine": True}),
+            ("select.rect", {"x": 388, "y": 182, "width": 124, "height": 106}),
+            ("edit.fill", {"contents": "black", "target": "mask"}),
+            ("select.deselect", None),
+            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 20, "hardness": 0.9,
+                              "points": [[215, 290], [275, 290], [250, 355], [275, 385], [210, 385], [235, 340]]}),
+            ("layer.layerMask.apply", None),
+            ("layer.matting.colorDecontaminate", {"amount": 75, "radius": 3}),
+            ("filter.sharpen.smartSharpen", {"amount": 75, "radius": 1.0, "reduceNoise": 25}),
+        ],
+        33: [
+            ("layer.removeBackground", {"refine": True}),
+            ("layer.layerMask.apply", None),
+            ("layer.matting.colorDecontaminate", {"amount": 80, "radius": 3}),
+        ],
+        34: [
+            ("layer.removeBackground", {"refine": True}),
+            ("layer.layerMask.apply", None),
+            ("layer.matting.colorDecontaminate", {"amount": 80, "radius": 3}),
+        ],
+        35: [
+            ("layer.removeBackground", {"refine": True}),
+            ("select.rect", {"x": 432, "y": 365, "width": 80, "height": 115}),
+            ("select.rect", {"x": 0, "y": 475, "width": 95, "height": 85, "mode": "add"}),
+            ("edit.fill", {"contents": "black", "target": "mask"}),
+            ("select.deselect", None),
+            ("layer.layerMask.apply", None),
+            ("paint.magicEraser", {"x": 115, "y": 403, "tolerance": 42, "contiguous": True}),
+            ("paint.magicEraser", {"x": 145, "y": 433, "tolerance": 42, "contiguous": True}),
+            ("paint.magicEraser", {"x": 155, "y": 383, "tolerance": 42, "contiguous": True}),
+            ("layer.matting.colorDecontaminate", {"amount": 80, "radius": 3}),
+        ],
+        36: [
+            ("select.colorRange", {"points": [[45, 50], [390, 65], [450, 200], [50, 420], [95, 304]],
+                                   "fuzziness": 72, "invert": True}),
+            ("select.rect", {"x": 0, "y": 0, "width": 205, "height": 245, "mode": "subtract"}),
+            ("select.rect", {"x": 0, "y": 0, "width": 512, "height": 38, "mode": "subtract"}),
+            ("select.rect", {"x": 370, "y": 330, "width": 142, "height": 182, "mode": "subtract"}),
+            ("layer.layerMask.revealSelection", None),
+            ("select.deselect", None),
+            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 16, "hardness": 0.9, "fill": True,
+                              "points": [[220, 72], [274, 74], [294, 175], [325, 220], [344, 390], [340, 512], [198, 512], [220, 360], [228, 185]]}),
+            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 13, "hardness": 0.9,
+                              "points": [[8, 95], [22, 165], [32, 245], [50, 272], [105, 294], [155, 292], [228, 282]]}),
+            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 12, "hardness": 0.9,
+                              "points": [[180, 274], [212, 272], [244, 276]]}),
+            ("layer.layerMask.apply", None),
+            ("layer.matting.colorDecontaminate", {"amount": 75, "radius": 3}),
+            ("filter.sharpen.smartSharpen", {"amount": 85, "radius": 1.0, "reduceNoise": 25}),
+        ],
+        37: [
+            ("image.autoContrast", None),
+            ("layer.layerMask.hideAll", None),
+            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 3, "hardness": 0.85, "fill": True,
+                              "points": [
+                                  [292, 188], [308, 152], [338, 130], [378, 124], [406, 140], [424, 172],
+                                  [432, 214], [424, 248], [408, 266], [404, 286], [436, 322],
+                                  [450, 372], [454, 426], [432, 456], [448, 512], [42, 512],
+                                  [66, 474], [108, 434], [140, 386], [190, 330], [242, 290],
+                                  [276, 264], [296, 236], [288, 206]
+                              ]}),
+            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 11, "hardness": 0.9,
+                              "points": [[165, 0], [225, 130], [290, 282], [320, 345]]}),
+            ("layer.layerMask.apply", None),
+            ("filter.sharpen.smartSharpen", {"amount": 80, "radius": 1.0, "reduceNoise": 25}),
+        ],
+    }
+
+    crop_vt4 = {
+        26: (80,   0, 384, 304),
+        27: (16,   0, 488, 472),
+        28: (106, 40, 406, 340),
+        29: (14,   8, 422, 416),
+        30: (40,  16, 512, 488),
+        31: (126, 28, 496, 398),
+        32: (104, 92, 412, 400),
+        33: (24,  10, 492, 478),
+        34: (18,  10, 492, 484),
+        35: (32,  26, 456, 450),
+        36: (12,  34, 424, 446),
+        37: (116, 62, 492, 438),
+    }
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        for st in NEW_STARS:
+            pid = int(st["id"])
+            box, round_dims, pad_top = pre_specs[pid]
+            pre_img = _portrait_pre_crop(src_by_id[pid], box, round_dims=round_dims, pad_top=pad_top)
+            in_p = os.path.join(tmpdir, f"in_{pid}.png")
+            out_p = os.path.join(tmpdir, f"pc_{pid}.png")
+            pre_img.save(in_p)
+
+            im = _run_photocraft(cli, in_p, out_p, pc_cmds[pid])
+            if pad_top:
+                im = im.crop((0, pad_top, 512, 512 + pad_top))
+
+            if pid == 27:
+                im = _erase_poly(im, [(128, 355), (195, 326), (214, 405), (235, 480), (240, 512), (128, 512)], blur=0.8)
+                im = _erase_poly(im, [(68, 0), (150, 0), (128, 42), (98, 54), (72, 46)], blur=0.6)
+                im = _erase_poly(im, [(75, 70), (118, 62), (82, 112)], blur=0.6)
+                im = _erase_rect(im, 0, 365, 182, 512, blur=0.5)
+            elif pid == 33:
+                r, g, b, a = im.split()
+                rgb = ImageEnhance.Brightness(Image.merge("RGB", (r, g, b))).enhance(1.12)
+                rgb = ImageEnhance.Contrast(rgb).enhance(1.06)
+                r2, g2, b2 = rgb.split()
+                im = Image.merge("RGBA", (r2, g2, b2, a))
+            elif pid == 34:
+                im = _erase_rect(im, 202, 0, 236, 22, blur=0.6)
+            elif pid == 35:
+                px = im.load()
+                for y in range(410, 512):
+                    for x in range(0, 102):
+                        r, g, b, a = px[x, y]
+                        if a > 0 and abs(r - g) < 28 and abs(g - b) < 28 and r > 70:
+                            px[x, y] = (r, g, b, 0)
+                im = _erase_rect(im, 0, 428, 42, 512, blur=0.6)
+            elif pid == 36:
+                im = _erase_poly(im, [(20, 276), (105, 302), (165, 306), (196, 306), (196, 338), (85, 326), (20, 294)], blur=0.8)
+                im = _erase_poly(im, [(190, 160), (206, 160), (205, 255), (188, 255)], blur=0.8)
+                im = _erase_poly(im, [(286, 85), (314, 85), (314, 170), (294, 170)], blur=0.8)
+                im = _erase_yellow_green_grass(im, 20, 260, 210, 340)
+
+            framed = _frame_vt4_portrait(im, crop_vt4[pid])
+
+            if pid == 32:
+                # Targeted grass bokeh removal on framed 256x256 without touching skin, hair, ring, or white fabric
+                px = framed.load()
+                m = Image.new("L", (256, 256), 255)
+                mpx = m.load()
+                zones = [
+                    (22, 98, 72, 208),
+                    (22, 195, 58, 240),
+                    (184, 88, 246, 154),
+                    (184, 152, 248, 202),
+                ]
+                for x0, y0, x1, y1 in zones:
+                    for y in range(y0, y1):
+                        for x in range(x0, x1):
+                            r, g, b, a = px[x, y]
+                            if a == 0:
+                                continue
+                            if x > 216 and y < 128:
+                                mpx[x, y] = 0
+                            elif (g >= r - 8) and ((g - b) >= 12) and (r < 205):
+                                mpx[x, y] = 0
+                m_er = m.filter(ImageFilter.MinFilter(3)).filter(ImageFilter.GaussianBlur(0.5))
+                m2 = Image.new("L", (256, 256), 255)
+                m2px, mpx = m2.load(), m_er.load()
+                for x0, y0, x1, y1 in zones:
+                    for y in range(y0, y1):
+                        for x in range(x0, x1):
+                            m2px[x, y] = min(m2px[x, y], mpx[x, y])
+                r, g, b, a = framed.split()
+                a = ImageChops.multiply(a, m2).point(lambda v: 0 if v <= 6 else v)
+                framed = Image.merge("RGBA", (r, g, b, a))
+
+            dds = encode_dds(framed, b"RGBA")
+            out_path = os.path.join(out_dir, f"{pid}.dds")
+            with open(out_path, "wb") as f:
+                f.write(dds)
+            print(f"Wrote {out_path} ({len(dds)} bytes)")
 
 
 def build_player_models():
