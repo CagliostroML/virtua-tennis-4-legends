@@ -185,20 +185,61 @@ def _portrait_pre_crop(src_path, box, round_dims=True, pad_top=0):
     return sq
 
 
-def _run_photocraft(cli_path, in_path, out_path, cmds):
+def _run_photocraft_mcp_session(cli_path, workdir, jobs):
     import json
     import subprocess
 
-    args = [cli_path, "run", in_path]
-    for cid, params in cmds:
-        args += ["--cmd", cid]
+    root = workdir.replace("\\", "/")
+    proc = subprocess.Popen(
+        [cli_path, "mcp", "--automation-read-root", root, "--automation-write-root", root],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    req_id = 0
+
+    def send_only(obj):
+        proc.stdin.write(json.dumps(obj) + "\n")
+        proc.stdin.flush()
+
+    def rpc(method, params=None):
+        nonlocal req_id
+        req_id += 1
+        req = {"jsonrpc": "2.0", "id": req_id, "method": method}
         if params is not None:
-            args += ["--params", json.dumps(params)]
-    args += ["--out", out_path]
-    res = subprocess.run(args, capture_output=True, text=True)
-    if res.returncode != 0:
-        raise RuntimeError(f"PhotoCraft failed on {in_path}:\n{res.stdout}\n{res.stderr}")
-    return Image.open(out_path).convert("RGBA")
+            req["params"] = params
+        send_only(req)
+        while True:
+            line = proc.stdout.readline()
+            if not line:
+                raise RuntimeError(f"PhotoCraft MCP EOF: {proc.stderr.read()}")
+            resp = json.loads(line)
+            if resp.get("id") == req_id:
+                if "error" in resp:
+                    raise RuntimeError(f"PhotoCraft MCP error: {resp}")
+                if resp.get("result", {}).get("isError"):
+                    raise RuntimeError(f"PhotoCraft MCP tool error: {resp}")
+                return resp["result"]
+
+    results = {}
+    try:
+        rpc("initialize", {"protocolVersion": "2024-11-05", "capabilities": {}, "clientInfo": {"name": "vt4-roster", "version": "1.0"}})
+        send_only({"jsonrpc": "2.0", "method": "notifications/initialized"})
+
+        for pid, in_path, out_path, steps in jobs:
+            rpc("tools/call", {"name": "doc_open", "arguments": {"path": in_path.replace("\\", "/")}})
+            res = rpc("tools/call", {"name": "command_batch", "arguments": {"steps": steps}})
+            parsed = json.loads(res["content"][0]["text"])
+            if parsed.get("failed", 0) > 0:
+                raise RuntimeError(f"PhotoCraft MCP batch failed on ID {pid}: {parsed}")
+            rpc("tools/call", {"name": "doc_save", "arguments": {"path": out_path.replace("\\", "/")}})
+            rpc("tools/call", {"name": "doc_close"})
+            results[pid] = Image.open(out_path).convert("RGBA")
+    finally:
+        proc.stdin.close()
+        proc.wait(timeout=10)
+    return results
 
 
 def _erase_poly(im, pts, blur=0.8):
@@ -259,157 +300,168 @@ def build_real_portraits():
     out_dir = os.path.join(REPO_ROOT, "game", "archive", "HIGH", "Frontend", "VR", "photo_L")
     os.makedirs(out_dir, exist_ok=True)
 
-    # Per-ID pre-crop boxes (from repo assets/portraits_src/) and PhotoCraft cutout recipes matching VT4 bust framing
+    # Per-ID pre-crop boxes (from repo assets/portraits_src/) matching VT4 bust framing
     pre_specs = {
-        26: ((0.22, 0.30, 0.72, 0.96), True,  0),
-        27: ((0.02, 0.00, 0.98, 0.82), True,  0),
-        28: ((0.22, 0.14, 0.82, 0.56), True,  0),
-        29: ((0.14, 0.03, 0.72, 0.44), True,  0),
-        30: ((0.00, 0.04, 1.00, 0.82), True,  0),
-        31: ((0.36, 0.21, 0.65, 0.62), True,  0),
-        32: ((0.10, 0.04, 0.86, 0.56), False, 0),
-        33: ((0.32, 0.11, 0.84, 0.45), False, 0),
-        34: ((0.02, 0.00, 0.98, 0.78), True,  0),
-        35: ((0.02, 0.04, 0.98, 0.72), True,  48),
-        36: ((0.05, 0.12, 0.92, 0.66), True,  0),
-        37: ((0.04, 0.06, 0.92, 0.72), True,  0),
+        26: ((0.22, 0.30, 0.72, 0.96), True),
+        27: ((0.02, 0.00, 0.98, 0.82), True),
+        28: ((0.22, 0.14, 0.82, 0.56), True),
+        29: ((0.14, 0.03, 0.72, 0.44), True),
+        30: ((0.00, 0.04, 1.00, 0.82), True),
+        31: ((0.36, 0.21, 0.65, 0.62), True),
+        32: ((0.10, 0.04, 0.86, 0.56), False),
+        33: ((0.32, 0.11, 0.84, 0.45), False),
+        34: ((0.02, 0.00, 0.98, 0.78), True),
+        35: ((0.02, 0.01, 0.98, 0.69), True),
+        36: ((0.05, 0.12, 0.92, 0.66), True),
+        37: ((0.04, 0.06, 0.92, 0.72), True),
     }
 
-    pc_cmds = {
+    pc_steps = {
         26: [
-            ("layer.removeBackground", {"refine": True}),
-            ("select.rect", {"x": 0, "y": 115, "width": 106, "height": 397}),
-            ("edit.fill", {"contents": "black", "target": "mask"}),
-            ("select.deselect", None),
-            ("layer.layerMask.apply", None),
-            ("layer.matting.colorDecontaminate", {"amount": 80, "radius": 3}),
+            {"id": "layer.removeBackground", "params": {"refine": True}},
+            {"id": "select.rect", "params": {"x": 0, "y": 115, "width": 106, "height": 397}},
+            {"id": "edit.fill", "params": {"contents": "black", "target": "mask"}},
+            {"id": "select.deselect"},
+            {"id": "layer.layerMask.apply"},
+            {"id": "layer.matting.colorDecontaminate", "params": {"amount": 80, "radius": 3}},
+            {"id": "layer.matting.defringe", "params": {"width": 1}},
+            {"id": "image.adjustments.shadowsHighlights", "params": {"shadowAmount": 12, "highlightAmount": 10}},
         ],
         27: [
-            ("layer.removeBackground", {"refine": True}),
-            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 9, "hardness": 0.9,
-                              "points": [[48, 0], [54, 42], [68, 138]]}),
-            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 8, "hardness": 0.9,
-                              "points": [[54, 42], [75, 62], [104, 65], [136, 48], [172, 2]]}),
-            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 9, "hardness": 0.9,
-                              "points": [[136, 48], [105, 92], [76, 138]]}),
-            ("select.rect", {"x": 0, "y": 374, "width": 182, "height": 138}),
-            ("edit.fill", {"contents": "black", "target": "mask"}),
-            ("select.deselect", None),
-            ("layer.layerMask.apply", None),
-            ("layer.matting.colorDecontaminate", {"amount": 80, "radius": 3}),
+            {"id": "layer.removeBackground", "params": {"refine": True}},
+            {"id": "paint.stroke", "params": {"target": "mask", "color": "#ffffff", "size": 9, "hardness": 0.9, "points": [[48, 0], [54, 42], [68, 138]]}},
+            {"id": "paint.stroke", "params": {"target": "mask", "color": "#ffffff", "size": 8, "hardness": 0.9, "points": [[54, 42], [75, 62], [104, 65], [136, 48], [172, 2]]}},
+            {"id": "paint.stroke", "params": {"target": "mask", "color": "#ffffff", "size": 9, "hardness": 0.9, "points": [[136, 48], [105, 92], [76, 138]]}},
+            {"id": "select.rect", "params": {"x": 0, "y": 374, "width": 182, "height": 138}},
+            {"id": "edit.fill", "params": {"contents": "black", "target": "mask"}},
+            {"id": "select.deselect"},
+            {"id": "layer.layerMask.apply"},
+            {"id": "layer.matting.colorDecontaminate", "params": {"amount": 80, "radius": 3}},
+            {"id": "layer.matting.defringe", "params": {"width": 1}},
+            {"id": "image.adjustments.shadowsHighlights", "params": {"shadowAmount": 12, "highlightAmount": 8}},
         ],
         28: [
-            ("layer.removeBackground", {"refine": True}),
-            ("select.rect", {"x": 0, "y": 0, "width": 122, "height": 512}),
-            ("edit.fill", {"contents": "black", "target": "mask"}),
-            ("select.deselect", None),
-            ("layer.layerMask.apply", None),
-            ("layer.matting.colorDecontaminate", {"amount": 80, "radius": 3}),
-            ("filter.sharpen.smartSharpen", {"amount": 85, "radius": 1.0, "reduceNoise": 30}),
+            {"id": "filter.noise.reduceNoise", "params": {"strength": 4, "preserveDetails": 75, "reduceColorNoise": 50, "sharpenDetails": 20, "removeJpegArtifact": True}},
+            {"id": "layer.removeBackground", "params": {"refine": True}},
+            {"id": "select.rect", "params": {"x": 0, "y": 0, "width": 122, "height": 512}},
+            {"id": "edit.fill", "params": {"contents": "black", "target": "mask"}},
+            {"id": "select.deselect"},
+            {"id": "layer.layerMask.apply"},
+            {"id": "layer.matting.colorDecontaminate", "params": {"amount": 80, "radius": 3}},
+            {"id": "layer.matting.defringe", "params": {"width": 1}},
+            {"id": "image.adjustments.shadowsHighlights", "params": {"shadowAmount": 8, "highlightAmount": 32, "color": 10}},
+            {"id": "filter.sharpen.smartSharpen", "params": {"amount": 75, "radius": 1.0, "reduceNoise": 25}},
         ],
         29: [
-            ("layer.removeBackground", {"refine": True}),
-            ("layer.layerMask.apply", None),
-            ("layer.matting.colorDecontaminate", {"amount": 80, "radius": 3}),
+            {"id": "layer.removeBackground", "params": {"refine": True}},
+            {"id": "layer.layerMask.apply"},
+            {"id": "layer.matting.colorDecontaminate", "params": {"amount": 80, "radius": 3}},
+            {"id": "layer.matting.defringe", "params": {"width": 1}},
+            {"id": "image.adjustments.shadowsHighlights", "params": {"shadowAmount": 10, "highlightAmount": 28, "color": 10}},
         ],
         30: [
-            ("layer.removeBackground", {"refine": True}),
-            ("select.rect", {"x": 486, "y": 0, "width": 26, "height": 512}),
-            ("select.rect", {"x": 445, "y": 390, "width": 67, "height": 122, "mode": "add"}),
-            ("edit.fill", {"contents": "black", "target": "mask"}),
-            ("select.deselect", None),
-            ("layer.layerMask.apply", None),
-            ("filter.sharpen.smartSharpen", {"amount": 80, "radius": 1.0, "reduceNoise": 30}),
+            {"id": "filter.noise.reduceNoise", "params": {"strength": 4, "preserveDetails": 75, "reduceColorNoise": 0, "sharpenDetails": 20, "removeJpegArtifact": True}},
+            {"id": "layer.removeBackground", "params": {"refine": True}},
+            {"id": "select.rect", "params": {"x": 486, "y": 0, "width": 26, "height": 512}},
+            {"id": "select.rect", "params": {"x": 445, "y": 390, "width": 67, "height": 122, "mode": "add"}},
+            {"id": "edit.fill", "params": {"contents": "black", "target": "mask"}},
+            {"id": "select.deselect"},
+            {"id": "layer.layerMask.apply"},
+            {"id": "layer.matting.defringe", "params": {"width": 1}},
+            {"id": "image.adjustments.brightnessContrast", "params": {"brightness": 4, "contrast": 14}},
+            {"id": "filter.sharpen.smartSharpen", "params": {"amount": 70, "radius": 1.0, "reduceNoise": 30}},
         ],
         31: [
-            ("image.autoContrast", None),
-            ("layer.layerMask.hideAll", None),
-            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 3, "hardness": 0.85, "fill": True,
-                              "points": [
-                                  [254, 128], [280, 114], [316, 120], [332, 140], [326, 174], [320, 192],
-                                  [350, 210], [390, 242], [428, 266], [462, 266], [486, 212], [512, 210],
-                                  [512, 240], [488, 258], [468, 282], [422, 288], [375, 260], [342, 272],
-                                  [332, 345], [332, 418], [314, 444], [344, 480], [366, 512], [202, 512],
-                                  [218, 476], [192, 456], [194, 428], [206, 360], [206, 276], [174, 284],
-                                  [125, 312], [64, 344], [38, 340], [46, 322], [112, 294], [172, 254],
-                                  [214, 198], [264, 194], [258, 184], [250, 158], [252, 142]
-                              ]}),
-            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 9, "hardness": 0.9,
-                              "points": [
-                                  [286, 42], [322, 40], [365, 62], [392, 95], [392, 124],
-                                  [358, 132], [312, 110], [282, 72], [286, 42]
-                              ]}),
-            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 11, "hardness": 0.9,
-                              "points": [[376, 126], [426, 165], [476, 206]]}),
-            ("layer.layerMask.apply", None),
-            ("filter.sharpen.smartSharpen", {"amount": 80, "radius": 1.0, "reduceNoise": 25}),
+            {"id": "filter.noise.reduceNoise", "params": {"strength": 4, "preserveDetails": 75, "reduceColorNoise": 0, "sharpenDetails": 20, "removeJpegArtifact": True}},
+            {"id": "image.autoContrast"},
+            {"id": "image.adjustments.shadowsHighlights", "params": {"shadowAmount": 18, "highlightAmount": 12}},
+            {"id": "layer.layerMask.hideAll"},
+            {"id": "paint.stroke", "params": {"target": "mask", "color": "#ffffff", "size": 3, "hardness": 0.85, "fill": True, "points": [
+                [254, 128], [280, 114], [316, 120], [332, 140], [326, 174], [320, 192],
+                [350, 210], [390, 242], [428, 266], [462, 266], [486, 212], [512, 210],
+                [512, 240], [488, 258], [468, 282], [422, 288], [375, 260], [342, 272],
+                [332, 345], [332, 418], [314, 444], [344, 480], [366, 512], [202, 512],
+                [218, 476], [192, 456], [194, 428], [206, 360], [206, 276], [174, 284],
+                [125, 312], [64, 344], [38, 340], [46, 322], [112, 294], [172, 254],
+                [214, 198], [264, 194], [258, 184], [250, 158], [252, 142]
+            ]}},
+            {"id": "paint.stroke", "params": {"target": "mask", "color": "#ffffff", "size": 9, "hardness": 0.9, "points": [
+                [286, 42], [322, 40], [365, 62], [392, 95], [392, 124],
+                [358, 132], [312, 110], [282, 72], [286, 42]
+            ]}},
+            {"id": "paint.stroke", "params": {"target": "mask", "color": "#ffffff", "size": 11, "hardness": 0.9, "points": [[376, 126], [426, 165], [476, 206]]}},
+            {"id": "layer.layerMask.apply"},
+            {"id": "filter.sharpen.smartSharpen", "params": {"amount": 75, "radius": 1.0, "reduceNoise": 25}},
         ],
         32: [
-            ("layer.removeBackground", {"refine": True}),
-            ("select.rect", {"x": 388, "y": 182, "width": 124, "height": 106}),
-            ("edit.fill", {"contents": "black", "target": "mask"}),
-            ("select.deselect", None),
-            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 20, "hardness": 0.9,
-                              "points": [[215, 290], [275, 290], [250, 355], [275, 385], [210, 385], [235, 340]]}),
-            ("layer.layerMask.apply", None),
-            ("layer.matting.colorDecontaminate", {"amount": 75, "radius": 3}),
-            ("filter.sharpen.smartSharpen", {"amount": 75, "radius": 1.0, "reduceNoise": 25}),
+            {"id": "layer.removeBackground", "params": {"refine": True}},
+            {"id": "select.rect", "params": {"x": 388, "y": 182, "width": 124, "height": 106}},
+            {"id": "edit.fill", "params": {"contents": "black", "target": "mask"}},
+            {"id": "select.deselect"},
+            {"id": "paint.stroke", "params": {"target": "mask", "color": "#ffffff", "size": 20, "hardness": 0.9, "points": [[215, 290], [275, 290], [250, 355], [275, 385], [210, 385], [235, 340]]}},
+            {"id": "layer.layerMask.apply"},
+            {"id": "layer.matting.colorDecontaminate", "params": {"amount": 75, "radius": 3}},
+            {"id": "layer.matting.defringe", "params": {"width": 1}},
+            {"id": "image.adjustments.shadowsHighlights", "params": {"shadowAmount": 12, "highlightAmount": 18}},
+            {"id": "filter.sharpen.smartSharpen", "params": {"amount": 75, "radius": 1.0, "reduceNoise": 25}},
         ],
         33: [
-            ("layer.removeBackground", {"refine": True}),
-            ("layer.layerMask.apply", None),
-            ("layer.matting.colorDecontaminate", {"amount": 80, "radius": 3}),
+            {"id": "layer.removeBackground", "params": {"refine": True}},
+            {"id": "layer.layerMask.apply"},
+            {"id": "layer.matting.colorDecontaminate", "params": {"amount": 80, "radius": 3}},
+            {"id": "layer.matting.defringe", "params": {"width": 1}},
+            {"id": "image.adjustments.shadowsHighlights", "params": {"shadowAmount": 42, "shadowTone": 45, "highlightAmount": 12, "color": 15}},
         ],
         34: [
-            ("layer.removeBackground", {"refine": True}),
-            ("layer.layerMask.apply", None),
-            ("layer.matting.colorDecontaminate", {"amount": 80, "radius": 3}),
+            {"id": "layer.removeBackground", "params": {"refine": True}},
+            {"id": "layer.layerMask.apply"},
+            {"id": "layer.matting.colorDecontaminate", "params": {"amount": 80, "radius": 3}},
+            {"id": "layer.matting.defringe", "params": {"width": 1}},
+            {"id": "image.adjustments.shadowsHighlights", "params": {"shadowAmount": 12, "highlightAmount": 12}},
         ],
         35: [
-            ("layer.removeBackground", {"refine": True}),
-            ("select.rect", {"x": 432, "y": 365, "width": 80, "height": 115}),
-            ("select.rect", {"x": 0, "y": 475, "width": 95, "height": 85, "mode": "add"}),
-            ("edit.fill", {"contents": "black", "target": "mask"}),
-            ("select.deselect", None),
-            ("layer.layerMask.apply", None),
-            ("paint.magicEraser", {"x": 115, "y": 403, "tolerance": 42, "contiguous": True}),
-            ("paint.magicEraser", {"x": 145, "y": 433, "tolerance": 42, "contiguous": True}),
-            ("paint.magicEraser", {"x": 155, "y": 383, "tolerance": 42, "contiguous": True}),
-            ("layer.matting.colorDecontaminate", {"amount": 80, "radius": 3}),
+            {"id": "layer.removeBackground", "params": {"refine": True}},
+            {"id": "paint.stroke", "params": {"target": "mask", "color": "#ffffff", "size": 16, "hardness": 0.9, "points": [[138, 86], [185, 78], [234, 86]]}},
+            {"id": "paint.stroke", "params": {"target": "mask", "color": "#ffffff", "size": 10, "hardness": 0.9, "points": [[56, 305], [106, 282], [160, 302], [194, 360], [176, 425], [116, 464], [52, 444], [12, 385], [16, 336], [56, 305]]}},
+            {"id": "select.rect", "params": {"x": 0, "y": 465, "width": 95, "height": 47}},
+            {"id": "edit.fill", "params": {"contents": "black", "target": "mask"}},
+            {"id": "select.deselect"},
+            {"id": "layer.layerMask.apply"},
+            {"id": "layer.matting.colorDecontaminate", "params": {"amount": 80, "radius": 3}},
+            {"id": "layer.matting.defringe", "params": {"width": 1}},
+            {"id": "image.adjustments.shadowsHighlights", "params": {"shadowAmount": 12, "highlightAmount": 12}},
         ],
         36: [
-            ("select.colorRange", {"points": [[45, 50], [390, 65], [450, 200], [50, 420], [95, 304]],
-                                   "fuzziness": 72, "invert": True}),
-            ("select.rect", {"x": 0, "y": 0, "width": 205, "height": 245, "mode": "subtract"}),
-            ("select.rect", {"x": 0, "y": 0, "width": 512, "height": 38, "mode": "subtract"}),
-            ("select.rect", {"x": 370, "y": 330, "width": 142, "height": 182, "mode": "subtract"}),
-            ("layer.layerMask.revealSelection", None),
-            ("select.deselect", None),
-            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 16, "hardness": 0.9, "fill": True,
-                              "points": [[220, 72], [274, 74], [294, 175], [325, 220], [344, 390], [340, 512], [198, 512], [220, 360], [228, 185]]}),
-            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 13, "hardness": 0.9,
-                              "points": [[8, 95], [22, 165], [32, 245], [50, 272], [105, 294], [155, 292], [228, 282]]}),
-            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 12, "hardness": 0.9,
-                              "points": [[180, 274], [212, 272], [244, 276]]}),
-            ("layer.layerMask.apply", None),
-            ("layer.matting.colorDecontaminate", {"amount": 75, "radius": 3}),
-            ("filter.sharpen.smartSharpen", {"amount": 85, "radius": 1.0, "reduceNoise": 25}),
+            {"id": "filter.noise.reduceNoise", "params": {"strength": 4, "preserveDetails": 75, "reduceColorNoise": 50, "sharpenDetails": 20, "removeJpegArtifact": True}},
+            {"id": "select.colorRange", "params": {"points": [[45, 50], [390, 65], [450, 200], [50, 420], [95, 304]], "fuzziness": 72, "invert": True}},
+            {"id": "select.rect", "params": {"x": 0, "y": 0, "width": 205, "height": 245, "mode": "subtract"}},
+            {"id": "select.rect", "params": {"x": 0, "y": 0, "width": 512, "height": 38, "mode": "subtract"}},
+            {"id": "select.rect", "params": {"x": 370, "y": 330, "width": 142, "height": 182, "mode": "subtract"}},
+            {"id": "layer.layerMask.revealSelection"},
+            {"id": "paint.stroke", "params": {"target": "mask", "color": "#ffffff", "size": 16, "hardness": 0.9, "fill": True, "points": [[220, 72], [274, 74], [294, 175], [325, 220], [344, 390], [340, 512], [198, 512], [220, 360], [228, 185]]}},
+            {"id": "paint.stroke", "params": {"target": "mask", "color": "#ffffff", "size": 13, "hardness": 0.9, "points": [[8, 95], [22, 165], [32, 245], [50, 272], [105, 294], [155, 292], [228, 282]]}},
+            {"id": "paint.stroke", "params": {"target": "mask", "color": "#ffffff", "size": 12, "hardness": 0.9, "points": [[180, 274], [212, 272], [244, 276]]}},
+            {"id": "layer.layerMask.apply"},
+            {"id": "layer.matting.colorDecontaminate", "params": {"amount": 75, "radius": 3}},
+            {"id": "layer.matting.defringe", "params": {"width": 1}},
+            {"id": "image.adjustments.shadowsHighlights", "params": {"shadowAmount": 16, "highlightAmount": 22, "color": 12}},
+            {"id": "filter.sharpen.smartSharpen", "params": {"amount": 80, "radius": 1.0, "reduceNoise": 25}},
         ],
         37: [
-            ("image.autoContrast", None),
-            ("layer.layerMask.hideAll", None),
-            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 3, "hardness": 0.85, "fill": True,
-                              "points": [
-                                  [292, 188], [308, 152], [338, 130], [378, 124], [406, 140], [424, 172],
-                                  [432, 214], [424, 248], [408, 266], [404, 286], [436, 322],
-                                  [450, 372], [454, 426], [432, 456], [448, 512], [42, 512],
-                                  [66, 474], [108, 434], [140, 386], [190, 330], [242, 290],
-                                  [276, 264], [296, 236], [288, 206]
-                              ]}),
-            ("paint.stroke", {"target": "mask", "color": "#ffffff", "size": 11, "hardness": 0.9,
-                              "points": [[165, 0], [225, 130], [290, 282], [320, 345]]}),
-            ("layer.layerMask.apply", None),
-            ("filter.sharpen.smartSharpen", {"amount": 80, "radius": 1.0, "reduceNoise": 25}),
+            {"id": "filter.noise.reduceNoise", "params": {"strength": 4, "preserveDetails": 75, "reduceColorNoise": 0, "sharpenDetails": 20, "removeJpegArtifact": True}},
+            {"id": "image.autoContrast"},
+            {"id": "image.adjustments.shadowsHighlights", "params": {"shadowAmount": 14, "highlightAmount": 12}},
+            {"id": "layer.layerMask.hideAll"},
+            {"id": "paint.stroke", "params": {"target": "mask", "color": "#ffffff", "size": 3, "hardness": 0.85, "fill": True, "points": [
+                [292, 188], [308, 152], [338, 130], [378, 124], [406, 140], [424, 172],
+                [432, 214], [424, 248], [408, 266], [404, 286], [436, 322],
+                [450, 372], [454, 426], [432, 456], [448, 512], [42, 512],
+                [66, 474], [108, 434], [140, 386], [190, 330], [242, 290],
+                [276, 264], [296, 236], [288, 206]
+            ]}},
+            {"id": "paint.stroke", "params": {"target": "mask", "color": "#ffffff", "size": 11, "hardness": 0.9, "points": [[165, 0], [225, 130], [290, 282], [320, 345]]}},
+            {"id": "layer.layerMask.apply"},
+            {"id": "filter.sharpen.smartSharpen", "params": {"amount": 75, "radius": 1.0, "reduceNoise": 25}},
         ],
     }
 
@@ -423,44 +475,44 @@ def build_real_portraits():
         32: (104, 92, 412, 400),
         33: (24,  10, 492, 478),
         34: (18,  10, 492, 484),
-        35: (32,  26, 456, 450),
+        35: (32,  40, 456, 464),
         36: (12,  34, 424, 446),
         37: (116, 62, 492, 438),
     }
 
     with tempfile.TemporaryDirectory() as tmpdir:
+        jobs = []
         for st in NEW_STARS:
             pid = int(st["id"])
-            box, round_dims, pad_top = pre_specs[pid]
-            pre_img = _portrait_pre_crop(src_by_id[pid], box, round_dims=round_dims, pad_top=pad_top)
+            box, round_dims = pre_specs[pid]
+            pre_img = _portrait_pre_crop(src_by_id[pid], box, round_dims=round_dims)
             in_p = os.path.join(tmpdir, f"in_{pid}.png")
             out_p = os.path.join(tmpdir, f"pc_{pid}.png")
             pre_img.save(in_p)
+            jobs.append((pid, in_p, out_p, pc_steps[pid]))
 
-            im = _run_photocraft(cli, in_p, out_p, pc_cmds[pid])
-            if pad_top:
-                im = im.crop((0, pad_top, 512, 512 + pad_top))
+        processed = _run_photocraft_mcp_session(cli, tmpdir, jobs)
+
+        for st in NEW_STARS:
+            pid = int(st["id"])
+            im = processed[pid]
 
             if pid == 27:
-                im = _erase_poly(im, [(128, 355), (195, 326), (214, 405), (235, 480), (240, 512), (128, 512)], blur=0.8)
+                im = _erase_poly(im, [(172, 326), (204, 326), (222, 405), (242, 480), (242, 512), (172, 512)], blur=0.8)
                 im = _erase_poly(im, [(68, 0), (150, 0), (128, 42), (98, 54), (72, 46)], blur=0.6)
                 im = _erase_poly(im, [(75, 70), (118, 62), (82, 112)], blur=0.6)
-                im = _erase_rect(im, 0, 365, 182, 512, blur=0.5)
-            elif pid == 33:
-                r, g, b, a = im.split()
-                rgb = ImageEnhance.Brightness(Image.merge("RGB", (r, g, b))).enhance(1.12)
-                rgb = ImageEnhance.Contrast(rgb).enhance(1.06)
-                r2, g2, b2 = rgb.split()
-                im = Image.merge("RGBA", (r2, g2, b2, a))
+                im = _erase_rect(im, 0, 352, 184, 512, blur=0.5)
             elif pid == 34:
                 im = _erase_rect(im, 202, 0, 236, 22, blur=0.6)
             elif pid == 35:
                 px = im.load()
-                for y in range(410, 512):
-                    for x in range(0, 102):
+                for y in range(290, 512):
+                    for x in range(0, 185):
                         r, g, b, a = px[x, y]
-                        if a > 0 and abs(r - g) < 28 and abs(g - b) < 28 and r > 70:
-                            px[x, y] = (r, g, b, 0)
+                        if a > 0 and r < 150 and not (r > g + 22 and r > b + 30):
+                            if abs(r - g) < 30 and (abs(g - b) < 35 or g >= r):
+                                px[x, y] = (r, g, b, 0)
+                im = _erase_poly(im, [(394, 278), (409, 326), (428, 386), (450, 448), (464, 475), (512, 475), (512, 278)], blur=0.8)
                 im = _erase_rect(im, 0, 428, 42, 512, blur=0.6)
             elif pid == 36:
                 im = _erase_poly(im, [(20, 276), (105, 302), (165, 306), (196, 306), (196, 338), (85, 326), (20, 294)], blur=0.8)
