@@ -94,6 +94,8 @@ static uint32_t g_cfg_antialiasing = 4; // 0=Off, 2=2x, 4=4x, 8=8x
 static uint32_t g_cfg_vsync = 1;
 static uint32_t g_cfg_anisotropic = 16;
 static uint32_t g_cfg_remove_live = 1;
+static uint32_t g_cfg_classic_tv_cam = 0; // 0=Off, 1=Lock Classic VT2 TV Camera & disable ShotCamera zoom
+static uint32_t g_cfg_match_speed_mode = 0; // 0=Normal 1.0x, 1=VT2 Turbo 1.20x, 2=VT2 Hyper 1.35x, 3=Pro Sim 0.90x
 
 static int g_is_fullscreen = 0;
 static int g_vp_is_full_hd = 0;
@@ -131,7 +133,12 @@ static void load_vt4_settings(void) {
                        "AnisotropicFiltering=16\n\n"
                        "[Menu]\n"
                        "; Quitar el modo LIVE / Red (servidor GFWL inactivo) del menu principal\n"
-                       "RemoveLiveMode=1\n");
+                       "RemoveLiveMode=1\n\n"
+                       "[Gameplay]\n"
+                       "; Fijar Camara TV Clasica (estilo VT2, desactiva zooms de Super Golpe): 0 = Normal, 1 = Activo\n"
+                       "ClassicTVCamera=0\n"
+                       "; Velocidad de Fisica en Partido: 0 = Normal (1.00x), 1 = VT2 Arcade Turbo (1.20x), 2 = VT2 Hyper (1.35x), 3 = Simulacion Pro (0.90x)\n"
+                       "MatchSpeedMode=0\n");
             fclose(f);
             log_msg("[VT4-Mod] Created modern settings configuration file: %s", ini_path);
         }
@@ -144,13 +151,17 @@ static void load_vt4_settings(void) {
     g_cfg_vsync = GetPrivateProfileIntA("Graphics", "VSync", 1, ini_path);
     g_cfg_anisotropic = GetPrivateProfileIntA("Graphics", "AnisotropicFiltering", 16, ini_path);
     g_cfg_remove_live = GetPrivateProfileIntA("Menu", "RemoveLiveMode", 1, ini_path);
+    g_cfg_classic_tv_cam = GetPrivateProfileIntA("Gameplay", "ClassicTVCamera", 0, ini_path) ? 1 : 0;
+    g_cfg_match_speed_mode = GetPrivateProfileIntA("Gameplay", "MatchSpeedMode", 0, ini_path);
+    if (g_cfg_match_speed_mode > 3) g_cfg_match_speed_mode = 0;
 
     if (g_cfg_width <= 0) g_cfg_width = 1920;
     if (g_cfg_height <= 0) g_cfg_height = 1080;
 
-    log_msg("[VT4-Mod] Settings loaded: %ux%u (windowed=%u msaa=%u vsync=%u aniso=%u remove_live=%u)",
+    log_msg("[VT4-Mod] Settings loaded: %ux%u (windowed=%u msaa=%u vsync=%u aniso=%u remove_live=%u tv_lock=%u speed=%u)",
             g_cfg_width, g_cfg_height, g_cfg_windowed, g_cfg_antialiasing,
-            g_cfg_vsync, g_cfg_anisotropic, g_cfg_remove_live);
+            g_cfg_vsync, g_cfg_anisotropic, g_cfg_remove_live,
+            g_cfg_classic_tv_cam, g_cfg_match_speed_mode);
     sync_menu_indices_from_cfg();
 }
 
@@ -158,7 +169,7 @@ static void load_vt4_settings(void) {
 // Phase 1B: Settings Menu, Options Integration & Direct3D 9 RenderTarget Scaling
 // ============================================================================
 
-#define NUM_SETTINGS_ITEMS 7
+#define NUM_SETTINGS_ITEMS 9
 
 typedef struct {
     uint32_t w, h;
@@ -210,12 +221,30 @@ static const char *s_live_choices[] = {
     "Activado (Recomendado)"
 };
 
+static const char *s_tvcam_choices[] = {
+    "Desactivado (VT4 Original)",
+    "Activado (TV Clasica VT2)"
+};
+
+static const struct {
+    float mult;
+    const char *desc;
+} s_speed_choices[] = {
+    { 1.00f, "Normal (1.00x Original)" },
+    { 1.20f, "VT2 Arcade Turbo (1.20x)" },
+    { 1.35f, "VT2 Hyper Arcade (1.35x)" },
+    { 0.90f, "Simulacion Pro (0.90x)" }
+};
+#define NUM_SPEED_CHOICES (sizeof(s_speed_choices) / sizeof(s_speed_choices[0]))
+
 static int s_idx_res = 0;
 static int s_idx_win = 0;
 static int s_idx_msaa = 2; // 4x default
 static int s_idx_vsync = 1;
 static int s_idx_aniso = 3; // 16x default
 static int s_idx_live = 1;
+static int s_idx_tvcam = 0;
+static int s_idx_speed = 0;
 
 static int g_menu_visible = 0;
 static int g_menu_selection = 0;
@@ -254,6 +283,8 @@ static void sync_menu_indices_from_cfg(void) {
     }
 
     s_idx_live = g_cfg_remove_live ? 1 : 0;
+    s_idx_tvcam = g_cfg_classic_tv_cam ? 1 : 0;
+    s_idx_speed = (g_cfg_match_speed_mode < (uint32_t)NUM_SPEED_CHOICES) ? (int)g_cfg_match_speed_mode : 0;
 }
 
 static void update_config_txt(void) {
@@ -357,9 +388,15 @@ static void save_vt4_settings(void) {
     WritePrivateProfileStringA("Graphics", "AnisotropicFiltering", val, ini_path);
     snprintf(val, sizeof(val), "%u", g_cfg_remove_live);
     WritePrivateProfileStringA("Menu", "RemoveLiveMode", val, ini_path);
+    snprintf(val, sizeof(val), "%u", g_cfg_classic_tv_cam);
+    WritePrivateProfileStringA("Gameplay", "ClassicTVCamera", val, ini_path);
+    snprintf(val, sizeof(val), "%u", g_cfg_match_speed_mode);
+    WritePrivateProfileStringA("Gameplay", "MatchSpeedMode", val, ini_path);
 
     log_msg("[VT4-Mod] Settings saved to %s", ini_path);
 }
+
+static void (__cdecl *g_real_set_match_cam)(int cam_type, int apply_now) = NULL;
 
 static void apply_and_save_menu_settings(void *dev) {
     g_cfg_width = s_res_choices[s_idx_res].w;
@@ -369,6 +406,8 @@ static void apply_and_save_menu_settings(void *dev) {
     g_cfg_vsync = s_idx_vsync;
     g_cfg_anisotropic = s_aniso_choices[s_idx_aniso].val;
     g_cfg_remove_live = s_idx_live;
+    g_cfg_classic_tv_cam = s_idx_tvcam ? 1 : 0;
+    g_cfg_match_speed_mode = (uint32_t)s_idx_speed;
 
     save_vt4_settings();
     update_config_txt();
@@ -425,10 +464,15 @@ static void apply_and_save_menu_settings(void *dev) {
         }
     }
 
+    if (g_cfg_classic_tv_cam && g_real_set_match_cam && *(uintptr_t *)0x00835ecc != 0) {
+        g_real_set_match_cam(0, 1);
+    }
+
     g_menu_saved_banner_timer = 180;
-    log_msg("[VT4-Mod] Settings applied immediately: %ux%u Win=%u MSAA=%u VSync=%u Aniso=%u Live=%u",
+    log_msg("[VT4-Mod] Settings applied immediately: %ux%u Win=%u MSAA=%u VSync=%u Aniso=%u Live=%u TVLock=%u Speed=%u",
             g_cfg_width, g_cfg_height, g_cfg_windowed, g_cfg_antialiasing,
-            g_cfg_vsync, g_cfg_anisotropic, g_cfg_remove_live);
+            g_cfg_vsync, g_cfg_anisotropic, g_cfg_remove_live,
+            g_cfg_classic_tv_cam, g_cfg_match_speed_mode);
 }
 
 static int handle_settings_menu_input(int vk, void *dev) {
@@ -456,6 +500,8 @@ static int handle_settings_menu_input(int vk, void *dev) {
                 case 3: s_idx_vsync = !s_idx_vsync; break;
                 case 4: s_idx_aniso = (s_idx_aniso - 1 + (int)NUM_ANISO_CHOICES) % (int)NUM_ANISO_CHOICES; break;
                 case 5: s_idx_live = !s_idx_live; break;
+                case 6: s_idx_tvcam = !s_idx_tvcam; break;
+                case 7: s_idx_speed = (s_idx_speed - 1 + (int)NUM_SPEED_CHOICES) % (int)NUM_SPEED_CHOICES; break;
             }
             log_msg("[VT4-Mod] Menu Value Left: item %d changed", g_menu_selection);
             return 1;
@@ -469,6 +515,8 @@ static int handle_settings_menu_input(int vk, void *dev) {
                 case 3: s_idx_vsync = !s_idx_vsync; break;
                 case 4: s_idx_aniso = (s_idx_aniso + 1) % (int)NUM_ANISO_CHOICES; break;
                 case 5: s_idx_live = !s_idx_live; break;
+                case 6: s_idx_tvcam = !s_idx_tvcam; break;
+                case 7: s_idx_speed = (s_idx_speed + 1) % (int)NUM_SPEED_CHOICES; break;
             }
             log_msg("[VT4-Mod] Menu Value Right: item %d changed", g_menu_selection);
             return 1;
@@ -690,7 +738,7 @@ static void render_settings_hud(void *dev) {
     if (set_vp) set_vp(dev, full_vp);
 
     float box_w = 820.0f;
-    float box_h = 540.0f;
+    float box_h = 625.0f;
     float box_x = ((float)g_cfg_width - box_w) * 0.5f;
     float box_y = ((float)g_cfg_height - box_h) * 0.5f;
 
@@ -754,6 +802,8 @@ static void render_settings_hud(void *dev) {
             "Sincronizacion (VSync):",
             "Filtrado Anisotropico:",
             "Ocultar Modo LIVE:",
+            "Camara TV Clasica (VT2):",
+            "Velocidad de Fisica:",
             "[ GUARDAR Y APLICAR CAMBIOS ]"
         };
 
@@ -764,7 +814,7 @@ static void render_settings_hud(void *dev) {
             DWORD lbl_col = is_sel ? 0xFFFFFFFF : 0xFFB0C4DE;
             DWORD val_col = is_sel ? 0xFFFFD700 : 0xFF40E0D0;
 
-            if (i == 6) {
+            if (i == 8) {
                 r.left = (LONG)(box_x + 40.0f);
                 r.top = (LONG)cur_y;
                 r.right = (LONG)(box_x + box_w - 40.0f);
@@ -785,6 +835,8 @@ static void render_settings_hud(void *dev) {
                     case 3: snprintf(val_buf, sizeof(val_buf), "< %s >", s_vsync_choices[s_idx_vsync]); break;
                     case 4: snprintf(val_buf, sizeof(val_buf), "< %s >", s_aniso_choices[s_idx_aniso].desc); break;
                     case 5: snprintf(val_buf, sizeof(val_buf), "< %s >", s_live_choices[s_idx_live]); break;
+                    case 6: snprintf(val_buf, sizeof(val_buf), "< %s >", s_tvcam_choices[s_idx_tvcam]); break;
+                    case 7: snprintf(val_buf, sizeof(val_buf), "< %s >", s_speed_choices[s_idx_speed].desc); break;
                 }
 
                 r.left = (LONG)(box_x + 360.0f);
@@ -3212,6 +3264,61 @@ static uint8_t __thiscall hk_MatchPauseCheck(void *self, int user_id) {
 }
 
 // ----------------------------------------------------------------------------
+// Phase 4 Extra QoL: Classic VT2 TV Camera Lock (0x0054CA10, 0x00558890)
+// & Match Physics Speed Multiplier (0x00482AA1 tracker + 0x0043037B stepper)
+// ----------------------------------------------------------------------------
+static uint32_t g_live_match_frame = 0;
+static float g_match_speed_acc = 0.0f;
+
+static void __cdecl hk_SetMatchCamera(int cam_type, int apply_now) {
+    int eff = g_cfg_classic_tv_cam ? 0 : cam_type;
+    if (g_real_set_match_cam) {
+        g_real_set_match_cam(eff, apply_now);
+    }
+}
+
+typedef uint8_t (__thiscall *ShotCamTriggerFn_t)(void *self, int arg1, int arg2);
+static ShotCamTriggerFn_t g_real_shotcam_trigger = NULL;
+static uint8_t __thiscall hk_ShotCamera_Trigger(void *self, int arg1, int arg2) {
+    if (g_cfg_classic_tv_cam) return 0;
+    return g_real_shotcam_trigger ? g_real_shotcam_trigger(self, arg1, arg2) : 0;
+}
+
+static void __thiscall hk_LiveMatchTracker_4803e0(void *self) {
+    if (self &&
+        *(uint8_t *)((char *)self + 0x134) == 1 &&
+        *(int *)((char *)self + 0x78) == 2 &&
+        *(uint8_t *)0x008232f6 == 0 &&
+        *(int *)0x008232f0 == 0) {
+        g_live_match_frame = g_present_calls;
+    }
+    typedef void (__thiscall *Orig_t)(void *);
+    ((Orig_t)0x004803e0)(self);
+}
+
+static void __cdecl hk_FrameStep_42fa90(int ticks, int flag) {
+    typedef void (__cdecl *StepFn_t)(int, int);
+    StepFn_t real_step = (StepFn_t)0x0042fa90;
+    int in_live_match = (g_live_match_frame != 0 &&
+                         g_present_calls <= g_live_match_frame + 1 &&
+                         *(uint8_t *)0x008232f6 == 0 &&
+                         *(int *)0x008232f0 == 0 &&
+                         !g_menu_visible);
+    if (!in_live_match || g_cfg_match_speed_mode == 0 ||
+        g_cfg_match_speed_mode >= (uint32_t)NUM_SPEED_CHOICES) {
+        g_match_speed_acc = 0.0f;
+        real_step(ticks, flag);
+        return;
+    }
+    float mult = s_speed_choices[g_cfg_match_speed_mode].mult;
+    g_match_speed_acc += mult * (float)(ticks > 0 ? ticks : 1);
+    int run_ticks = (int)g_match_speed_acc;
+    g_match_speed_acc -= (float)run_ticks;
+    // Clear flag (arg2=0) when run_ticks > 1 so 0x0042fad4 does not clamp subticks back to 1
+    real_step(run_ticks, run_ticks > 1 ? 0 : flag);
+}
+
+// ----------------------------------------------------------------------------
 // Action System Handlers (0x0062D830 & 0x00633A20-0x00633AA0)
 // Universal menu navigation, sliders, and options for Arrows and WASD
 // ----------------------------------------------------------------------------
@@ -4188,7 +4295,13 @@ static void apply_vt4_patches(void) {
     g_real_fwinput_isbitreleased = (FwInputBitFn_t)make_trampoline(0x0062bfe0, 8);
     install_jmp(0x0062bfe0, (void *)hk_FwInput_IsBitReleased, 8);
     patch_call(0x00480492, (void *)hk_MatchPauseCheck);
-    log_msg("[VT4-Mod] In-match P1 keyboard, fwInputMgr & fwInputDevice hooks active (Arrows+ZXCV & WASD+JKLI, Camera=B)");
+    g_real_set_match_cam = (void (__cdecl *)(int, int))make_trampoline(0x0054ca10, 6);
+    install_jmp(0x0054ca10, (void *)hk_SetMatchCamera, 6);
+    g_real_shotcam_trigger = (ShotCamTriggerFn_t)make_trampoline(0x00558890, 8);
+    install_jmp(0x00558890, (void *)hk_ShotCamera_Trigger, 8);
+    patch_call(0x00482aa1, (void *)hk_LiveMatchTracker_4803e0);
+    patch_call(0x0043037b, (void *)hk_FrameStep_42fa90);
+    log_msg("[VT4-Mod] In-match P1 keyboard, fwInputMgr, Classic TV Cam & Speed hooks active");
 
     // 27. Neutralize focus loss / blanking: force IsWindowFocused (0x00404dc0) to ALWAYS return TRUE
     const uint8_t ret_true3_focus[3] = { 0xB0, 0x01, 0xC3 }; // mov al, 1; ret

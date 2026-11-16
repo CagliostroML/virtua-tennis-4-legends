@@ -109,8 +109,8 @@ Este documento es nuestra hoja de ruta viva. Iremos marcando con `[x]` cada elem
 
 ## 🛠️ Fase 4: Funcionalidades Extra (Quality of Life & Motor)
 - [x] **EXTRA-1: Desbloqueo 100% Instantáneo** — Leyendas y jefes secretos (`Becker`, `Edberg`, `Courier`, `Rafter`, `King`, `Duke`, `T. Tenniel` ID 24, `V. Virnie` ID 25) jugables vía Página 2 (`g_roster_page_legends`) y todos los estadios desbloqueados (`Lock = -1` en `fwDataDB_Stage.txt`; equipamiento del catálogo SPT pendiente).
-- [ ] **EXTRA-2: Fijador de Cámara TV Clásica (VT2 Style)** — Desactivar los zooms en primera persona y cambios bruscos de cámara durante los Super Shots.
+- [x] **EXTRA-2: Fijador de Cámara TV Clásica (VT2 Style)** — Configurable en `vt4_settings.ini` (`ClassicTVCamera`) y en el HUD de Ajustes: fija `CamType = TV` (`0x0054ca10`) y desactiva los zooms/cortes de `ShotCamera` (`0x00558890`).
 - [ ] **EXTRA-3: Grand Slams Oficiales & Pista Azul de Madrid** — Nombres y texturas reales para Australian Open, Roland Garros, Wimbledon, US Open y Mutua Madrid Open (Tierra Azul).
-- [ ] **EXTRA-4: Selector de Velocidad de Física ("Modo VT2 Arcade Turbo" vs "Simulación")** — Multiplicador configurable de velocidad de bola y desplazamiento.
+- [x] **EXTRA-4: Selector de Velocidad de Física ("Modo VT2 Arcade Turbo" vs "Simulación")** — Configurable en `vt4_settings.ini` (`MatchSpeedMode`) y en el HUD de Ajustes (`Normal 1.00x`, `VT2 Arcade Turbo 1.20x`, `VT2 Hyper Arcade 1.35x`, `Simulación Pro 0.90x`) escalando el paso de simulación durante el juego en vivo (`0x00482aa1` + `0x0043037b`).
 - [ ] **EXTRA-5: Partidos a 5 Sets Reales de 6 Juegos + Tie-Break / Super Tie-Break** — Desbloqueo de reglas completas de torneo en Exhibición.
 - [ ] **EXTRA-6: Parche 4K & Alto Framerate** — Resolución nativa moderna y eliminación de filtros de borrosidad (*bloom/blur* excesivo).
