@@ -295,7 +295,13 @@ def build_real_portraits():
 
     manifest_path = os.path.join(PORTRAITS_SRC_DIR, "manifest.json")
     with open(manifest_path, "r", encoding="utf-8") as f:
-        src_by_id = {int(item["id"]): os.path.join(PORTRAITS_SRC_DIR, item["orig_file"]) for item in json.load(f)}
+        manifest_items = json.load(f)
+    src_by_id = {int(item["id"]): os.path.join(PORTRAITS_SRC_DIR, item["orig_file"]) for item in manifest_items}
+    restored_by_id = {
+        int(item["id"]): os.path.join(PORTRAITS_SRC_DIR, item["restored_file"])
+        for item in manifest_items
+        if item.get("restored_file") and os.path.isfile(os.path.join(PORTRAITS_SRC_DIR, item["restored_file"]))
+    }
 
     out_dir = os.path.join(REPO_ROOT, "game", "archive", "HIGH", "Frontend", "VR", "photo_L")
     os.makedirs(out_dir, exist_ok=True)
@@ -483,22 +489,83 @@ def build_real_portraits():
         37: (116, 62, 492, 438),
     }
 
+    restored_steps = {
+        28: [
+            {"id": "paint.magicEraser", "params": {"x": 40, "y": 40, "tolerance": 18, "antiAlias": True, "contiguous": True}},
+            {"id": "paint.magicEraser", "params": {"x": 980, "y": 40, "tolerance": 18, "antiAlias": True, "contiguous": True}},
+            {"id": "layer.matting.colorDecontaminate", "params": {"amount": 55, "radius": 2}},
+            {"id": "layer.matting.defringe", "params": {"width": 1}},
+        ],
+        30: [
+            {"id": "paint.magicEraser", "params": {"x": 40, "y": 40, "tolerance": 18, "antiAlias": True, "contiguous": True}},
+            {"id": "paint.magicEraser", "params": {"x": 980, "y": 40, "tolerance": 18, "antiAlias": True, "contiguous": True}},
+            {"id": "paint.magicEraser", "params": {"x": 40, "y": 980, "tolerance": 18, "antiAlias": True, "contiguous": True}},
+            {"id": "paint.magicEraser", "params": {"x": 980, "y": 980, "tolerance": 18, "antiAlias": True, "contiguous": True}},
+            {"id": "paint.magicEraser", "params": {"x": 350, "y": 350, "tolerance": 20, "antiAlias": True, "contiguous": True}},
+            {"id": "paint.magicEraser", "params": {"x": 560, "y": 200, "tolerance": 20, "antiAlias": True, "contiguous": True}},
+            {"id": "layer.matting.colorDecontaminate", "params": {"amount": 55, "radius": 2}},
+            {"id": "layer.matting.defringe", "params": {"width": 1}},
+        ],
+        31: [
+            {"id": "paint.magicEraser", "params": {"x": 40, "y": 40, "tolerance": 18, "antiAlias": True, "contiguous": True}},
+            {"id": "paint.magicEraser", "params": {"x": 980, "y": 40, "tolerance": 18, "antiAlias": True, "contiguous": True}},
+            {"id": "paint.magicEraser", "params": {"x": 40, "y": 980, "tolerance": 18, "antiAlias": True, "contiguous": True}},
+            {"id": "paint.magicEraser", "params": {"x": 980, "y": 980, "tolerance": 18, "antiAlias": True, "contiguous": True}},
+            {"id": "layer.matting.colorDecontaminate", "params": {"amount": 55, "radius": 2}},
+            {"id": "layer.matting.defringe", "params": {"width": 1}},
+        ],
+        36: [
+            {"id": "layer.removeBackground", "params": {"refine": True}},
+            {"id": "layer.layerMask.apply"},
+            {"id": "layer.matting.colorDecontaminate", "params": {"amount": 60, "radius": 2}},
+            {"id": "layer.matting.defringe", "params": {"width": 1}},
+        ],
+    }
+
+    def _clear_hoop_gray(im, box, cy, cx, ry, rx):
+        px = im.load()
+        for y in range(box[1], box[3]):
+            for x in range(box[0], box[2]):
+                if ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1.0:
+                    r, g, b, a = px[x, y]
+                    if a > 0 and abs(r - 184) <= 22 and abs(g - 190) <= 22 and abs(b - 198) <= 22 and (b >= r - 2):
+                        px[x, y] = (r, g, b, 0)
+
     with tempfile.TemporaryDirectory() as tmpdir:
         jobs = []
         for st in NEW_STARS:
             pid = int(st["id"])
-            box, round_dims = pre_specs[pid]
-            pre_img = _portrait_pre_crop(src_by_id[pid], box, round_dims=round_dims)
-            in_p = os.path.join(tmpdir, f"in_{pid}.png")
             out_p = os.path.join(tmpdir, f"pc_{pid}.png")
-            pre_img.save(in_p)
-            jobs.append((pid, in_p, out_p, pc_steps[pid]))
+            if pid in restored_by_id and pid in restored_steps:
+                in_p = os.path.join(tmpdir, f"in_{pid}.png")
+                Image.open(restored_by_id[pid]).convert("RGB").save(in_p)
+                jobs.append((pid, in_p, out_p, restored_steps[pid]))
+            else:
+                box, round_dims = pre_specs[pid]
+                pre_img = _portrait_pre_crop(src_by_id[pid], box, round_dims=round_dims)
+                in_p = os.path.join(tmpdir, f"in_{pid}.png")
+                pre_img.save(in_p)
+                jobs.append((pid, in_p, out_p, pc_steps[pid]))
 
         processed = _run_photocraft_mcp_session(cli, tmpdir, jobs)
 
         for st in NEW_STARS:
             pid = int(st["id"])
             im = processed[pid]
+
+            if pid in restored_by_id and pid in restored_steps:
+                if pid == 30:
+                    _clear_hoop_gray(im, (810, 340, 1024, 620), 485, 955, 130, 130)
+                elif pid == 31:
+                    _clear_hoop_gray(im, (430, 35, 710, 295), 165, 570, 135, 145)
+                crop_box = (40, 12, 1004, 976) if pid == 31 else (0, 0, im.width, im.height)
+                framed = _frame_vt4_portrait(im, crop_box)
+                dds = encode_dds(framed, b"RGBA")
+                out_path = os.path.join(out_dir, f"{pid}.dds")
+                with open(out_path, "wb") as f:
+                    f.write(dds)
+                print(f"Wrote {out_path} ({len(dds)} bytes)")
+                continue
 
             if pid == 27:
                 im = _erase_poly(im, [(172, 326), (204, 326), (222, 405), (242, 480), (242, 512), (172, 512)], blur=0.8)
