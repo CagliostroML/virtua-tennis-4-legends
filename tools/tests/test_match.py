@@ -80,15 +80,12 @@ def main():
         vt4.send_key(hwnd, vt4.VK_F10, hold=0.08, post_wait=0.8)  # Shot: P1 selected card
         vt4.send_key(hwnd, vt4.VK_RETURN, hold=0.10, post_wait=1.4)  # Confirm P1
 
-        # Pick CPU: cursor remains near P1 slot (or if page switch needed)
-        if cpu_page != cur_page:
-            while cur_page != cpu_page:
-                step = 1 if cpu_page > cur_page else -1
-                vt4.send_key(hwnd, vt4.VK_E if step > 0 else vt4.VK_Q, hold=0.10, post_wait=1.2)
-                cur_page += step
-            move_grid_cursor(hwnd, 0, 0, cpu_row, cpu_col)
-        else:
-            move_grid_cursor(hwnd, p1_row, p1_col, cpu_row, cpu_col)
+        # Pick CPU: P2/CPU selector always starts at (row=0, col=0) on the active page
+        while cur_page != cpu_page:
+            step = 1 if cpu_page > cur_page else -1
+            vt4.send_key(hwnd, vt4.VK_E if step > 0 else vt4.VK_Q, hold=0.10, post_wait=1.2)
+            cur_page += step
+        move_grid_cursor(hwnd, 0, 0, cpu_row, cpu_col)
         vt4.send_key(hwnd, vt4.VK_RETURN, hold=0.10, post_wait=1.3)  # Confirm CPU
         vt4.send_key(hwnd, vt4.VK_RETURN, hold=0.10, post_wait=1.5)  # Confirm Stage
 

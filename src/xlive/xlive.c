@@ -1105,39 +1105,39 @@ static const uint8_t g_fraw_cell_char_id[24] = {
     26, 26, 27    // Row 7: CARGAR (26), ACTUAL (26), ALEATORIO (27)
 };
 
-// Page 0: ATP & WTA World Tour (Vanilla Sega Roster: 8 rows x 3 columns)
+// Page 0: Era Actual & Next-Gen (2010s - 2026: All 21 cards unique)
 static const uint8_t g_roster_page_tour[24] = {
-     0,  2,  3,   // Row 0: Federer(0), Djokovic(2), Murray(3)
-     1,  5,  4,   // Row 1: Nadal(1), Roddick(5), Del Potro(4)
-     6,  7, 10,   // Row 2: Monfils(6), Gonzalez(7), Haas(10)
-     8,  9, 13,   // Row 3: Kohlschreiber(8), Seppi(9), Courier(13)
-    15, 16, 22,   // Row 4: King(15), Duke(16), Wozniacki(22)
-    17, 19, 18,   // Row 5: Sharapova(17), Kuznetsova(19), Venus(18)
-    23, 21, 20,   // Row 6: Robson(23), Chakvetadze(21), Ivanovic(20)
+     0,  1,  2,   // Row 0: Federer(0), Nadal(1), Djokovic(2)
+    26, 27, 39,   // Row 1: Alcaraz(26), Sinner(27), Medvedev(39)
+    40, 41, 42,   // Row 2: Zverev(40), Tsitsipas(41), Thiem(42)
+    38,  3,  4,   // Row 3: Wawrinka(38), Murray(3), Del Potro(4)
+    43,  6, 34,   // Row 4: Kyrgios(43), Monfils(6), Swiatek(34)
+    35, 33, 17,   // Row 5: Sabalenka(35), Serena(33), Sharapova(17)
+    58, 22, 18,   // Row 6: Muguruza(58), Wozniacki(22), Venus(18)
     26, 26, 27    // Row 7: CARGAR (26), ACTUAL (26), ALEATORIO (27)
 };
 
-// Page 1: Classic Tennis Legends & Next-Gen Superstars (All 21 cards unique, zero duplicates!)
+// Page 1: Era Dorada (1990s - 2000s: All 21 cards unique!)
 static const uint8_t g_roster_page_legends[24] = {
-    11, 14, 12,   // Row 0: Becker(11), Edberg(14), Rafter(12)
-    13, 26, 27,   // Row 1: Courier(13), Alcaraz(26), Sinner(27)
-    28, 29, 30,   // Row 2: Sampras(28), Agassi(29), Borg(30)
-    31, 32, 33,   // Row 3: McEnroe(31), Graf(32), Serena(33)
-    34, 35, 36,   // Row 4: Swiatek(34), Sabalenka(35), Kuerten(36)
-    37, 15, 16,   // Row 5: Navratilova(37), King(15), Duke(16)
-    24, 25, 23,   // Row 6: Tenniel/VTM(24), Virnie/VTF(25), Robson(23)
+    28, 29, 13,   // Row 0: Sampras(28), Agassi(29), Courier(13)
+    14, 11, 12,   // Row 1: Edberg(14), Becker(11), Rafter(12)
+    54, 36, 44,   // Row 2: Ivanisevic(54), Kuerten(36), Hewitt(44)
+    45, 47, 48,   // Row 3: Safin(45), Ferrero(47), Moya(48)
+    49, 50, 46,   // Row 4: Ferrer(49), Nalbandian(50), Tsonga(46)
+     5,  7, 10,   // Row 5: Roddick(5), Gonzalez(7), Haas(10)
+    56, 57, 32,   // Row 6: Seles(56), Henin(57), Graf(32)
     26, 26, 27    // Row 7: CARGAR (26), ACTUAL (26), ALEATORIO (27)
 };
 
-// Page 2: Next-Gen Stars & Historical Legends II (All 21 cards unique, IDs 38..58!)
+// Page 2: Pioneros 70s-80s, WTA Tour & Clasicos VT4 (All 21 cards)
 static const uint8_t g_roster_page_legends2[24] = {
-    38, 39, 40,   // Row 0: Wawrinka(38), Medvedev(39), Zverev(40)
-    41, 42, 43,   // Row 1: Tsitsipas(41), Thiem(42), Kyrgios(43)
-    44, 45, 46,   // Row 2: Hewitt(44), Safin(45), Tsonga(46)
-    47, 48, 49,   // Row 3: Ferrero(47), Moya(48), Ferrer(49)
-    50, 51, 52,   // Row 4: Nalbandian(50), Lendl(51), Connors(52)
-    53, 54, 55,   // Row 5: Vilas(53), Ivanisevic(54), Evert(55)
-    56, 57, 58,   // Row 6: Seles(56), Henin(57), Muguruza(58)
+    30, 31, 51,   // Row 0: Borg(30), McEnroe(31), Lendl(51)
+    52, 53, 37,   // Row 1: Connors(52), Vilas(53), Navratilova(37)
+    55, 19, 20,   // Row 2: Evert(55), Kuznetsova(19), Ivanovic(20)
+    21, 23,  8,   // Row 3: Chakvetadze(21), Robson(23), Kohlschreiber(8)
+     9, 15, 16,   // Row 4: Seppi(9), King(15), Duke(16)
+    24, 25, 29,   // Row 5: Tenniel/VTM(24), Virnie/VTF(25), Agassi(29)
+     0,  1, 26,   // Row 6: Federer(0), Nadal(1), Alcaraz(26)
     26, 26, 27    // Row 7: CARGAR (26), ACTUAL (26), ALEATORIO (27)
 };
 
@@ -1148,16 +1148,20 @@ static const uint8_t *g_roster_pages[NUM_ROSTER_PAGES] = {
 };
 
 static const char *g_roster_page_titles[NUM_ROSTER_PAGES] = {
-    "PAGINA 1/3: CIRCUITO ATP & WTA WORLD TOUR",
-    "PAGINA 2/3: LEYENDAS & NEXT-GEN (ALCARAZ, SINNER, SAMPRAS...)",
-    "PAGINA 3/3: NEXT-GEN & LEYENDAS HISTORICAS (WAWRINKA, MEDVEDEV, LENDL...)"
+    "PAGINA 1/3: ERA ACTUAL & NEXT-GEN (2010-2026)",
+    "PAGINA 2/3: ERA DORADA (1990s - 2000s)",
+    "PAGINA 3/3: PIONEROS 70s-80s & CLASICOS VT4"
 };
 
 typedef struct {
     const char *code;
+    const char *full_name;
+    const char *last_first;
     const char *card_name;
+    const char *first_name;
     const char *banner_name;
     const char *short_name;
+    const char *ioc_code;
     const char *author;
     const char *height;
     const char *weight;
@@ -1172,27 +1176,27 @@ typedef struct {
 } ExtraPlayerDef;
 
 static const ExtraPlayerDef g_extra_players[NUM_EXTRA_PLAYERS] = {
-    { "WAW", "Wawrinka",    "S. Wawrinka",    "S.WAWRINKA",    "NG", "183", "81",  46, 1, 0, 0,  3,  0,  0,  0 }, // 38
-    { "MED", "Medvedev",    "D. Medvedev",    "D.MEDVEDEV",    "NG", "198", "83", 119, 1, 0, 1,  6,  2,  2,  2 }, // 39
-    { "ZVE", "Zverev",      "A. Zverev",      "A.ZVEREV",      "NG", "198", "90",  16, 1, 0, 1,  5,  2,  2, 10 }, // 40
-    { "TSI", "Tsitsipas",   "S. Tsitsipas",   "S.TSITSIPAS",   "NG", "193", "89",  19, 1, 0, 0,  0,  0,  0,  0 }, // 41
-    { "THI", "Thiem",       "D. Thiem",       "D.THIEM",       "NG", "185", "79",   3, 1, 0, 0,  4,  7,  7, 10 }, // 42
-    { "KYR", "Kyrgios",     "N. Kyrgios",     "N.KYRGIOS",     "NG", "193", "85", 132, 1, 0, 1,  5,  5,  5,  6 }, // 43
-    { "HEW", "Hewitt",      "L. Hewitt",      "L.HEWITT",      "LG", "178", "77", 132, 1, 0, 1,  6,  6,  5,  5 }, // 44
-    { "SAF", "Safin",       "M. Safin",       "M.SAFIN",       "LG", "193", "88", 119, 1, 0, 1,  4,  2,  2, 11 }, // 45
-    { "TSO", "Tsonga",      "J.-W. Tsonga",   "J.W.TSONGA",    "LG", "188", "91",  15, 1, 0, 1,  4,  6,  6,  6 }, // 46
-    { "FRR", "Ferrero",     "J.C. Ferrero",   "J.C.FERRERO",   "LG", "183", "73",  44, 1, 0, 1,  1, 10, 10,  1 }, // 47
-    { "MOY", "Moya",        "C. Moya",        "C.MOYA",        "LG", "191", "86",  44, 1, 0, 1,  7,  1,  1,  1 }, // 48
-    { "FER", "Ferrer",      "D. Ferrer",      "D.FERRER",      "LG", "175", "73",  44, 1, 0, 1,  1,  9,  9,  1 }, // 49
-    { "NAL", "Nalbandian",  "D. Nalbandian",  "D.NALBANDIAN",  "LG", "180", "79",  74, 1, 0, 1,  9, 13, 13,  4 }, // 50
-    { "LEN", "Lendl",       "I. Lendl",       "I.LENDL",       "LG", "188", "79",  11, 1, 0, 0,  7,  0,  0,  0 }, // 51
-    { "CON", "Connors",     "J. Connors",     "J.CONNORS",     "LG", "178", "70",  73, 1, 1, 1,  2,  1,  1,  5 }, // 52
-    { "VIL", "Vilas",       "G. Vilas",       "G.VILAS",       "LG", "180", "79",  74, 1, 1, 0,  1, 14, 14,  4 }, // 53
-    { "IVN", "Ivanisevic",  "G. Ivanisevic",  "G.IVANISEVIC",  "LG", "193", "81",   9, 1, 1, 1,  5,  1,  1,  2 }, // 54
-    { "EVE", "Evert",       "C. Evert",       "C.EVERT",       "LG", "168", "57",  73, 0, 0, 1, 19, 19, 19, 18 }, // 55
-    { "SEL", "Seles",       "M. Seles",       "M.SELES",       "LG", "179", "68",  41, 0, 1, 1, 17, 23, 23, 20 }, // 56
-    { "HEN", "Henin",       "J. Henin",       "J.HENIN",       "LG", "167", "57",   6, 0, 0, 0, 22, 22, 22, 17 }, // 57
-    { "MUG", "Muguruza",    "G. Muguruza",    "G.MUGURUZA",    "NG", "182", "73",  44, 0, 0, 1, 17, 17, 17, 17 }  // 58
+    { "WAW", "Stan Wawrinka",         "Wawrinka, Stan",        "Wawrinka",    "Stan",        "S. Wawrinka",    "S.WAWRINKA",    "SUI", "NG", "183", "81",  46, 1, 0, 0,  3,  0,  0,  0 }, // 38
+    { "MED", "Daniil Medvedev",       "Medvedev, Daniil",      "Medvedev",    "Daniil",      "D. Medvedev",    "D.MEDVEDEV",    "RUS", "NG", "198", "83", 119, 1, 0, 1,  6,  2,  2,  2 }, // 39
+    { "ZVE", "Alexander Zverev",      "Zverev, Alexander",     "Zverev",      "Alexander",   "A. Zverev",      "A.ZVEREV",      "GER", "NG", "198", "90",  16, 1, 0, 1,  5,  2,  2, 10 }, // 40
+    { "TSI", "Stefanos Tsitsipas",    "Tsitsipas, Stefanos",   "Tsitsipas",   "Stefanos",    "S. Tsitsipas",   "S.TSITSIPAS",   "GRE", "NG", "193", "89",  19, 1, 0, 0,  0,  0,  0,  0 }, // 41
+    { "THI", "Dominic Thiem",         "Thiem, Dominic",        "Thiem",       "Dominic",     "D. Thiem",       "D.THIEM",       "AUT", "NG", "185", "79",   3, 1, 0, 0,  4,  7,  7, 10 }, // 42
+    { "KYR", "Nick Kyrgios",          "Kyrgios, Nick",         "Kyrgios",     "Nick",        "N. Kyrgios",     "N.KYRGIOS",     "AUS", "NG", "193", "85", 132, 1, 0, 1,  5,  5,  5,  6 }, // 43
+    { "HEW", "Lleyton Hewitt",        "Hewitt, Lleyton",       "Hewitt",      "Lleyton",     "L. Hewitt",      "L.HEWITT",      "AUS", "LG", "178", "77", 132, 1, 0, 1,  6,  6,  5,  5 }, // 44
+    { "SAF", "Marat Safin",           "Safin, Marat",          "Safin",       "Marat",       "M. Safin",       "M.SAFIN",       "RUS", "LG", "193", "88", 119, 1, 0, 1,  4,  2,  2, 11 }, // 45
+    { "TSO", "Jo-Wilfried Tsonga",    "Tsonga, Jo-Wilfried",   "Tsonga",      "Jo-Wilfried", "J.-W. Tsonga",   "J.W.TSONGA",    "FRA", "LG", "188", "91",  15, 1, 0, 1,  4,  6,  6,  6 }, // 46
+    { "FRR", "Juan Carlos Ferrero",   "Ferrero, Juan Carlos",  "Ferrero",     "Juan Carlos", "J.C. Ferrero",   "J.C.FERRERO",   "ESP", "LG", "183", "73",  44, 1, 0, 1,  1, 10, 10,  1 }, // 47
+    { "MOY", "Carlos Moya",           "Moya, Carlos",          "Moya",        "Carlos",      "C. Moya",        "C.MOYA",        "ESP", "LG", "191", "86",  44, 1, 0, 1,  7,  1,  1,  1 }, // 48
+    { "FER", "David Ferrer",          "Ferrer, David",         "Ferrer",      "David",       "D. Ferrer",      "D.FERRER",      "ESP", "LG", "175", "73",  44, 1, 0, 1,  1,  9,  9,  1 }, // 49
+    { "NAL", "David Nalbandian",      "Nalbandian, David",     "Nalbandian",  "David",       "D. Nalbandian",  "D.NALBANDIAN",  "ARG", "LG", "180", "79",  74, 1, 0, 1,  9, 13, 13,  4 }, // 50
+    { "LEN", "Ivan Lendl",            "Lendl, Ivan",           "Lendl",       "Ivan",        "I. Lendl",       "I.LENDL",       "CZE", "LG", "188", "79",  11, 1, 0, 0,  7,  0,  0,  0 }, // 51
+    { "CON", "Jimmy Connors",         "Connors, Jimmy",        "Connors",     "Jimmy",       "J. Connors",     "J.CONNORS",     "USA", "LG", "178", "70",  73, 1, 1, 1,  2,  1,  1,  5 }, // 52
+    { "VIL", "Guillermo Vilas",       "Vilas, Guillermo",      "Vilas",       "Guillermo",   "G. Vilas",       "G.VILAS",       "ARG", "LG", "180", "79",  74, 1, 1, 0,  1, 14, 14,  4 }, // 53
+    { "IVN", "Goran Ivanisevic",      "Ivanisevic, Goran",     "Ivanisevic",  "Goran",       "G. Ivanisevic",  "G.IVANISEVIC",  "CRO", "LG", "193", "81",   9, 1, 1, 1,  5,  1,  1,  2 }, // 54
+    { "EVE", "Chris Evert",           "Evert, Chris",          "Evert",       "Chris",       "C. Evert",       "C.EVERT",       "USA", "LG", "168", "57",  73, 0, 0, 1, 19, 19, 19, 18 }, // 55
+    { "SEL", "Monica Seles",          "Seles, Monica",         "Seles",       "Monica",      "M. Seles",       "M.SELES",       "SRB", "LG", "179", "68",  41, 0, 1, 1, 17, 23, 23, 20 }, // 56
+    { "HEN", "Justine Henin",         "Henin, Justine",        "Henin",       "Justine",     "J. Henin",       "J.HENIN",       "BEL", "LG", "167", "57",   6, 0, 0, 0, 22, 22, 22, 17 }, // 57
+    { "MUG", "Garbine Muguruza",      "Muguruza, Garbine",     "Muguruza",    "Garbine",     "G. Muguruza",    "G.MUGURUZA",    "ESP", "NG", "182", "73",  44, 0, 0, 1, 17, 17, 17, 17 }  // 58
 };
 
 // ----------------------------------------------------------------------------
@@ -1202,14 +1206,31 @@ static const char *g_custom_card_names[12] = {
     "Alcaraz", "Sinner", "Sampras", "Agassi", "Borg", "McEnroe",
     "Graf", "Serena", "Swiatek", "Sabalenka", "Kuerten", "Navratilova"
 };
+static const char *g_custom_first_names[12] = {
+    "Carlos", "Jannik", "Pete", "Andre", "Bjorn", "John",
+    "Steffi", "Serena", "Iga", "Aryna", "Gustavo", "Martina"
+};
+static const char *g_custom_last_first[12] = {
+    "Alcaraz, Carlos", "Sinner, Jannik", "Sampras, Pete", "Agassi, Andre",
+    "Borg, Bjorn", "McEnroe, John", "Graf, Steffi", "Williams, Serena",
+    "Swiatek, Iga", "Sabalenka, Aryna", "Kuerten, Gustavo", "Navratilova, Martina"
+};
 static const char *g_custom_banner_names[12] = {
     "C. Alcaraz", "J. Sinner", "P. Sampras", "A. Agassi", "B. Borg", "J. McEnroe",
     "S. Graf", "S. Williams", "I. Swiatek", "A. Sabalenka", "G. Kuerten", "M. Navratilova"
+};
+static const char *g_custom_short_upper[12] = {
+    "C.ALCARAZ", "J.SINNER", "P.SAMPRAS", "A.AGASSI", "B.BORG", "J.MCENROE",
+    "S.GRAF", "S.WILLIAMS", "I.SWIATEK", "A.SABALENKA", "G.KUERTEN", "M.NAVRATILOVA"
 };
 static const char *g_custom_full_names[12] = {
     "Carlos Alcaraz", "Jannik Sinner", "Pete Sampras", "Andre Agassi",
     "Bjorn Borg", "John McEnroe", "Steffi Graf", "Serena Williams",
     "Iga Swiatek", "Aryna Sabalenka", "Gustavo Kuerten", "Martina Navratilova"
+};
+static const char *g_custom_ioc_codes[12] = {
+    "ESP", "ITA", "USA", "USA", "SWE", "USA",
+    "GER", "USA", "POL", "BLR", "BRA", "USA"
 };
 static const uint8_t g_custom_lefty[12]     = { 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1 };
 static const uint8_t g_custom_bh2[12]       = { 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0 };
@@ -1268,47 +1289,60 @@ static int __stdcall hk_GetPlayerFlag(int id) {
     return 200;
 }
 
-typedef void (__stdcall *SetFrawLit_t)(int cell_id, const char *text);
-typedef void (__stdcall *SetFrawTable_t)(int cell_id, int table_id, int row_id);
-static SetFrawTable_t g_real_set_fraw_table = NULL;
+typedef const char *(__thiscall *StoLookup_t)(void *sto_obj, int table_id, int row_id);
+static StoLookup_t g_real_sto_lookup = NULL;
+static void *g_tr_common_sto = NULL;
 
-static void __stdcall hk_SetFrawTableText(int cell_id, int table_id, int row_id) {
-    if (row_id >= 26 && row_id < 38) {
-        int idx = row_id - 26;
-        if (table_id == 2) {
-            ((SetFrawLit_t)0x005300c0)(cell_id, g_custom_card_names[idx]);
-            return;
-        }
-        if (table_id == 4) {
-            ((SetFrawLit_t)0x005300c0)(cell_id, g_custom_banner_names[idx]);
-            return;
-        }
-        if (table_id == 8) {
-            row_id = g_custom_lefty[idx] ? 1 : 0;
-        } else if (table_id == 10) {
-            row_id = g_custom_bh2[idx] ? 2 : 0;
-        } else if (table_id == 7 || table_id == 11 || table_id == 13) {
-            row_id = (int)g_custom_bio_proxy[idx];
-        }
-    } else if (row_id >= 38 && row_id < MAX_ROSTER_PLAYERS) {
-        const ExtraPlayerDef *ep = &g_extra_players[row_id - 38];
-        if (table_id == 2) {
-            ((SetFrawLit_t)0x005300c0)(cell_id, ep->card_name);
-            return;
-        }
-        if (table_id == 4) {
-            ((SetFrawLit_t)0x005300c0)(cell_id, ep->banner_name);
-            return;
-        }
-        if (table_id == 8) {
-            row_id = ep->lefty ? 1 : 0;
-        } else if (table_id == 10) {
-            row_id = ep->bh2 ? 2 : 0;
-        } else if (table_id == 7 || table_id == 11 || table_id == 13) {
-            row_id = (int)ep->bio_proxy;
+static const char *__fastcall hk_StoLookup(void *sto_obj, void *edx, int table_id, int row_id) {
+    (void)edx;
+    if (!g_real_sto_lookup) return "";
+    if (sto_obj && sto_obj != g_tr_common_sto) {
+        const char *probe = g_real_sto_lookup(sto_obj, 0, 0);
+        if (probe && strcmp(probe, "Roger Federer") == 0) {
+            g_tr_common_sto = sto_obj;
+            log_msg("[VT4-Mod] Identified TR_COMMON.sto object: %p", sto_obj);
         }
     }
-    if (g_real_set_fraw_table) g_real_set_fraw_table(cell_id, table_id, row_id);
+    if (sto_obj == g_tr_common_sto && row_id >= 26 && row_id < MAX_ROSTER_PLAYERS) {
+        if (row_id < 38) {
+            int idx = row_id - 26;
+            switch (table_id) {
+                case 0: return g_custom_full_names[idx];
+                case 1: return g_custom_last_first[idx];
+                case 2: return g_custom_card_names[idx];
+                case 3: return g_custom_first_names[idx];
+                case 4: return g_custom_banner_names[idx];
+                case 5: return g_custom_short_upper[idx];
+                case 6: return g_custom_ioc_codes[idx];
+                case 8:  return g_real_sto_lookup(sto_obj, 8, g_custom_lefty[idx] ? 1 : 0);
+                case 10: return g_real_sto_lookup(sto_obj, 10, g_custom_bh2[idx] ? 2 : 0);
+                case 7:
+                case 11:
+                case 13:
+                    return g_real_sto_lookup(sto_obj, table_id, (int)g_custom_bio_proxy[idx]);
+                default: break;
+            }
+        } else {
+            const ExtraPlayerDef *ep = &g_extra_players[row_id - 38];
+            switch (table_id) {
+                case 0: return ep->full_name;
+                case 1: return ep->last_first;
+                case 2: return ep->card_name;
+                case 3: return ep->first_name;
+                case 4: return ep->banner_name;
+                case 5: return ep->short_name;
+                case 6: return ep->ioc_code;
+                case 8:  return g_real_sto_lookup(sto_obj, 8, ep->lefty ? 1 : 0);
+                case 10: return g_real_sto_lookup(sto_obj, 10, ep->bh2 ? 2 : 0);
+                case 7:
+                case 11:
+                case 13:
+                    return g_real_sto_lookup(sto_obj, table_id, (int)ep->bio_proxy);
+                default: break;
+            }
+        }
+    }
+    return g_real_sto_lookup(sto_obj, table_id, row_id);
 }
 
 // ----------------------------------------------------------------------------
@@ -1425,7 +1459,13 @@ static void *__cdecl hk_PlayerDB_GetVoiceSE(void *out_fstr, int id) {
     return g_real_pdb_get_voice_se ? g_real_pdb_get_voice_se(out_fstr, id) : out_fstr;
 }
 
+static int g_agassi_skin = 0; // 0 = '91 Melena Rubia + Cinta, 1 = '06 Calvo + Perilla
+
 static uint8_t __cdecl hk_PlayerDB_GetModelPrefix(void *sb, int id) {
+    if (id == 29 && g_agassi_skin == 1) {
+        ((StringBuilder_Append_t)0x004157b0)(sb, "#/Player/Model/P_M_AG2");
+        return 0;
+    }
     if (id >= 38 && id < MAX_ROSTER_PLAYERS) {
         const ExtraPlayerDef *ep = &g_extra_players[id - 38];
         char buf[64];
@@ -1438,6 +1478,7 @@ static uint8_t __cdecl hk_PlayerDB_GetModelPrefix(void *sb, int id) {
 
 static const char *__fastcall hk_ModelSdo_GetAuthor(void *fwdb, void *edx, int row) {
     int id = row - 0x4c;
+    if (id == 29) return "LG";
     if (id >= 38 && id < MAX_ROSTER_PLAYERS) return g_extra_players[id - 38].author;
     return ((FwDB_GetStr_t)0x00625340)(fwdb, row);
 }
@@ -1568,6 +1609,12 @@ static void switch_roster_page(int dir) {
     g_roster_page_dirty = 1;
 }
 
+static void toggle_agassi_skin(void) {
+    g_agassi_skin = g_agassi_skin ? 0 : 1;
+    log_msg("[VT4-Mod] Agassi skin toggled -> %d (%s)", g_agassi_skin,
+            g_agassi_skin ? "2006 Calvo + Perilla" : "1991 Melena Rubia + Cinta");
+}
+
 static int check_roster_arrow_click(int mx, int my) {
     if (g_chara_select_frames <= 0) return 0;
     float fx = (float)mx;
@@ -1583,6 +1630,12 @@ static int check_roster_arrow_click(int mx, int my) {
     if (fx >= 1354.0f * sx && fx <= 1450.0f * sx &&
         fy >= 172.0f * sy && fy <= 208.0f * sy) {
         switch_roster_page(1);
+        return 1;
+    }
+    if (g_current_roster_page >= 1 &&
+        fx >= 828.0f * sx && fx <= 1451.0f * sx &&
+        fy >= 854.0f * sy && fy <= 888.0f * sy) {
+        toggle_agassi_skin();
         return 1;
     }
     return 0;
@@ -1623,6 +1676,8 @@ static int __thiscall hk_FPPlayerEntry_IsReady(void *self) {
 
 typedef void (__thiscall *FPCharaSelect_Update_t)(void *self);
 static FPCharaSelect_Update_t g_real_charaselect_update = (FPCharaSelect_Update_t)0x005e1340;
+
+static int g_cs_p_slots[2] = { -1, -1 };
 
 static void __thiscall hk_FPCharaSelect_Update(void *self) {
     if (!self) return;
@@ -1686,6 +1741,23 @@ static void __thiscall hk_FPCharaSelect_Update(void *self) {
     if (g_real_charaselect_update) {
         g_real_charaselect_update(self);
     }
+
+    // Safely snapshot live P1/P2 grid slots while grid is guaranteed alive
+    g_cs_p_slots[0] = -1;
+    g_cs_p_slots[1] = -1;
+    if (grid) {
+        for (int p = 0; p < 2; p++) {
+            char *pi = (char *)grid + 0x0c + p * 0x48;
+            if (pi[0x08] != 0 && *(int *)pi != 8) {
+                int col = *(int *)(pi + 0x0c);
+                int row = *(int *)(pi + 0x10);
+                int sl = row * 3 + col;
+                if (col >= 0 && col < 3 && row >= 0 && row < 7 && sl >= 0 && sl < 21) {
+                    g_cs_p_slots[p] = sl;
+                }
+            }
+        }
+    }
 }
 
 static void *create_text_texture(void *dev, const char *text, int w, int h, int font_px, int bold, DWORD rgb_color) {
@@ -1720,7 +1792,13 @@ static void *create_text_texture(void *dev, const char *text, int w, int h, int 
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, RGB(255, 255, 255));
     RECT rc = { 0, 0, w, h };
-    DrawTextA(hdc, text, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    wchar_t wbuf[256];
+    int wn = MultiByteToWideChar(CP_UTF8, 0, text, -1, wbuf, 256);
+    if (wn > 0) {
+        DrawTextW(hdc, wbuf, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    } else {
+        DrawTextA(hdc, text, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+    }
     GdiFlush();
 
     if (old_font) SelectObject(hdc, old_font);
@@ -1771,10 +1849,53 @@ static void *g_pTexPillRight = NULL;
 static void *g_pTexHeaderP1 = NULL;
 static void *g_pTexHeaderP2 = NULL;
 static void *g_pTexHeaderP3 = NULL;
+static void *g_pTexSkinAg91 = NULL;
+static void *g_pTexSkinAg06 = NULL;
+static void *g_pEyeTex[MAX_ROSTER_PLAYERS] = { NULL };
+static void *g_pCardNameTex[MAX_ROSTER_PLAYERS] = { NULL };
+static void *g_pCardNameShadowTex[MAX_ROSTER_PLAYERS] = { NULL };
+static void *g_pTexBadgeP1 = NULL;
+static void *g_pTexBadgeP2 = NULL;
+
+static void init_roster_card_textures(void *dev) {
+    static int s_eye_loaded = 0;
+    if (!s_eye_loaded) {
+        s_eye_loaded = 1;
+        if (!g_d3dx_createtexture) {
+            HMODULE hD3DX = LoadLibraryA("d3dx9_43.dll");
+            if (hD3DX) g_d3dx_createtexture = (D3DXCreateTextureFromFileA_t)GetProcAddress(hD3DX, "D3DXCreateTextureFromFileA");
+        }
+        if (g_d3dx_createtexture) {
+            char eye_path[MAX_PATH];
+            int ok = 0;
+            for (int id = 0; id < MAX_ROSTER_PLAYERS; id++) {
+                snprintf(eye_path, sizeof(eye_path), "%s\\archive\\HIGH\\Frontend\\VR\\photo_eye\\%d.dds", g_game_dir, id);
+                if (SUCCEEDED(g_d3dx_createtexture(dev, eye_path, &g_pEyeTex[id])) && g_pEyeTex[id]) ok++;
+            }
+            log_msg("[VT4-Mod] Loaded %d/%d CharaSelect eye-strip textures", ok, MAX_ROSTER_PLAYERS);
+        }
+    }
+
+    static int s_names_loaded = 0;
+    if (!s_names_loaded && g_tr_common_sto) {
+        s_names_loaded = 1;
+        g_pTexBadgeP1 = create_text_texture(dev, "1", 22, 22, 15, 1, 0xFFFFFF);
+        g_pTexBadgeP2 = create_text_texture(dev, "2", 22, 22, 15, 1, 0xFFFFFF);
+        for (int id = 0; id < MAX_ROSTER_PLAYERS; id++) {
+            const char *nm = hk_StoLookup(g_tr_common_sto, NULL, 2, id);
+            if (!nm || !nm[0]) nm = "?";
+            int is_man = hk_PlayerDB_IsMan(id);
+            DWORD fg = is_man ? 0xFFF2F6FC : 0xFFFFCFE6;
+            g_pCardNameTex[id] = create_text_texture(dev, nm, 184, 34, 19, 1, fg);
+            g_pCardNameShadowTex[id] = create_text_texture(dev, nm, 184, 34, 19, 1, 0x010101);
+        }
+        log_msg("[VT4-Mod] Cached %d CharaSelect card surname textures", MAX_ROSTER_PLAYERS);
+    }
+}
 
 static void render_roster_pagination_hud(void *dev) {
     if (!dev) dev = g_d3d_device;
-    if (!dev || !*(void ***)dev || g_chara_select_frames <= 0 || g_menu_visible) return;
+    if (!dev || !*(void ***)dev || g_chara_select_frames < 28 || g_menu_visible) return;
 
     if (!begin_overlay_state(dev)) return;
 
@@ -1790,13 +1911,76 @@ static void render_roster_pagination_hud(void *dev) {
         s_tex_init_done = 1;
         g_pTexPillLeft  = create_text_texture(dev, "< Q / LB", 96, 36, 17, 1, 0xFFFFFF);
         g_pTexPillRight = create_text_texture(dev, "E / RB >", 96, 36, 17, 1, 0xFFFFFF);
-        g_pTexHeaderP1  = create_text_texture(dev, "PAGINA 1/3: CIRCUITO ATP / WTA", 412, 36, 18, 1, 0xFFFFFF);
-        g_pTexHeaderP2  = create_text_texture(dev, "PAGINA 2/3: LEYENDAS CLASICAS", 412, 36, 18, 1, 0x00E5FF);
-        g_pTexHeaderP3  = create_text_texture(dev, "PAGINA 3/3: NEXT-GEN & HISTORIA", 412, 36, 18, 1, 0xFFD54F);
+        g_pTexHeaderP1  = create_text_texture(dev, "PAGINA 1/3: ACTUAL & NEXT-GEN (2010-2026)", 412, 36, 16, 1, 0xFFFFFF);
+        g_pTexHeaderP2  = create_text_texture(dev, "PAGINA 2/3: ERA DORADA (1990s - 2000s)", 412, 36, 17, 1, 0x00E5FF);
+        g_pTexHeaderP3  = create_text_texture(dev, "PAGINA 3/3: PIONEROS 70s-80s & CLASICOS", 412, 36, 17, 1, 0xFFD54F);
+        g_pTexSkinAg91  = create_text_texture(dev, "[F] SKIN AGASSI: 1991 MELENA RUBIA + CINTA", 623, 34, 16, 1, 0xFF70C8);
+        g_pTexSkinAg06  = create_text_texture(dev, "[F] SKIN AGASSI: 2006 CALVO + PERILLA", 623, 34, 16, 1, 0xD8E2EE);
     }
+    init_roster_card_textures(dev);
 
     float sx = (float)g_cfg_width / 1920.0f;
     float sy = (float)g_cfg_height / 1080.0f;
+
+    // Render all 21 grid cards dynamically with each player's own cropped eye-strip & crisp surname
+    int p_slots[2] = { g_cs_p_slots[0], g_cs_p_slots[1] };
+
+    const uint8_t *active_slots = (const uint8_t *)0x007c5f6c;
+    for (int slot = 0; slot < 21; slot++) {
+        int col = slot % 3;
+        int row = slot / 3;
+        float x1 = (828.0f + col * 211.5f) * sx;
+        float y1 = (235.0f + row * 76.285f) * sy;
+        float x2 = x1 + 200.0f * sx;
+        float y2 = y1 + 71.0f * sy;
+        uint8_t cid = active_slots[slot];
+        if (cid >= MAX_ROSTER_PLAYERS) cid = 0;
+
+        int is_p1 = (p_slots[0] == slot);
+        int is_p2 = (p_slots[1] == slot);
+        int is_hov = is_p1 || is_p2;
+
+        if (g_pEyeTex[cid]) {
+            draw_textured_quad(dev, g_pEyeTex[cid], x1, y1, x2, y2, is_hov ? 0xFFFFFFFF : 0xFFD4DAE4);
+        } else {
+            draw_screen_quad(dev, x1, y1, x2, y2, 0xFF282D38);
+        }
+
+        // Subtle gold left accent stripe & dark bottom edge
+        draw_screen_quad(dev, x1, y1, x1 + 3.0f * sx, y2, 0xB0D8AF48);
+        draw_screen_quad(dev, x1, y2 - 2.0f * sy, x2, y2, 0x8010141C);
+
+        // Selection cursor borders (Blue for P1, Magenta-Pink for P2)
+        if (is_p1 || is_p2) {
+            DWORD bcol = is_p1 ? 0xFF38B6FF : 0xFFFF4090;
+            float bw = 3.0f * sx, bh = 3.0f * sy;
+            draw_screen_quad(dev, x1, y1, x2, y1 + bh, bcol);
+            draw_screen_quad(dev, x1, y2 - bh, x2, y2, bcol);
+            draw_screen_quad(dev, x1, y1, x1 + bw, y2, bcol);
+            draw_screen_quad(dev, x2 - bw, y1, x2, y2, bcol);
+            if (is_p1) {
+                draw_screen_quad(dev, x1 + 3.0f * sx, y1 + 3.0f * sy, x1 + 25.0f * sx, y1 + 25.0f * sy, 0xE61E88E5);
+                if (g_pTexBadgeP1) draw_textured_quad(dev, g_pTexBadgeP1, x1 + 3.0f * sx, y1 + 3.0f * sy, x1 + 25.0f * sx, y1 + 25.0f * sy, 0xFFFFFFFF);
+            }
+            if (is_p2) {
+                float bx = is_p1 ? (x1 + 27.0f * sx) : (x1 + 3.0f * sx);
+                draw_screen_quad(dev, bx, y1 + 3.0f * sy, bx + 22.0f * sx, y1 + 25.0f * sy, 0xE6D81B60);
+                if (g_pTexBadgeP2) draw_textured_quad(dev, g_pTexBadgeP2, bx, y1 + 3.0f * sy, bx + 22.0f * sx, y1 + 25.0f * sy, 0xFFFFFFFF);
+            }
+        } else {
+            draw_screen_quad(dev, x1, y1, x2, y1 + 1.0f * sy, 0x55FFFFFF);
+        }
+
+        // Centered surname with dark outline shadow
+        float tx1 = x1 + 8.0f * sx, tx2 = x2 - 8.0f * sx;
+        float ty1 = y1 + 20.0f * sy, ty2 = y1 + 54.0f * sy;
+        if (g_pCardNameShadowTex[cid]) {
+            draw_textured_quad(dev, g_pCardNameShadowTex[cid], tx1 + 1.5f * sx, ty1 + 1.5f * sy, tx2 + 1.5f * sx, ty2 + 1.5f * sy, 0xDDFFFFFF);
+        }
+        if (g_pCardNameTex[cid]) {
+            draw_textured_quad(dev, g_pCardNameTex[cid], tx1, ty1, tx2, ty2, is_hov ? 0xFFFFE57F : 0xFFFFFFFF);
+        }
+    }
 
     float pill_w = 96.0f * sx, pill_h = 36.0f * sy;
     float l_x = 830.0f * sx, l_y = 172.0f * sy;
@@ -1827,6 +2011,15 @@ static void render_roster_pagination_hud(void *dev) {
     if (g_pTexPillRight) draw_textured_quad(dev, g_pTexPillRight, r_x, r_y, r_x + pill_w, r_y + pill_h, 0xFFFFFFFF);
     void *hdr_tex = (g_current_roster_page == 2) ? g_pTexHeaderP3 : ((g_current_roster_page == 1) ? g_pTexHeaderP2 : g_pTexHeaderP1);
     if (hdr_tex) draw_textured_quad(dev, hdr_tex, hdr_x1, hdr_y1, hdr_x2, hdr_y2, 0xFFFFFFFF);
+
+    if (g_current_roster_page >= 1) {
+        float sk_x1 = 828.0f * sx, sk_x2 = 1451.0f * sx, sk_y1 = 854.0f * sy, sk_y2 = 888.0f * sy;
+        draw_screen_quad(dev, sk_x1, sk_y1, sk_x2, sk_y2, 0xCC0A1424);
+        DWORD sk_acc = g_agassi_skin ? 0xFFD0D8E4 : 0xFFFF40A8;
+        draw_screen_quad(dev, sk_x1, sk_y2 - 3.0f * sy, sk_x2, sk_y2, sk_acc);
+        void *sk_tex = g_agassi_skin ? g_pTexSkinAg06 : g_pTexSkinAg91;
+        if (sk_tex) draw_textured_quad(dev, sk_tex, sk_x1, sk_y1, sk_x2, sk_y2, 0xFFFFFFFF);
+    }
 
     end_overlay_state(dev);
     ensure_d3d9_device_hooks(dev);
@@ -2225,6 +2418,10 @@ static LRESULT CALLBACK hk_GameWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                 }
                 if (wParam == 'E' || wParam == 'e' || wParam == VK_OEM_6 || wParam == VK_NEXT) {
                     switch_roster_page(1);
+                    return 0;
+                }
+                if (wParam == 'F' || wParam == 'f') {
+                    toggle_agassi_skin();
                     return 0;
                 }
             }
@@ -4966,15 +5163,9 @@ static void apply_vt4_patches(void) {
     patch_call(0x00539441, (void *)hk_ServeMin_GetFloat);
     patch_call(0x00539456, (void *)hk_ServeMax_GetFloat);
 
-    uint8_t *tramp_5300e0 = (uint8_t *)make_trampoline(0x005300e0, 9);
-    if (tramp_5300e0 && tramp_5300e0[2] == 0xE8) {
-        // Relocate relative call 0x006684c0 inside trampoline bytes [2..6]
-        uint32_t fixed_rel = (uint32_t)(0x006684c0u - ((uintptr_t)tramp_5300e0 + 7u));
-        memcpy(&tramp_5300e0[3], &fixed_rel, 4);
-    }
-    g_real_set_fraw_table = (SetFrawTable_t)tramp_5300e0;
-    install_jmp(0x005300e0, (void *)hk_SetFrawTableText, 9);
-    log_msg("[VT4-Mod] Fase 2 + Page 3 Roster Expansion active: IDs 26..58 (%d players, %d pages) hooked",
+    g_real_sto_lookup = (StoLookup_t)make_trampoline(0x00668fa0, 7);
+    install_jmp(0x00668fa0, (void *)hk_StoLookup, 7);
+    log_msg("[VT4-Mod] Fase 2 + Page 3 Era Roster Expansion active: IDs 26..58 (%d players, %d pages, TR_COMMON full-table hook)",
             MAX_ROSTER_PLAYERS, NUM_ROSTER_PAGES);
 
     // 6. Fix Sega European Region ESRB infinite loop deadlock
