@@ -306,7 +306,7 @@ def build_real_portraits():
         27: ((0.02, 0.00, 0.98, 0.82), True),
         28: ((0.22, 0.14, 0.82, 0.56), True),
         29: ((0.14, 0.03, 0.72, 0.44), True),
-        30: ((0.00, 0.04, 1.00, 0.82), True),
+        30: ((0.42, 0.14, 0.72, 0.59), True),
         31: ((0.36, 0.21, 0.65, 0.62), True),
         32: ((0.10, 0.04, 0.86, 0.56), False),
         33: ((0.32, 0.11, 0.84, 0.45), False),
@@ -361,15 +361,18 @@ def build_real_portraits():
         ],
         30: [
             {"id": "filter.noise.reduceNoise", "params": {"strength": 4, "preserveDetails": 75, "reduceColorNoise": 0, "sharpenDetails": 20, "removeJpegArtifact": True}},
-            {"id": "layer.removeBackground", "params": {"refine": True}},
-            {"id": "select.rect", "params": {"x": 486, "y": 0, "width": 26, "height": 512}},
-            {"id": "select.rect", "params": {"x": 445, "y": 390, "width": 67, "height": 122, "mode": "add"}},
-            {"id": "edit.fill", "params": {"contents": "black", "target": "mask"}},
-            {"id": "select.deselect"},
+            {"id": "image.autoContrast"},
+            {"id": "image.adjustments.shadowsHighlights", "params": {"shadowAmount": 16, "highlightAmount": 14}},
+            {"id": "layer.layerMask.hideAll"},
+            {"id": "paint.stroke", "params": {"target": "mask", "color": "#ffffff", "size": 3, "hardness": 0.85, "fill": True, "points": [
+                [252, 92], [270, 74], [292, 82], [308, 102], [362, 134], [422, 166],
+                [495, 180], [512, 195], [512, 322], [442, 300], [418, 282], [404, 260],
+                [395, 250], [392, 315], [422, 336], [438, 376], [428, 428], [415, 458],
+                [405, 512], [172, 512], [195, 420], [218, 350], [218, 294], [174, 248],
+                [140, 224], [106, 214], [108, 196], [136, 178], [176, 152], [218, 122]
+            ]}},
             {"id": "layer.layerMask.apply"},
-            {"id": "layer.matting.defringe", "params": {"width": 1}},
-            {"id": "image.adjustments.brightnessContrast", "params": {"brightness": 4, "contrast": 14}},
-            {"id": "filter.sharpen.smartSharpen", "params": {"amount": 70, "radius": 1.0, "reduceNoise": 30}},
+            {"id": "filter.sharpen.smartSharpen", "params": {"amount": 75, "radius": 1.0, "reduceNoise": 25}},
         ],
         31: [
             {"id": "filter.noise.reduceNoise", "params": {"strength": 4, "preserveDetails": 75, "reduceColorNoise": 0, "sharpenDetails": 20, "removeJpegArtifact": True}},
@@ -470,7 +473,7 @@ def build_real_portraits():
         27: (16,   0, 488, 472),
         28: (106, 40, 406, 340),
         29: (14,   8, 422, 416),
-        30: (40,  16, 512, 488),
+        30: (68,  56, 504, 492),
         31: (126, 28, 496, 398),
         32: (104, 92, 412, 400),
         33: (24,  10, 492, 478),
@@ -502,6 +505,26 @@ def build_real_portraits():
                 im = _erase_poly(im, [(68, 0), (150, 0), (128, 42), (98, 54), (72, 46)], blur=0.6)
                 im = _erase_poly(im, [(75, 70), (118, 62), (82, 112)], blur=0.6)
                 im = _erase_rect(im, 0, 352, 184, 512, blur=0.5)
+            elif pid == 30:
+                from PIL import ImageChops, ImageDraw, ImageFilter
+                r, g, b, a = im.split()
+                m = Image.new("L", im.size, 255)
+                d = ImageDraw.Draw(m)
+                d.polygon([
+                    (178, 198), (238, 148), (280, 134), (294, 148), (296, 166),
+                    (284, 196), (282, 224), (278, 240), (284, 252), (264, 266),
+                    (252, 282), (212, 234)
+                ], fill=0)
+                d.polygon([(284, 118), (350, 144), (344, 158), (308, 148), (280, 134)], fill=0)
+                px = im.load()
+                mpx = m.load()
+                for y in range(192, 304):
+                    for x in range(426, 512):
+                        dx, dy = (x - 484) / 54.0, (y - 248) / 52.0
+                        if dx * dx + dy * dy < 0.72 and px[x, y][0] < 90:
+                            mpx[x, y] = 0
+                m = m.filter(ImageFilter.GaussianBlur(0.6))
+                im = Image.merge("RGBA", (r, g, b, ImageChops.multiply(a, m)))
             elif pid == 34:
                 im = _erase_rect(im, 202, 0, 236, 22, blur=0.6)
             elif pid == 35:
