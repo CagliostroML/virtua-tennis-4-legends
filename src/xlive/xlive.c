@@ -1089,7 +1089,9 @@ static inline int is_key_down(int vk) {
 // ----------------------------------------------------------------------------
 // Roster Pagination & Character Selection Grid
 // ----------------------------------------------------------------------------
-#define NUM_ROSTER_PAGES 2
+#define NUM_ROSTER_PAGES 3
+#define MAX_ROSTER_PLAYERS 59
+#define NUM_EXTRA_PLAYERS 21
 
 // Canonical mapping: grid slot [0..23] -> vanilla .fraw character card/label index
 static const uint8_t g_fraw_cell_char_id[24] = {
@@ -1127,14 +1129,70 @@ static const uint8_t g_roster_page_legends[24] = {
     26, 26, 27    // Row 7: CARGAR (26), ACTUAL (26), ALEATORIO (27)
 };
 
+// Page 2: Next-Gen Stars & Historical Legends II (All 21 cards unique, IDs 38..58!)
+static const uint8_t g_roster_page_legends2[24] = {
+    38, 39, 40,   // Row 0: Wawrinka(38), Medvedev(39), Zverev(40)
+    41, 42, 43,   // Row 1: Tsitsipas(41), Thiem(42), Kyrgios(43)
+    44, 45, 46,   // Row 2: Hewitt(44), Safin(45), Tsonga(46)
+    47, 48, 49,   // Row 3: Ferrero(47), Moya(48), Ferrer(49)
+    50, 51, 52,   // Row 4: Nalbandian(50), Lendl(51), Connors(52)
+    53, 54, 55,   // Row 5: Vilas(53), Ivanisevic(54), Evert(55)
+    56, 57, 58,   // Row 6: Seles(56), Henin(57), Muguruza(58)
+    26, 26, 27    // Row 7: CARGAR (26), ACTUAL (26), ALEATORIO (27)
+};
+
 static const uint8_t *g_roster_pages[NUM_ROSTER_PAGES] = {
     g_roster_page_tour,
-    g_roster_page_legends
+    g_roster_page_legends,
+    g_roster_page_legends2
 };
 
 static const char *g_roster_page_titles[NUM_ROSTER_PAGES] = {
-    "PAGINA 1/2: CIRCUITO ATP & WTA WORLD TOUR",
-    "PAGINA 2/2: LEYENDAS & NEXT-GEN (ALCARAZ, SINNER, SAMPRAS...)"
+    "PAGINA 1/3: CIRCUITO ATP & WTA WORLD TOUR",
+    "PAGINA 2/3: LEYENDAS & NEXT-GEN (ALCARAZ, SINNER, SAMPRAS...)",
+    "PAGINA 3/3: NEXT-GEN & LEYENDAS HISTORICAS (WAWRINKA, MEDVEDEV, LENDL...)"
+};
+
+typedef struct {
+    const char *code;
+    const char *card_name;
+    const char *banner_name;
+    const char *short_name;
+    const char *author;
+    const char *height;
+    const char *weight;
+    int32_t flag;
+    uint8_t man;
+    uint8_t lefty;
+    uint8_t bh2;
+    uint8_t playstyle_proxy;
+    uint8_t anim_proxy;
+    uint8_t bone_proxy;
+    uint8_t bio_proxy;
+} ExtraPlayerDef;
+
+static const ExtraPlayerDef g_extra_players[NUM_EXTRA_PLAYERS] = {
+    { "WAW", "Wawrinka",    "S. Wawrinka",    "S.WAWRINKA",    "NG", "183", "81",  46, 1, 0, 0,  3,  0,  0,  0 }, // 38
+    { "MED", "Medvedev",    "D. Medvedev",    "D.MEDVEDEV",    "NG", "198", "83", 119, 1, 0, 1,  6,  2,  2,  2 }, // 39
+    { "ZVE", "Zverev",      "A. Zverev",      "A.ZVEREV",      "NG", "198", "90",  16, 1, 0, 1,  5,  2,  2, 10 }, // 40
+    { "TSI", "Tsitsipas",   "S. Tsitsipas",   "S.TSITSIPAS",   "NG", "193", "89",  19, 1, 0, 0,  0,  0,  0,  0 }, // 41
+    { "THI", "Thiem",       "D. Thiem",       "D.THIEM",       "NG", "185", "79",   3, 1, 0, 0,  4,  7,  7, 10 }, // 42
+    { "KYR", "Kyrgios",     "N. Kyrgios",     "N.KYRGIOS",     "NG", "193", "85", 132, 1, 0, 1,  5,  5,  5,  6 }, // 43
+    { "HEW", "Hewitt",      "L. Hewitt",      "L.HEWITT",      "LG", "178", "77", 132, 1, 0, 1,  6,  6,  5,  5 }, // 44
+    { "SAF", "Safin",       "M. Safin",       "M.SAFIN",       "LG", "193", "88", 119, 1, 0, 1,  4,  2,  2, 11 }, // 45
+    { "TSO", "Tsonga",      "J.-W. Tsonga",   "J.W.TSONGA",    "LG", "188", "91",  15, 1, 0, 1,  4,  6,  6,  6 }, // 46
+    { "FRR", "Ferrero",     "J.C. Ferrero",   "J.C.FERRERO",   "LG", "183", "73",  44, 1, 0, 1,  1, 10, 10,  1 }, // 47
+    { "MOY", "Moya",        "C. Moya",        "C.MOYA",        "LG", "191", "86",  44, 1, 0, 1,  7,  1,  1,  1 }, // 48
+    { "FER", "Ferrer",      "D. Ferrer",      "D.FERRER",      "LG", "175", "73",  44, 1, 0, 1,  1,  9,  9,  1 }, // 49
+    { "NAL", "Nalbandian",  "D. Nalbandian",  "D.NALBANDIAN",  "LG", "180", "79",  74, 1, 0, 1,  9, 13, 13,  4 }, // 50
+    { "LEN", "Lendl",       "I. Lendl",       "I.LENDL",       "LG", "188", "79",  11, 1, 0, 0,  7,  0,  0,  0 }, // 51
+    { "CON", "Connors",     "J. Connors",     "J.CONNORS",     "LG", "178", "70",  73, 1, 1, 1,  2,  1,  1,  5 }, // 52
+    { "VIL", "Vilas",       "G. Vilas",       "G.VILAS",       "LG", "180", "79",  74, 1, 1, 0,  1, 14, 14,  4 }, // 53
+    { "IVN", "Ivanisevic",  "G. Ivanisevic",  "G.IVANISEVIC",  "LG", "193", "81",   9, 1, 1, 1,  5,  1,  1,  2 }, // 54
+    { "EVE", "Evert",       "C. Evert",       "C.EVERT",       "LG", "168", "57",  73, 0, 0, 1, 19, 19, 19, 18 }, // 55
+    { "SEL", "Seles",       "M. Seles",       "M.SELES",       "LG", "179", "68",  41, 0, 1, 1, 17, 23, 23, 20 }, // 56
+    { "HEN", "Henin",       "J. Henin",       "J.HENIN",       "LG", "167", "57",   6, 0, 0, 0, 22, 22, 22, 17 }, // 57
+    { "MUG", "Muguruza",    "G. Muguruza",    "G.MUGURUZA",    "NG", "182", "73",  44, 0, 0, 1, 17, 17, 17, 17 }  // 58
 };
 
 // ----------------------------------------------------------------------------
@@ -1156,9 +1214,9 @@ static const char *g_custom_full_names[12] = {
 static const uint8_t g_custom_lefty[12]     = { 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1 };
 static const uint8_t g_custom_bh2[12]       = { 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0 };
 static const uint8_t g_custom_bio_proxy[12] = { 1, 9, 5, 5, 14, 5, 17, 18, 22, 17, 1, 18 };
-static int32_t g_player_flags[38] = {0};
-static uint32_t g_player_anim_presets[38 * 5] = {0};
-static float g_player_bone_scales[38 * 60] = {0};
+static int32_t g_player_flags[MAX_ROSTER_PLAYERS] = {0};
+static uint32_t g_player_anim_presets[MAX_ROSTER_PLAYERS * 5] = {0};
+static float g_player_bone_scales[MAX_ROSTER_PLAYERS * 60] = {0};
 
 typedef void (__thiscall *PlayStyleLoadChar_t)(void *self, int char_id);
 static PlayStyleLoadChar_t g_real_playstyle_loadchar = NULL;
@@ -1168,6 +1226,8 @@ static const uint8_t g_custom_anim_proxy[12]      = { 1, 2, 0, 10, 14, 11, 17, 1
 static void __thiscall hk_PlayStyle_LoadChar(void *self, int char_id) {
     if (char_id >= 26 && char_id < 38) {
         char_id = (int)g_custom_playstyle_proxy[char_id - 26];
+    } else if (char_id >= 38 && char_id < MAX_ROSTER_PLAYERS) {
+        char_id = (int)g_extra_players[char_id - 38].playstyle_proxy;
     }
     if (g_real_playstyle_loadchar) g_real_playstyle_loadchar(self, char_id);
 }
@@ -1176,7 +1236,9 @@ typedef void (__thiscall *SetServeMotionIdFn_t)(void *self, int id1, int id2);
 static SetServeMotionIdFn_t g_real_set_serve_motion_id = NULL;
 static void __thiscall hk_SetServeMotionId(void *self, int id1, int id2) {
     if (id1 >= 26 && id1 < 38) id1 = (int)g_custom_anim_proxy[id1 - 26];
+    else if (id1 >= 38 && id1 < MAX_ROSTER_PLAYERS) id1 = (int)g_extra_players[id1 - 38].anim_proxy;
     if (id2 >= 26 && id2 < 38) id2 = (int)g_custom_anim_proxy[id2 - 26];
+    else if (id2 >= 38 && id2 < MAX_ROSTER_PLAYERS) id2 = (int)g_extra_players[id2 - 38].anim_proxy;
     if (g_real_set_serve_motion_id) g_real_set_serve_motion_id(self, id1, id2);
 }
 
@@ -1184,7 +1246,7 @@ typedef void *(__thiscall *GetMotionDataFn_t)(void *self, int slot, int motion_i
 static GetMotionDataFn_t g_real_get_motion_data = NULL;
 static void *__thiscall hk_GetMotionData(void *self, int slot, int motion_id) {
     void *res = g_real_get_motion_data ? g_real_get_motion_data(self, slot, motion_id) : NULL;
-    if ((uintptr_t)res < 0x10000u) {
+    if ((uintptr_t)res < 0x10000u || (uintptr_t)res >= 0x7FFE0000u) {
         if (g_cfg_debug_log) {
             static int s_bad_mot_logs = 0;
             if (s_bad_mot_logs < 16) {
@@ -1196,13 +1258,13 @@ static void *__thiscall hk_GetMotionData(void *self, int slot, int motion_id) {
         // Safe fallback to common motion (0 for slot 0 AthleteCommonMan, 0x50 for slot 3 BallCommonMan)
         int fb = (slot == 3) ? 0x50 : 0;
         void *res2 = g_real_get_motion_data ? g_real_get_motion_data(self, slot, fb) : NULL;
-        if ((uintptr_t)res2 >= 0x10000u) return res2;
+        if ((uintptr_t)res2 >= 0x10000u && (uintptr_t)res2 < 0x7FFE0000u) return res2;
     }
     return res;
 }
 
 static int __stdcall hk_GetPlayerFlag(int id) {
-    if (id >= 0 && id < 38) return g_player_flags[id];
+    if (id >= 0 && id < MAX_ROSTER_PLAYERS) return g_player_flags[id];
     return 200;
 }
 
@@ -1228,8 +1290,168 @@ static void __stdcall hk_SetFrawTableText(int cell_id, int table_id, int row_id)
         } else if (table_id == 7 || table_id == 11 || table_id == 13) {
             row_id = (int)g_custom_bio_proxy[idx];
         }
+    } else if (row_id >= 38 && row_id < MAX_ROSTER_PLAYERS) {
+        const ExtraPlayerDef *ep = &g_extra_players[row_id - 38];
+        if (table_id == 2) {
+            ((SetFrawLit_t)0x005300c0)(cell_id, ep->card_name);
+            return;
+        }
+        if (table_id == 4) {
+            ((SetFrawLit_t)0x005300c0)(cell_id, ep->banner_name);
+            return;
+        }
+        if (table_id == 8) {
+            row_id = ep->lefty ? 1 : 0;
+        } else if (table_id == 10) {
+            row_id = ep->bh2 ? 2 : 0;
+        } else if (table_id == 7 || table_id == 11 || table_id == 13) {
+            row_id = (int)ep->bio_proxy;
+        }
     }
     if (g_real_set_fraw_table) g_real_set_fraw_table(cell_id, table_id, row_id);
+}
+
+// ----------------------------------------------------------------------------
+// PlayerDB Hooks for IDs 38..58 (Page 3 Expansion beyond native 38-row blocks)
+// ----------------------------------------------------------------------------
+typedef int         (__cdecl *PlayerDB_GetCount_t)(void);
+typedef const char *(__cdecl *PlayerDB_GetCode_t)(int id);
+typedef int         (__cdecl *PlayerDB_FindByCode_t)(const char *code);
+typedef uint8_t     (__cdecl *PlayerDB_BoolId_t)(int id);
+typedef int         (__cdecl *PlayerDB_IntId_t)(int id);
+typedef const char *(__cdecl *PlayerDB_StrId_t)(int id);
+typedef void       *(__cdecl *PlayerDB_FStrOut_t)(void *out_fstr, int id);
+typedef uint8_t     (__cdecl *PlayerDB_ModelPrefix_t)(void *sb, int id);
+typedef void *      (__thiscall *StringBuilder_Append_t)(void *sb, const char *s);
+typedef int         (__thiscall *FwDB_GetInt_t)(void *fwdb, int row);
+typedef float       (__thiscall *FwDB_GetFloat_t)(void *fwdb, int row);
+typedef const char *(__thiscall *FwDB_GetStr_t)(void *fwdb, int row);
+
+static PlayerDB_GetCode_t     g_real_pdb_get_code = NULL;
+static PlayerDB_FindByCode_t  g_real_pdb_find_by_code = NULL;
+static PlayerDB_BoolId_t      g_real_pdb_is_man = NULL;
+static PlayerDB_IntId_t       g_real_pdb_get_type = NULL;
+static PlayerDB_FStrOut_t     g_real_pdb_get_style_name = NULL;
+static PlayerDB_IntId_t       g_real_pdb_get_style_enum = NULL;
+static PlayerDB_BoolId_t      g_real_pdb_is_type3 = NULL;
+static PlayerDB_StrId_t       g_real_pdb_get_height = NULL;
+static PlayerDB_StrId_t       g_real_pdb_get_weight = NULL;
+static PlayerDB_BoolId_t      g_real_pdb_get_bh2 = NULL;
+static PlayerDB_BoolId_t      g_real_pdb_get_lefty = NULL;
+static PlayerDB_IntId_t       g_real_pdb_get_tension = NULL;
+static PlayerDB_IntId_t       g_real_pdb_get_wtdbls = NULL;
+static PlayerDB_StrId_t       g_real_pdb_get_short_name = NULL;
+static PlayerDB_FStrOut_t     g_real_pdb_get_voice_se = NULL;
+static PlayerDB_ModelPrefix_t g_real_pdb_get_model_prefix = NULL;
+
+static int __cdecl hk_PlayerDB_GetCount(void) { return MAX_ROSTER_PLAYERS; }
+
+static const char *__cdecl hk_PlayerDB_GetCode(int id) {
+    if (id >= 38 && id < MAX_ROSTER_PLAYERS) return g_extra_players[id - 38].code;
+    return g_real_pdb_get_code ? g_real_pdb_get_code(id) : "FED";
+}
+
+static int __cdecl hk_PlayerDB_FindByCode(const char *code) {
+    if (code) {
+        for (int i = 0; i < NUM_EXTRA_PLAYERS; i++) {
+            if (_stricmp(code, g_extra_players[i].code) == 0) return 38 + i;
+        }
+    }
+    return g_real_pdb_find_by_code ? g_real_pdb_find_by_code(code) : 0;
+}
+
+static uint8_t __cdecl hk_PlayerDB_IsMan(int id) {
+    if (id >= 38 && id < MAX_ROSTER_PLAYERS) return g_extra_players[id - 38].man;
+    return g_real_pdb_is_man ? g_real_pdb_is_man(id) : 1;
+}
+
+static int __cdecl hk_PlayerDB_GetType(int id) {
+    if (id >= 38 && id < MAX_ROSTER_PLAYERS) return 0;
+    return g_real_pdb_get_type ? g_real_pdb_get_type(id) : 0;
+}
+
+static void *__cdecl hk_PlayerDB_GetStyleName(void *out_fstr, int id) {
+    if (id >= 38 && id < MAX_ROSTER_PLAYERS) id = (int)g_extra_players[id - 38].playstyle_proxy;
+    return g_real_pdb_get_style_name ? g_real_pdb_get_style_name(out_fstr, id) : out_fstr;
+}
+
+static int __cdecl hk_PlayerDB_GetStyleEnum(int id) {
+    if (id >= 38 && id < MAX_ROSTER_PLAYERS) id = (int)g_extra_players[id - 38].playstyle_proxy;
+    return g_real_pdb_get_style_enum ? g_real_pdb_get_style_enum(id) : 0;
+}
+
+static uint8_t __cdecl hk_PlayerDB_IsType3(int id) {
+    if (id >= 38 && id < MAX_ROSTER_PLAYERS) return 0;
+    return g_real_pdb_is_type3 ? g_real_pdb_is_type3(id) : 0;
+}
+
+static const char *__cdecl hk_PlayerDB_GetHeight(int id) {
+    if (id >= 38 && id < MAX_ROSTER_PLAYERS) return g_extra_players[id - 38].height;
+    return g_real_pdb_get_height ? g_real_pdb_get_height(id) : "180";
+}
+
+static const char *__cdecl hk_PlayerDB_GetWeight(int id) {
+    if (id >= 38 && id < MAX_ROSTER_PLAYERS) return g_extra_players[id - 38].weight;
+    return g_real_pdb_get_weight ? g_real_pdb_get_weight(id) : "75";
+}
+
+static uint8_t __cdecl hk_PlayerDB_GetBackHand2H(int id) {
+    if (id >= 38 && id < MAX_ROSTER_PLAYERS) return g_extra_players[id - 38].bh2;
+    return g_real_pdb_get_bh2 ? g_real_pdb_get_bh2(id) : 0;
+}
+
+static uint8_t __cdecl hk_PlayerDB_GetLefty(int id) {
+    if (id >= 38 && id < MAX_ROSTER_PLAYERS) return g_extra_players[id - 38].lefty;
+    return g_real_pdb_get_lefty ? g_real_pdb_get_lefty(id) : 0;
+}
+
+static int __cdecl hk_PlayerDB_GetTension(int id) {
+    if (id >= 38 && id < MAX_ROSTER_PLAYERS) return 0;
+    return g_real_pdb_get_tension ? g_real_pdb_get_tension(id) : 0;
+}
+
+static int __cdecl hk_PlayerDB_GetWtDblsPt(int id) {
+    if (id >= 38 && id < MAX_ROSTER_PLAYERS) return 3500;
+    return g_real_pdb_get_wtdbls ? g_real_pdb_get_wtdbls(id) : 3500;
+}
+
+static const char *__cdecl hk_PlayerDB_GetShortName(int id) {
+    if (id >= 38 && id < MAX_ROSTER_PLAYERS) return g_extra_players[id - 38].short_name;
+    return g_real_pdb_get_short_name ? g_real_pdb_get_short_name(id) : "";
+}
+
+static void *__cdecl hk_PlayerDB_GetVoiceSE(void *out_fstr, int id) {
+    if (id >= 38 && id < MAX_ROSTER_PLAYERS) id = (int)g_extra_players[id - 38].bone_proxy;
+    return g_real_pdb_get_voice_se ? g_real_pdb_get_voice_se(out_fstr, id) : out_fstr;
+}
+
+static uint8_t __cdecl hk_PlayerDB_GetModelPrefix(void *sb, int id) {
+    if (id >= 38 && id < MAX_ROSTER_PLAYERS) {
+        const ExtraPlayerDef *ep = &g_extra_players[id - 38];
+        char buf[64];
+        snprintf(buf, sizeof(buf), "#/Player/Model/P_%c_%s", ep->man ? 'M' : 'W', ep->code);
+        ((StringBuilder_Append_t)0x004157b0)(sb, buf);
+        return 0;
+    }
+    return g_real_pdb_get_model_prefix ? g_real_pdb_get_model_prefix(sb, id) : 0;
+}
+
+static const char *__fastcall hk_ModelSdo_GetAuthor(void *fwdb, void *edx, int row) {
+    int id = row - 0x4c;
+    if (id >= 38 && id < MAX_ROSTER_PLAYERS) return g_extra_players[id - 38].author;
+    return ((FwDB_GetStr_t)0x00625340)(fwdb, row);
+}
+
+static float __fastcall hk_ServeMin_GetFloat(void *fwdb, void *edx, int row) {
+    int id = row - 0x98;
+    if (id >= 38 && id < MAX_ROSTER_PLAYERS) row = (int)g_extra_players[id - 38].playstyle_proxy + 0x98;
+    return ((FwDB_GetFloat_t)0x006252e0)(fwdb, row);
+}
+
+static float __fastcall hk_ServeMax_GetFloat(void *fwdb, void *edx, int row) {
+    int id = row - 0xbe;
+    if (id >= 38 && id < MAX_ROSTER_PLAYERS) row = (int)g_extra_players[id - 38].playstyle_proxy + 0xbe;
+    return ((FwDB_GetFloat_t)0x006252e0)(fwdb, row);
 }
 
 static int g_current_roster_page = 0;
@@ -1498,7 +1720,7 @@ static void *create_text_texture(void *dev, const char *text, int w, int h, int 
     SetBkMode(hdc, TRANSPARENT);
     SetTextColor(hdc, RGB(255, 255, 255));
     RECT rc = { 0, 0, w, h };
-    DrawTextA(hdc, text, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    DrawTextA(hdc, text, -1, &rc, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
     GdiFlush();
 
     if (old_font) SelectObject(hdc, old_font);
@@ -1548,6 +1770,7 @@ static void *g_pTexPillLeft = NULL;
 static void *g_pTexPillRight = NULL;
 static void *g_pTexHeaderP1 = NULL;
 static void *g_pTexHeaderP2 = NULL;
+static void *g_pTexHeaderP3 = NULL;
 
 static void render_roster_pagination_hud(void *dev) {
     if (!dev) dev = g_d3d_device;
@@ -1567,8 +1790,9 @@ static void render_roster_pagination_hud(void *dev) {
         s_tex_init_done = 1;
         g_pTexPillLeft  = create_text_texture(dev, "< Q / LB", 96, 36, 17, 1, 0xFFFFFF);
         g_pTexPillRight = create_text_texture(dev, "E / RB >", 96, 36, 17, 1, 0xFFFFFF);
-        g_pTexHeaderP1  = create_text_texture(dev, "PAGINA 1/2: CIRCUITO ATP / WTA", 412, 36, 18, 1, 0xFFFFFF);
-        g_pTexHeaderP2  = create_text_texture(dev, "PAGINA 2/2: LEYENDAS CLASICAS", 412, 36, 18, 1, 0x00E5FF);
+        g_pTexHeaderP1  = create_text_texture(dev, "PAGINA 1/3: CIRCUITO ATP / WTA", 412, 36, 18, 1, 0xFFFFFF);
+        g_pTexHeaderP2  = create_text_texture(dev, "PAGINA 2/3: LEYENDAS CLASICAS", 412, 36, 18, 1, 0x00E5FF);
+        g_pTexHeaderP3  = create_text_texture(dev, "PAGINA 3/3: NEXT-GEN & HISTORIA", 412, 36, 18, 1, 0xFFD54F);
     }
 
     float sx = (float)g_cfg_width / 1920.0f;
@@ -1596,11 +1820,12 @@ static void render_roster_pagination_hud(void *dev) {
     // Subtle header bar above grid (grid is x=830..1450, y=218..780)
     float hdr_x1 = 934.0f * sx, hdr_y1 = 172.0f * sy, hdr_x2 = 1346.0f * sx, hdr_y2 = 208.0f * sy;
     draw_screen_quad(dev, hdr_x1, hdr_y1, hdr_x2, hdr_y2, 0xCC0A1424);
-    draw_screen_quad(dev, hdr_x1, hdr_y2 - 3.0f * sy, hdr_x2, hdr_y2, (g_current_roster_page == 1) ? 0xFF00E5FF : 0xFF4585E5);
+    DWORD accent = (g_current_roster_page == 2) ? 0xFFFFD54F : ((g_current_roster_page == 1) ? 0xFF00E5FF : 0xFF4585E5);
+    draw_screen_quad(dev, hdr_x1, hdr_y2 - 3.0f * sy, hdr_x2, hdr_y2, accent);
 
     if (g_pTexPillLeft)  draw_textured_quad(dev, g_pTexPillLeft,  l_x, l_y, l_x + pill_w, l_y + pill_h, 0xFFFFFFFF);
     if (g_pTexPillRight) draw_textured_quad(dev, g_pTexPillRight, r_x, r_y, r_x + pill_w, r_y + pill_h, 0xFFFFFFFF);
-    void *hdr_tex = (g_current_roster_page == 0) ? g_pTexHeaderP1 : g_pTexHeaderP2;
+    void *hdr_tex = (g_current_roster_page == 2) ? g_pTexHeaderP3 : ((g_current_roster_page == 1) ? g_pTexHeaderP2 : g_pTexHeaderP1);
     if (hdr_tex) draw_textured_quad(dev, hdr_tex, hdr_x1, hdr_y1, hdr_x2, hdr_y2, 0xFFFFFFFF);
 
     end_overlay_state(dev);
@@ -2998,7 +3223,14 @@ static void *make_trampoline(uint32_t src, size_t len) {
     return tramp;
 }
 
-// 0x006284E0 (fwHashTable::Find - Universal key lookup crash guard)
+static void *make_trampoline_reloc(uint32_t src, size_t len, int e8_offset, uint32_t e8_target) {
+    uint8_t *tramp = (uint8_t *)make_trampoline(src, len);
+    if (tramp && e8_offset >= 0 && tramp[e8_offset] == 0xE8) {
+        uint32_t fixed_rel = e8_target - ((uint32_t)(uintptr_t)tramp + (uint32_t)e8_offset + 5u);
+        memcpy(&tramp[e8_offset + 1], &fixed_rel, 4);
+    }
+    return tramp;
+}
 static void __attribute__((naked)) hk_Safe6284e0(void) {
     __asm__(
         "test %ecx, %ecx\n"
@@ -4632,17 +4864,23 @@ static void apply_vt4_patches(void) {
     patch_bytes(0x005df62b, disable_region_lock, 1);
     log_msg("[VT4-Mod] Character Select UI patches active (fraw cell map, persistent hover labels, unlocked slots)");
 
-    // 5e. Fase 2 Roster Expansion (12 new Legends & Next-Gen IDs 26..37)
+    // 5e. Fase 2 + Page 3 Roster Expansion (IDs 26..37 + 38..58 -> 59 total players)
     memcpy(g_player_flags, (const void *)0x00820c18, 26 * sizeof(int32_t));
     static const int32_t new_flags[12] = { 44, 24, 73, 73, 45, 73, 16, 73, 37, 5, 76, 73 };
     memcpy(&g_player_flags[26], new_flags, sizeof(new_flags));
+    for (int i = 0; i < NUM_EXTRA_PLAYERS; i++) {
+        g_player_flags[38 + i] = g_extra_players[i].flag;
+    }
     install_jmp(0x00452720, (void *)hk_GetPlayerFlag, 11);
 
-    // Clone signature motion preset table (0x007a5958[26]) -> g_player_anim_presets[38]
+    // Clone signature motion preset table (0x007a5958[26]) -> g_player_anim_presets[59]
     memcpy(g_player_anim_presets, (const void *)0x007a5958, 26 * 20);
     // Assign closest signature serve/forehand/backhand motion tuples from pro icons
     for (int i = 0; i < 12; i++) {
         memcpy(&g_player_anim_presets[(26 + i) * 5], &g_player_anim_presets[g_custom_anim_proxy[i] * 5], 20);
+    }
+    for (int i = 0; i < NUM_EXTRA_PLAYERS; i++) {
+        memcpy(&g_player_anim_presets[(38 + i) * 5], &g_player_anim_presets[g_extra_players[i].anim_proxy * 5], 20);
     }
     uintptr_t ap_base = (uintptr_t)g_player_anim_presets;
     static const uint32_t ap_f0_refs[15] = {
@@ -4655,11 +4893,14 @@ static void apply_vt4_patches(void) {
     { uint32_t v3 = (uint32_t)(ap_base + 12); patch_bytes(0x4e175e, &v3, 4); patch_bytes(0x4e191a, &v3, 4); }
     { uint32_t v4 = (uint32_t)(ap_base + 16); patch_bytes(0x4e1780, &v4, 4); patch_bytes(0x4e193c, &v4, 4); }
 
-    // Clone 60-float bone scale table (0x007b9230[26]) -> g_player_bone_scales[38] matched to each star's base .sdo skeleton
+    // Clone 60-float bone scale table (0x007b9230[26]) -> g_player_bone_scales[59] matched to each star's base .sdo skeleton
     memcpy(g_player_bone_scales, (const void *)0x007b9230, 26 * 240);
     static const uint8_t proxy_bone_base[12] = { 1, 2, 0, 10, 14, 11, 17, 18, 22, 21, 12, 23 };
     for (int i = 0; i < 12; i++) {
         memcpy(&g_player_bone_scales[(26 + i) * 60], &g_player_bone_scales[proxy_bone_base[i] * 60], 240);
+    }
+    for (int i = 0; i < NUM_EXTRA_PLAYERS; i++) {
+        memcpy(&g_player_bone_scales[(38 + i) * 60], &g_player_bone_scales[g_extra_players[i].bone_proxy * 60], 240);
     }
     { uint32_t bs_addr = (uint32_t)(uintptr_t)g_player_bone_scales; patch_bytes(0x0053d661, &bs_addr, 4); }
 
@@ -4667,7 +4908,7 @@ static void apply_vt4_patches(void) {
     g_real_playstyle_loadchar = (PlayStyleLoadChar_t)make_trampoline(0x00542260, 6);
     install_jmp(0x00542260, (void *)hk_PlayStyle_LoadChar, 6);
 
-    // Map serve/return motion table indices (0x007baaa8[28]) for IDs 26..37 in 0x0053d6d0
+    // Map serve/return motion table indices (0x007baaa8[28]) for IDs 26..58 in 0x0053d6d0
     g_real_set_serve_motion_id = (SetServeMotionIdFn_t)make_trampoline(0x0053d6d0, 6);
     install_jmp(0x0053d6d0, (void *)hk_SetServeMotionId, 6);
 
@@ -4675,17 +4916,55 @@ static void apply_vt4_patches(void) {
     g_real_get_motion_data = (GetMotionDataFn_t)make_trampoline(0x004e06f0, 6);
     install_jmp(0x004e06f0, (void *)hk_GetMotionData, 6);
 
-    // Extend all hardcoded pro-count bounds (0x1a -> 0x26 = 38) in PlayerDB helpers and CharaSelect
+    // Extend hardcoded pro-count bounds (0x1a -> 0x3b = 59) in PlayerDB helpers and CharaSelect
     {
-        const uint8_t max_ps = 0x26;
-        static const uint32_t db_cap_imm8[8] = {
-            0x00533403, 0x00533533, 0x00533677, 0x005338a3, 0x005339b3, 0x00533a89, 0x00533b32, 0x005df6a5
+        const uint8_t max_ps = (uint8_t)MAX_ROSTER_PLAYERS;
+        static const uint32_t db_cap_imm8[9] = {
+            0x00533403, 0x00533533, 0x00533677, 0x005338a3, 0x005339b3, 0x00533a89, 0x00533b32, 0x005df6a5, 0x005b9960
         };
-        for (int i = 0; i < 8; i++) patch_bytes(db_cap_imm8[i], &max_ps, 1);
+        for (int i = 0; i < 9; i++) patch_bytes(db_cap_imm8[i], &max_ps, 1);
         // Prevent GetFinalSelectedCharId (0x005dff30) from hijacking char_id 26 (Alcaraz) into edit_slot + 26 = 25
         const uint8_t jmp_op = 0xEB;
         patch_bytes(0x005dff33, &jmp_op, 1);
     }
+
+    // Hook all PlayerDB getters (0x00533310..0x00533dc0) so IDs 38..58 work alongside native 38-stride fwDataDB_Player.bin
+    install_jmp(0x00533310, (void *)hk_PlayerDB_GetCount, 5);
+    g_real_pdb_get_code         = (PlayerDB_GetCode_t)make_trampoline_reloc(0x00533320, 7, 2, 0x00533280);
+    install_jmp(0x00533320, (void *)hk_PlayerDB_GetCode, 7);
+    g_real_pdb_find_by_code     = (PlayerDB_FindByCode_t)make_trampoline_reloc(0x00533360, 9, 4, 0x00533280);
+    install_jmp(0x00533360, (void *)hk_PlayerDB_FindByCode, 9);
+    g_real_pdb_is_man           = (PlayerDB_BoolId_t)make_trampoline(0x005333c0, 7);
+    install_jmp(0x005333c0, (void *)hk_PlayerDB_IsMan, 7);
+    g_real_pdb_get_type         = (PlayerDB_IntId_t)make_trampoline_reloc(0x005334d0, 5, 0, 0x00533280);
+    install_jmp(0x005334d0, (void *)hk_PlayerDB_GetType, 5);
+    g_real_pdb_get_style_name   = (PlayerDB_FStrOut_t)make_trampoline(0x005334f0, 7);
+    install_jmp(0x005334f0, (void *)hk_PlayerDB_GetStyleName, 7);
+    g_real_pdb_get_style_enum   = (PlayerDB_IntId_t)make_trampoline(0x00533630, 6);
+    install_jmp(0x00533630, (void *)hk_PlayerDB_GetStyleEnum, 6);
+    g_real_pdb_is_type3         = (PlayerDB_BoolId_t)make_trampoline_reloc(0x005337f0, 5, 0, 0x00533280);
+    install_jmp(0x005337f0, (void *)hk_PlayerDB_IsType3, 5);
+    g_real_pdb_get_height       = (PlayerDB_StrId_t)make_trampoline_reloc(0x00533820, 5, 0, 0x00533280);
+    install_jmp(0x00533820, (void *)hk_PlayerDB_GetHeight, 5);
+    g_real_pdb_get_weight       = (PlayerDB_StrId_t)make_trampoline_reloc(0x00533840, 5, 0, 0x00533280);
+    install_jmp(0x00533840, (void *)hk_PlayerDB_GetWeight, 5);
+    g_real_pdb_get_bh2          = (PlayerDB_BoolId_t)make_trampoline(0x00533860, 7);
+    install_jmp(0x00533860, (void *)hk_PlayerDB_GetBackHand2H, 7);
+    g_real_pdb_get_lefty        = (PlayerDB_BoolId_t)make_trampoline(0x00533970, 7);
+    install_jmp(0x00533970, (void *)hk_PlayerDB_GetLefty, 7);
+    g_real_pdb_get_tension      = (PlayerDB_IntId_t)make_trampoline(0x00533a80, 5);
+    install_jmp(0x00533a80, (void *)hk_PlayerDB_GetTension, 5);
+    g_real_pdb_get_wtdbls       = (PlayerDB_IntId_t)make_trampoline_reloc(0x00533ab0, 5, 0, 0x00533280);
+    install_jmp(0x00533ab0, (void *)hk_PlayerDB_GetWtDblsPt, 5);
+    g_real_pdb_get_short_name   = (PlayerDB_StrId_t)make_trampoline_reloc(0x00533ad0, 5, 0, 0x00533280);
+    install_jmp(0x00533ad0, (void *)hk_PlayerDB_GetShortName, 5);
+    g_real_pdb_get_voice_se     = (PlayerDB_FStrOut_t)make_trampoline(0x00533af0, 7);
+    install_jmp(0x00533af0, (void *)hk_PlayerDB_GetVoiceSE, 7);
+    g_real_pdb_get_model_prefix = (PlayerDB_ModelPrefix_t)make_trampoline_reloc(0x00533dc0, 8, 3, 0x00533280);
+    install_jmp(0x00533dc0, (void *)hk_PlayerDB_GetModelPrefix, 8);
+    patch_call(0x00533eec, (void *)hk_ModelSdo_GetAuthor);
+    patch_call(0x00539441, (void *)hk_ServeMin_GetFloat);
+    patch_call(0x00539456, (void *)hk_ServeMax_GetFloat);
 
     uint8_t *tramp_5300e0 = (uint8_t *)make_trampoline(0x005300e0, 9);
     if (tramp_5300e0 && tramp_5300e0[2] == 0xE8) {
@@ -4695,7 +4974,8 @@ static void apply_vt4_patches(void) {
     }
     g_real_set_fraw_table = (SetFrawTable_t)tramp_5300e0;
     install_jmp(0x005300e0, (void *)hk_SetFrawTableText, 9);
-    log_msg("[VT4-Mod] Fase 2 Roster Expansion active: IDs 26..37 (Alcaraz..Navratilova) DB/flags/names/anims hooked");
+    log_msg("[VT4-Mod] Fase 2 + Page 3 Roster Expansion active: IDs 26..58 (%d players, %d pages) hooked",
+            MAX_ROSTER_PLAYERS, NUM_ROSTER_PAGES);
 
     // 6. Fix Sega European Region ESRB infinite loop deadlock
     // In FUN_00431580 (AdvMode ctor), replace call to FUN_0044fc70 at 0x004315d1 with near jmp to 0x0043165c

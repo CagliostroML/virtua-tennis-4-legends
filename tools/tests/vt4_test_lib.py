@@ -55,6 +55,16 @@ PAGE_LEGENDS = [
     24, 25, 23,
 ]
 
+PAGE_LEGENDS2 = [
+    38, 39, 40,
+    41, 42, 43,
+    44, 45, 46,
+    47, 48, 49,
+    50, 51, 52,
+    53, 54, 55,
+    56, 57, 58,
+]
+
 
 def format_ini(
     width=1920,
@@ -205,13 +215,16 @@ def boot_to_main_menu(hwnd):
 
 
 def locate_char(char_id):
+    if char_id in PAGE_LEGENDS2:
+        idx = PAGE_LEGENDS2.index(char_id)
+        return 2, idx // 3, idx % 3
     if char_id in PAGE_LEGENDS:
         idx = PAGE_LEGENDS.index(char_id)
         return 1, idx // 3, idx % 3
     if char_id in PAGE_TOUR:
         idx = PAGE_TOUR.index(char_id)
         return 0, idx // 3, idx % 3
-    raise ValueError(f"char_id {char_id} is not on PAGE_TOUR or PAGE_LEGENDS")
+    raise ValueError(f"char_id {char_id} is not on PAGE_TOUR, PAGE_LEGENDS, or PAGE_LEGENDS2")
 
 
 def verify_pngs():

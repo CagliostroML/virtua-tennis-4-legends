@@ -25,30 +25,30 @@ Este documento es nuestra hoja de ruta viva. Iremos marcando con `[x]` cada elem
 - [x] **02. Rafael Nadal (ESP)** — Zurdo (Revés 2M) | *Físico Indestructible / Topspin Extremo* (Stats Prime aplicados en `fwDataDB_Player`)
 - [x] **03. Novak Djokovic (SRB)** — Diestro (Revés 2M) | *Contragolpeador Elástico / Restador Total* (Stats Prime aplicados en `fwDataDB_Player`)
 - [x] **04. Andy Murray (GBR)** — Diestro (Revés 2M) | *Táctico Defensivo / Passing Shots* (Stats Prime aplicados en `fwDataDB_Player`)
-- [ ] **05. Stan Wawrinka (SUI)** — Diestro (Revés 1M) | *Cañonero de Fondo (Strong Backhand)*
+- [x] **05. Stan Wawrinka (SUI)** — Diestro (Revés 1M) | *Cañonero de Fondo (Strong Backhand)* (`ID 38`, `P_M_WAW_NG.sdo`, `photo_L/38.dds` vía PhotoCraft, Página 3)
 - [x] **06. Juan Martín del Potro (ARG)** — Diestro (Revés 2M) | *Derecha Demoledora (Hard Hitter)* (Stats Prime aplicados en `fwDataDB_Player`)
 
 ### II. La Nueva Era ("Next-Gen" & Actualidad hasta 2026)
 - [x] **07. Carlos Alcaraz (ESP)** — Diestro (Revés 2M) | *Todoterreno Explosivo / Rey de la Dejada* (`ID 26`, `P_M_ALC_NG.sdo`, retrato `photo_L/26.dds` sin viñeta vía PhotoCraft, jugable y verificado en partido con `0` asserts)
 - [x] **08. Jannik Sinner (ITA)** — Diestro (Revés 2M) | *Golpeador de Ritmo Frenético* (`ID 27`, `P_M_SIN_NG.sdo`, retrato `photo_L/27.dds` sin viñeta vía PhotoCraft, jugable y verificado en partido con `0` asserts)
-- [ ] **09. Daniil Medvedev (RUS)** — Diestro (Revés 2M) | *Muro Heterodoxo / Contragolpeador Profundo*
-- [ ] **10. Alexander Zverev (GER)** — Diestro (Revés 2M) | *Gran Sacador + Potencia de Revés*
-- [ ] **11. Stefanos Tsitsipas (GRE)** — Diestro (Revés 1M) | *Ataque de Derecha y Red*
-- [ ] **12. Dominic Thiem (AUT)** — Diestro (Revés 1M) | *Potencia Pesada en Tierra Batida*
-- [ ] **13. Nick Kyrgios (AUS)** — Diestro (Revés 2M) | *Impredecible / Gran Sacador / Saque por debajo*
+- [x] **09. Daniil Medvedev (RUS)** — Diestro (Revés 2M) | *Muro Heterodoxo / Contragolpeador Profundo* (`ID 39`, `P_M_MED_NG.sdo`, `photo_L/39.dds` vía PhotoCraft, Página 3)
+- [x] **10. Alexander Zverev (GER)** — Diestro (Revés 2M) | *Gran Sacador + Potencia de Revés* (`ID 40`, `P_M_ZVE_NG.sdo`, `photo_L/40.dds` vía PhotoCraft, Página 3)
+- [x] **11. Stefanos Tsitsipas (GRE)** — Diestro (Revés 1M) | *Ataque de Derecha y Red* (`ID 41`, `P_M_TSI_NG.sdo`, `photo_L/41.dds` vía PhotoCraft, Página 3)
+- [x] **12. Dominic Thiem (AUT)** — Diestro (Revés 1M) | *Potencia Pesada en Tierra Batida* (`ID 42`, `P_M_THI_NG.sdo`, `photo_L/42.dds` vía PhotoCraft, Página 3)
+- [x] **13. Nick Kyrgios (AUS)** — Diestro (Revés 2M) | *Impredecible / Gran Sacador / Saque por debajo* (`ID 43`, `P_M_KYR_NG.sdo`, `photo_L/43.dds` vía PhotoCraft, Página 3)
 - [ ] **14. Ben Shelton (USA)** — Zurdo (Revés 2M) | *Cañonero Zurdo (Big Server)*
 
 ### III. Leyendas de los 2000s y 2010s (La Guardia Clásica)
 - [x] **15. Andy Roddick (USA)** — Diestro (Revés 2M) | *Gran Sacador (249 km/h) + Derecha* (Stats Prime aplicados en `fwDataDB_Player`)
-- [ ] **16. Lleyton Hewitt (AUS)** — Diestro (Revés 2M) | *Velocista Incansable / Globos y Passing*
-- [ ] **17. Marat Safin (RUS)** — Diestro (Revés 2M) | *Potencia Pura / Revés a dos manos letal*
+- [x] **16. Lleyton Hewitt (AUS)** — Diestro (Revés 2M) | *Velocista Incansable / Globos y Passing* (`ID 44`, `P_M_HEW_LG.sdo`, `photo_L/44.dds` vía PhotoCraft, Página 3)
+- [x] **17. Marat Safin (RUS)** — Diestro (Revés 2M) | *Potencia Pura / Revés a dos manos letal* (`ID 45`, `P_M_SAF_LG.sdo`, `photo_L/45.dds` vía PhotoCraft, Página 3)
 - [x] **18. Gustavo "Guga" Kuerten (BRA)** — Diestro (Revés 1M) | *Rey de la Tierra / Revés Liftado 1M* (`ID 36`, foto real `photo_L/36.dds`, modelo `P_M_KUE_LG.sdo` y Página 2)
-- [ ] **19. Juan Carlos Ferrero (ESP)** — Diestro (Revés 2M) | *El Mosquito (Velocidad + Derecha Cruzada)*
-- [ ] **20. Carlos Moyá (ESP)** — Diestro (Revés 2M) | *Derecha Invertida Demoledora*
-- [ ] **21. David Ferrer (ESP)** — Diestro (Revés 2M) | *Muro Físico / Restador Incansable*
-- [ ] **22. David Nalbandian (ARG)** — Diestro (Revés 2M) | *Ángulos Imposibles / Revés Cruzado*
+- [x] **19. Juan Carlos Ferrero (ESP)** — Diestro (Revés 2M) | *El Mosquito (Velocidad + Derecha Cruzada)* (`ID 47`, `P_M_FRR_LG.sdo`, `photo_L/47.dds` vía PhotoCraft, Página 3)
+- [x] **20. Carlos Moyá (ESP)** — Diestro (Revés 2M) | *Derecha Invertida Demoledora* (`ID 48`, `P_M_MOY_LG.sdo`, `photo_L/48.dds` vía PhotoCraft, Página 3)
+- [x] **21. David Ferrer (ESP)** — Diestro (Revés 2M) | *Muro Físico / Restador Incansable* (`ID 49`, `P_M_FER_LG.sdo`, `photo_L/49.dds` vía PhotoCraft, Página 3)
+- [x] **22. David Nalbandian (ARG)** — Diestro (Revés 2M) | *Ángulos Imposibles / Revés Cruzado* (`ID 50`, `P_M_NAL_LG.sdo`, `photo_L/50.dds` vía PhotoCraft, Página 3)
 - [ ] **23. Guillermo Coria (ARG)** — Diestro (Revés 2M) | *El Mago (Dejadas + Velocidad en Tierra)*
-- [ ] **24. Jo-Wilfried Tsonga (FRA)** — Diestro (Revés 2M) | *Tenis Espectáculo (Saque + Derecha + Red)*
+- [x] **24. Jo-Wilfried Tsonga (FRA)** — Diestro (Revés 2M) | *Tenis Espectáculo (Saque + Derecha + Red)* (`ID 46`, `P_M_TSO_LG.sdo`, `photo_L/46.dds` vía PhotoCraft, Página 3)
 - [ ] **25. Gaël Monfils (FRA)** — Diestro (Revés 2M) | *Showman Acrobático (Fast Runner)*
 - [ ] **26. Richard Gasquet (FRA)** — Diestro (Revés 1M) | *Revés a Una Mano Artístico*
 - [ ] **27. Tommy Haas (GER)** — Diestro (Revés 1M) | *Clásico Completo*
@@ -62,7 +62,7 @@ Este documento es nuestra hoja de ruta viva. Iremos marcando con `[x]` cada elem
 - [x] **33. Jim Courier (USA)** — Diestro (Revés 2M) | *Fuerza Bruta desde el Fondo* (Stats Prime y Página 2 `g_roster_page_legends`)
 - [x] **34. Boris Becker (GER)** — Diestro (Revés 1M) | *"Boom Boom" (Saque + Volea en Plancha)* (Stats Prime y Página 2 `g_roster_page_legends`)
 - [x] **35. Stefan Edberg (SWE)** — Diestro (Revés 1M) | *Saque Kick y Volea Elegante* (Stats Prime y Página 2 `g_roster_page_legends`)
-- [ ] **36. Goran Ivanišević (CRO)** — Zurdo (Revés 2M) | *Rey del Ace (Saque Zurdo Inalcanzable)*
+- [x] **36. Goran Ivanišević (CRO)** — Zurdo (Revés 2M) | *Rey del Ace (Saque Zurdo Inalcanzable)* (`ID 54`, `P_M_IVN_LG.sdo`, `photo_L/54.dds` vía PhotoCraft, Página 3)
 - [ ] **37. Michael Chang (USA)** — Diestro (Revés 2M) | *Velocidad Extrema y Espíritu de Lucha*
 - [ ] **38. Marcelo "Chino" Ríos (CHI)** — Zurdo (Revés 2M) | *Talento Puro / Ángulos y Dejadas*
 - [ ] **39. Thomas Muster (AUT)** — Zurdo (Revés 1M) | *La Bestia de la Tierra Batida*
@@ -71,10 +71,10 @@ Este documento es nuestra hoja de ruta viva. Iremos marcando con `[x]` cada elem
 ### V. Los Pioneros (Años 70 y 80) + Jefes SEGA
 - [x] **41. Björn Borg (SWE)** — Diestro (Revés 2M) | *El Hombre de Hielo (Resistencia infinita + Topspin)* (`ID 30`, foto real `photo_L/30.dds`, modelo `P_M_BOR_LG.sdo` y Página 2)
 - [x] **42. John McEnroe (USA)** — Zurdo (Revés 1M) | *Toque Mágico en la Red + Saque de Espaldas* (`ID 31`, foto real `photo_L/31.dds`, modelo `P_M_MCE_LG.sdo` y Página 2)
-- [ ] **43. Ivan Lendl (CZE/USA)** — Diestro (Revés 1M) | *Padre del Tenis Moderno de Potencia*
-- [ ] **44. Jimmy Connors (USA)** — Zurdo (Revés 2M) | *Golpeo Plano Rasante y Agresividad Total*
+- [x] **43. Ivan Lendl (CZE/USA)** — Diestro (Revés 1M) | *Padre del Tenis Moderno de Potencia* (`ID 51`, `P_M_LEN_LG.sdo`, `photo_L/51.dds` recorte PhotoCraft B&W 1982, Página 3)
+- [x] **44. Jimmy Connors (USA)** — Zurdo (Revés 2M) | *Golpeo Plano Rasante y Agresividad Total* (`ID 52`, `P_M_CON_LG.sdo`, `photo_L/52.dds` recorte PhotoCraft B&W 1978, Página 3)
 - [ ] **45. Mats Wilander (SWE)** — Diestro (Revés 2M) | *Táctico de Acero*
-- [ ] **46. Guillermo Vilas (ARG)** — Zurdo (Revés 1M) | *El Gran Willy / Topspin Eterno*
+- [x] **46. Guillermo Vilas (ARG)** — Zurdo (Revés 1M) | *El Gran Willy / Topspin Eterno* (`ID 53`, `P_M_VIL_LG.sdo`, `photo_L/53.dds` vía PhotoCraft, Página 3)
 - [ ] **47. Rod Laver (AUS)** — Zurdo (Revés 1M) | *The Rocket (El único doble Grand Slam)*
 - [x] **48. King & Duke (SEGA Bosses)** — Jefes finales míticos de *Virtua Tennis* (Desbloqueados de serie vía parche `FUN_005dfe90`)
 
@@ -82,14 +82,14 @@ Este documento es nuestra hoja de ruta viva. Iremos marcando con `[x]` cada elem
 - [x] **49. Serena Williams (USA)** — *Potencia y Saque Total* (`ID 33`, foto real `photo_L/33.dds`, modelo `P_W_SER_NG.sdo` y Página 2)
 - [x] **50. Steffi Graf (GER)** — *Golden Slam (Derecha Invertida + Revés Cortado Letal)* (`ID 32`, foto real `photo_L/32.dds`, modelo `P_W_GRA_LG.sdo` y Página 2)
 - [x] **51. Martina Navratilova (USA)** — *Zurda de Saque y Volea Implacable* (`ID 37`, foto real `photo_L/37.dds`, modelo `P_W_NAV_LG.sdo` y Página 2)
-- [ ] **52. Chris Evert (USA)** — *Precisión Milimétrica de Fondo*
-- [ ] **53. Monica Seles (YUG/USA)** — *Doble Golpe a Dos Manos Ultra-Agresivo*
+- [x] **52. Chris Evert (USA)** — *Precisión Milimétrica de Fondo* (`ID 55`, `P_W_EVE_LG.sdo`, `photo_L/55.dds` recorte PhotoCraft B&W, Página 3)
+- [x] **53. Monica Seles (YUG/USA)** — *Doble Golpe a Dos Manos Ultra-Agresivo* (`ID 56`, `P_W_SEL_LG.sdo`, `photo_L/56.dds` vía PhotoCraft, Página 3)
 - [ ] **54. Arantxa Sánchez Vicario (ESP)** — *Defensa Imposible en Tierra Batida*
 - [ ] **55. Conchita Martínez (ESP)** — *Maestra del Efecto y Variedad*
-- [ ] **56. Garbiñe Muguruza (ESP)** — *Golpeo Plano y Agresivo*
+- [x] **56. Garbiñe Muguruza (ESP)** — *Golpeo Plano y Agresivo* (`ID 58`, `P_W_MUG_NG.sdo`, `photo_L/58.dds` vía PhotoCraft, Página 3)
 - [ ] **57. Venus Williams (USA)** — *Gran Sacadora y Envergadura*
 - [ ] **58. Maria Sharapova (RUS)** — *Cañonera sin Cuartel*
-- [ ] **59. Justine Henin (BEL)** — *El Mejor Revés a Una Mano Femenino*
+- [x] **59. Justine Henin (BEL)** — *El Mejor Revés a Una Mano Femenino* (`ID 57`, `P_W_HEN_LG.sdo`, `photo_L/57.dds` vía PhotoCraft, Página 3)
 - [ ] **60. Kim Clijsters (BEL)** — *Elasticidad y Potencia*
 - [ ] **61. Caroline Wozniacki / Ana Ivanovic / Svetlana Kuznetsova / Laura Robson** *(Laura Robson desbloqueada en Página 2 `g_roster_page_legends`; pendientes Wozniacki/Ivanovic/Kuznetsova)*
 - [x] **62. Iga Świątek (POL)** — *Topspin y Dominio Absoluto en Tierra* (`ID 34`, foto real `photo_L/34.dds`, modelo `P_W_SWI_NG.sdo` y Página 2)
@@ -120,3 +120,8 @@ Este documento es nuestra hoja de ruta viva. Iremos marcando con `[x]` cada elem
 ### Estado verificado de los 12 nuevos IDs (`26..37`, Hito B + Hito D)
 - **Matriz jugable (`test_roster_matrix.py --ids 26..37`)**: Los 12 (`26` Alcaraz, `27` Sinner, `28` Sampras, `29` Agassi, `30` Borg, `31` McEnroe, `32` Graf, `33` Serena, `34` Świątek, `35` Sabalenka, `36` Kuerten, `37` Navratilova) cargan en partido, se mueven y sacan (`served=1`, `PlayStyle=0`, `ExbAdv=0`, `Exc=0`) tras mapear `0x0053d6d0` (`0x007baaa8`).
 - **Retratos `photo_L/26..37.dds` (Hito D completado)**: 12 originales CC/PD y `manifest.json` en `assets/portraits_src/` (incluyendo `29` Agassi Indian Wells 2006, `30` Borg 1979 en pista y `32` Graf Wimbledon 2009), con restauración/coloreado fiel vía Nano Banana + recorte MCP de **PhotoCraft** en `28` Sampras, `30` Borg, `31` McEnroe y `36` Kuerten (queda pendiente `37` Navratilova al alcanzar el límite horario de `gemini-3.1-flash-image`), exportados desde `tools/build_legends_roster.py` al formato oficial VT4 (`256x256` BGRA 32bpp sin mipmaps, `262,272` bytes, `pf_flags=0x41`, cero viñeta circular) y verificados en `Página 2/2` dentro del juego (`0` asserts, `0` excepciones).
+
+### Estado verificado de Página 3 (`IDs 38..58`, 59 jugadores totales)
+- **Motor y `PlayerDB` (`src/xlive/xlive.c`)**: `NUM_ROSTER_PAGES = 3`, `MAX_ROSTER_PLAYERS = 59`, cabecera `PAGINA 3/3: NEXT-GEN & HISTORIA` (con `DT_NOPREFIX`), `g_extra_players[21]` y hooks completos de `PlayerDB` (`0x00533310..0x00533eec`), `ServeMin`/`ServeMax` (`0x00539441`/`0x00539456`), límites `0x3b` (`0x005df6a5`, `0x005b9960`), y guard `hk_GetMotionData` (`0x004e06f0`) frente a retornos `>= 0x7FFE0000u` (`0xFFFFFFE3`/`0xFFFFFFE4`).
+- **Modelos y retratos (`tools/build_page3_roster.py`)**: 21 modelos `.sdo` + `.zml` (`P_M_WAW_NG`..`P_W_MUG_NG`), 21 fuentes CC/PD + `assets/portraits_page3_src/manifest.json` y recortes PhotoCraft MCP en `photo_L/38..58.dds` (`262,272` B BGRA 256x256; `51` Lendl, `52` Connors y `55` Evert en B&W limpios a la espera de reseteo de cuota de `gemini-3.1-flash-image`).
+- **Matriz jugable (`test_roster_matrix.py --ids 38..58 --mv 3`)**: **21/21** (`38` Wawrinka, `39` Medvedev, `40` Zverev, `41` Tsitsipas, `42` Thiem, `43` Kyrgios, `44` Hewitt, `45` Safin, `46` Tsonga, `47` Ferrero, `48` Moyá, `49` Ferrer, `50` Nalbandian, `51` Lendl, `52` Connors, `53` Vilas, `54` Ivanišević, `55` Evert, `56` Seles, `57` Henin, `58` Muguruza) cargan, muestran su retrato/bandera en `Página 3/3`, juegan y sacan en partido con `PlayStyle=0`, `ExbAdv=0` y `Exceptions=0`.
