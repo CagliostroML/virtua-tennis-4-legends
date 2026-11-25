@@ -46,3 +46,22 @@ __pycache__/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Local scratch, generated asset workspaces & binary media
+scratch/
+assets/face_uv_workspace/
+assets/face_uv_photocraft_workspace/
+assets/kits_photocraft_workspace/
+assets/portraits_photocraft_workspace/
+assets/portraits_page4_src/
+assets/sfx_real_raw/
+assets/voices_workspace/
+*.dds
+*.sdo
+*.zml
+*.wav
+*.mp3
+*.ogg
+*.psd
+*.webp
+*.apz

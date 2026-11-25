@@ -76,7 +76,7 @@ NEW_STARS = [
     },
     {
         "id": 32, "code": "GRA", "short": "S.GRAF", "author": "LG", "man": 0,
-        "smin": 102, "smax": 202, "style": "Strong Forehand", "type": 1, "h": 176, "w": 64, "bh2": 0, "lefty": 0, "voice": "vo_w_sha",
+        "smin": 102, "smax": 202, "style": "Strong Forehand", "type": 1, "h": 175, "w": 64, "bh2": 0, "lefty": 0, "voice": "vo_f_sha",
         "photo": "32_Steffi Graf.jpg", "base": "P_W_SHA_SN",
         "wear_fn": lambda r, g, b: (min(255, r + 45), min(255, g + 45), min(255, b + 48)),
         "acc_fn":  lambda r, g, b: (min(255, int(r * 1.2 + 50)), int(g * 0.22), int(b * 0.22)),
@@ -84,7 +84,7 @@ NEW_STARS = [
     },
     {
         "id": 33, "code": "SER", "short": "S.WILLIAMS", "author": "NG", "man": 0,
-        "smin": 110, "smax": 210, "style": "Big Serve", "type": 1, "h": 175, "w": 70, "bh2": 1, "lefty": 0, "voice": "vo_w_wil",
+        "smin": 110, "smax": 210, "style": "Big Serve", "type": 1, "h": 175, "w": 70, "bh2": 1, "lefty": 0, "voice": "vo_f_wil",
         "photo": "33_Serena Williams.jpg", "base": "P_W_WIL_SN",
         "wear_fn": lambda r, g, b: (min(255, int(r * 0.72 + 45)), int(g * 0.26), min(255, int(b * 1.15 + 75))),
         "acc_fn":  lambda r, g, b: (min(255, int(r * 0.78 + 40)), int(g * 0.24), min(255, int(b * 1.10 + 70))),
@@ -92,7 +92,7 @@ NEW_STARS = [
     },
     {
         "id": 34, "code": "SWI", "short": "I.SWIATEK", "author": "NG", "man": 0,
-        "smin": 98, "smax": 194, "style": "Hard Hit", "type": 1, "h": 176, "w": 65, "bh2": 1, "lefty": 0, "voice": "vo_w_woz",
+        "smin": 98, "smax": 194, "style": "Hard Hit", "type": 1, "h": 176, "w": 65, "bh2": 1, "lefty": 0, "voice": "vo_f_woz",
         "photo": "34_Iga Świątek.jpg", "base": "P_W_WOZ_IT",
         "wear_fn": lambda r, g, b: (min(255, int(r * 1.15 + 65)), int(g * 0.26), int(b * 0.34)),
         "acc_fn":  lambda r, g, b: (min(255, r + 40), min(255, g + 35), min(255, b + 35)),
@@ -100,7 +100,7 @@ NEW_STARS = [
     },
     {
         "id": 35, "code": "SAB", "short": "A.SABALENKA", "author": "NG", "man": 0,
-        "smin": 108, "smax": 208, "style": "Big Serve", "type": 1, "h": 182, "w": 80, "bh2": 1, "lefty": 0, "voice": "vo_w_sha",
+        "smin": 108, "smax": 208, "style": "Big Serve", "type": 1, "h": 182, "w": 80, "bh2": 1, "lefty": 0, "voice": "vo_f_sha",
         "photo": "35_Aryna Sabalenka.jpg", "base": "P_W_CHA_IT",
         "wear_fn": lambda r, g, b: (min(255, int(r * 0.85 + 50)), int(g * 0.22), min(255, int(b * 1.05 + 65))),
         "acc_fn":  lambda r, g, b: (min(255, int(r * 1.1 + 50)), int(g * 0.25), min(255, int(b * 0.7 + 30))),
@@ -116,7 +116,7 @@ NEW_STARS = [
     },
     {
         "id": 37, "code": "NAV", "short": "M.NAVRATILOVA", "author": "LG", "man": 0,
-        "smin": 100, "smax": 196, "style": "Serve & Volley", "type": 1, "h": 173, "w": 66, "bh2": 0, "lefty": 1, "voice": "vo_w_wil",
+        "smin": 100, "smax": 196, "style": "Serve & Volley", "type": 1, "h": 173, "w": 66, "bh2": 0, "lefty": 1, "voice": "vo_f_wil",
         "photo": "37_Martina Navratilova.jpg", "base": "P_W_ROB_IT",
         "wear_fn": lambda r, g, b: (min(255, int(r * 0.78 + 42)), min(255, int(g * 0.82 + 44)), min(255, int(b * 1.05 + 62))),
         "acc_fn":  lambda r, g, b: (min(255, r + 40), min(255, g + 40), min(255, b + 45)),

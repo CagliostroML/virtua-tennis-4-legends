@@ -1,9 +1,14 @@
 #define WIN32_LEAN_AND_MEAN
-#include <windows.h>
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0600
+#endif
 #include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 static int g_signin_notified = 0;
 static wchar_t g_save_path[MAX_PATH] = L"c:\\Users\\acorr\\Documents\\tenis\\game\\save\\";
@@ -99,6 +104,10 @@ static uint32_t g_cfg_match_speed_mode = 0; // 0=Normal 1.0x, 1=VT2 Turbo 1.20x,
 static uint32_t g_cfg_exb_rules = 0; // 0=Manual/Estandar, 1=3 Sets x 6J + TB, 2=Grand Slam 5 Sets x 6J + TB, 3=5 Sets Ventaja
 static uint32_t g_cfg_clean_postfx = 1; // 0=Original SEGA (Bloom+Blur), 1=Ultra Nitido (Sin Bloom/Blur), 2=Suave (35% Glare)
 static uint32_t g_cfg_multiverse_mode = 0; // 0=Off, 1=EE-2 Batalla Hielo/Barro, 2=EE-4 Super Golpes DBZ 300%, 3=Ambos!
+#define EE_CFG_WEAPON_MODE_DEFINED
+static uint32_t g_cfg_weapon_mode = 0; // 0=Normal, 1=Raqueta Madera 70s, 2=Sarten Metalica, 3=Baguette Gigante
+static uint32_t g_cfg_broadcast_hud = 1; // 0=Off, 1=Modern Broadcast TV HUD [F7]
+static uint32_t g_cfg_pro_physics = 0; // 0=Estandar VT4, 1=Simulacion Pro (Bola Realista)
 static uint32_t g_cfg_debug_log = 0; // 0=Off (normal), 1=Enable diagnostic hook logs ([DIAG-*])
 
 static int g_is_fullscreen = 0;
@@ -109,6 +118,22 @@ static uint32_t g_cached_rt_w = 0;
 static uint32_t g_cached_rt_h = 0;
 static char g_game_dir[MAX_PATH] = { 0 };
 static void sync_menu_indices_from_cfg(void);
+
+#include "perf_opt.h"
+#include "voice_packs.h"
+#include "player_stats.h"
+static void ngfx_load_config(const char *ini_path, uint32_t perf_profile);
+static void ngfx_on_reset(void);
+static void netplay_init(const char *ini_path);
+static void netplay_shutdown(void);
+static void netplay_get_local_ip(char *out, size_t cap);
+static void netplay_get_config(uint32_t *mode, char *ip_out, size_t ip_cap, uint16_t *port, uint32_t *delay);
+static int  netplay_reconfigure_live(uint32_t mode, const char *peer_ip, uint16_t port, uint32_t delay_frames, const char *ini_path);
+static void netplay_get_status_spanish(char *buf, size_t cap, uint32_t *out_argb);
+
+static int g_vp_p1_id = -1;
+static int g_vp_p2_id = -1;
+static uint32_t g_vp_load_frame = 0;
 
 static void load_vt4_settings(void) {
     char ini_path[MAX_PATH];
@@ -136,17 +161,40 @@ static void load_vt4_settings(void) {
                        "; Filtrado Anisotropico para texturas de pista ultra nitidas: 16 = Ultra Nitido, 0 = Normal\n"
                        "AnisotropicFiltering=16\n"
                        "; Nitidez PostFX (EXTRA-6): 0 = Bloom+Blur Original, 1 = Ultra Nitido (Sin Bloom/Blur), 2 = Suave 35%%\n"
-                       "CleanPostFX=1\n\n"
+                       "CleanPostFX=1\n"
+                       "; Motor Next-Gen DirectX 9 (CAS Sharpening + ACES Filmic + Micro-Clarity, Tecla F8 en vivo): 1 = ON, 0 = OFF\n"
+                       "NextGenFX=1\n"
+                       "NextGenSharpen=0.22\n"
+                       "NextGenFilmic=1\n\n"
                        "[Menu]\n"
                        "; Quitar el modo LIVE / Red (servidor GFWL inactivo) del menu principal\n"
                        "RemoveLiveMode=1\n\n"
                        "[Gameplay]\n"
                        "; Fijar Camara TV Clasica (estilo VT2, desactiva zooms de Super Golpe): 0 = Normal, 1 = Activo\n"
                        "ClassicTVCamera=0\n"
-                       "; Velocidad de Fisica en Partido: 0 = Normal (1.00x), 1 = VT2 Arcade Turbo (1.20x), 2 = VT2 Hyper (1.35x), 3 = Simulacion Pro (0.90x)\n"
+                       "; Velocidad de Fisica en Partido: 0 = Normal (1.00x), 1 = VT2 Arcade Turbo (1.20x), 2 = VT2 Hyper (1.35x), 3 = Simulacion Pro (0.90x), 4 = Ritmo Relajado (0.85x)\n"
                        "MatchSpeedMode=0\n"
                        "; Multiverso Arcade (Fase 3): 0 = Off, 1 = EE-2 Batalla Hielo/Barro, 2 = EE-4 Super Golpes 300%%, 3 = Ambos\n"
-                       "MultiverseMode=0\n");
+                       "MultiverseMode=0\n"
+                       "; Arma Arcade (EE-3): 0 = Normal, 1 = Raqueta Madera 70s, 2 = Sarten Metalica, 3 = Baguette Gigante\n"
+                       "WeaponMode=0\n"
+                       "; HUD TV Retransmision (Tecla F7 en partido): 1 = Activo, 0 = Desactivado\n"
+                       "BroadcastHUD=1\n"
+                       "; Fisicas Pro de Bola: 0 = Estandar VT4, 1 = Simulacion Pro (menos flotante)\n"
+                       "ProPhysics=0\n\n"
+                       "[Performance]\n"
+                       "; Perfil de rendimiento: 0 = Ultra PC (Default), 1 = Esports (Baja Latencia), 2 = Android/Winlator Low-Spec\n"
+                       "PerfProfile=0\n"
+                       "; Desbloquear FPS (solo benchmark/turbo; 0 = 60 FPS exactos velocidad 1.00x, 1 = Sin limite)\n"
+                       "UnlockFPS=0\n"
+                       "TargetFPS=60\n\n"
+                       "[Netplay]\n"
+                       "; Online P2P UDP (Crossplay PC <-> Android): Mode 0=OFF, 1=HOST(P1), 2=CLIENT(P2)\n"
+                       "Mode=0\n"
+                       "PeerIP=127.0.0.1\n"
+                       "Port=7777\n"
+                       "LocalPort=0\n"
+                       "DelayFrames=3\n");
             fclose(f);
             log_msg("[VT4-Mod] Created modern settings configuration file: %s", ini_path);
         }
@@ -163,20 +211,28 @@ static void load_vt4_settings(void) {
     g_cfg_remove_live = GetPrivateProfileIntA("Menu", "RemoveLiveMode", 1, ini_path);
     g_cfg_classic_tv_cam = GetPrivateProfileIntA("Gameplay", "ClassicTVCamera", 0, ini_path) ? 1 : 0;
     g_cfg_match_speed_mode = GetPrivateProfileIntA("Gameplay", "MatchSpeedMode", 0, ini_path);
-    if (g_cfg_match_speed_mode > 3) g_cfg_match_speed_mode = 0;
+    if (g_cfg_match_speed_mode > 4) g_cfg_match_speed_mode = 0;
     g_cfg_exb_rules = GetPrivateProfileIntA("Gameplay", "ExhibitionRules", 0, ini_path);
     if (g_cfg_exb_rules > 3) g_cfg_exb_rules = 0;
     g_cfg_multiverse_mode = GetPrivateProfileIntA("Gameplay", "MultiverseMode", 0, ini_path);
     if (g_cfg_multiverse_mode > 3) g_cfg_multiverse_mode = 0;
+    g_cfg_weapon_mode = GetPrivateProfileIntA("Gameplay", "WeaponMode", 0, ini_path);
+    if (g_cfg_weapon_mode > 3) g_cfg_weapon_mode = 0;
+    g_cfg_broadcast_hud = GetPrivateProfileIntA("Gameplay", "BroadcastHUD", 1, ini_path) ? 1 : 0;
+    g_cfg_pro_physics = GetPrivateProfileIntA("Gameplay", "ProPhysics", 0, ini_path) ? 1 : 0;
     g_cfg_debug_log = GetPrivateProfileIntA("Debug", "DebugLog", 0, ini_path) ? 1 : 0;
 
     if (g_cfg_width <= 0) g_cfg_width = 1920;
     if (g_cfg_height <= 0) g_cfg_height = 1080;
 
-    log_msg("[VT4-Mod] Settings loaded: %ux%u (windowed=%u msaa=%u vsync=%u aniso=%u cleanfx=%u remove_live=%u tv_lock=%u speed=%u mv=%u)",
+    log_msg("[VT4-Mod] Settings loaded: %ux%u (windowed=%u msaa=%u vsync=%u aniso=%u cleanfx=%u remove_live=%u tv_lock=%u speed=%u mv=%u weapon=%u)",
             g_cfg_width, g_cfg_height, g_cfg_windowed, g_cfg_antialiasing,
             g_cfg_vsync, g_cfg_anisotropic, g_cfg_clean_postfx, g_cfg_remove_live,
-            g_cfg_classic_tv_cam, g_cfg_match_speed_mode, g_cfg_multiverse_mode);
+            g_cfg_classic_tv_cam, g_cfg_match_speed_mode, g_cfg_multiverse_mode, g_cfg_weapon_mode);
+    perf_load_config(ini_path);
+    ngfx_load_config(ini_path, g_cfg_perf_profile);
+    vp_init(g_game_dir);
+    netplay_init(ini_path);
     sync_menu_indices_from_cfg();
 }
 
@@ -184,7 +240,7 @@ static void load_vt4_settings(void) {
 // Phase 1B: Settings Menu, Options Integration & Direct3D 9 RenderTarget Scaling
 // ============================================================================
 
-#define NUM_SETTINGS_ITEMS 12
+#define NUM_SETTINGS_ITEMS 15
 
 typedef struct {
     uint32_t w, h;
@@ -256,7 +312,8 @@ static const struct {
     { 1.00f, "Normal (1.00x Original)" },
     { 1.20f, "VT2 Arcade Turbo (1.20x)" },
     { 1.35f, "VT2 Hyper Arcade (1.35x)" },
-    { 0.90f, "Simulacion Pro (0.90x)" }
+    { 0.90f, "Simulacion Pro (0.90x)" },
+    { 0.85f, "Ritmo Relajado (0.85x)" }
 };
 #define NUM_SPEED_CHOICES (sizeof(s_speed_choices) / sizeof(s_speed_choices[0]))
 
@@ -281,6 +338,24 @@ static const char *s_multiverse_choices[] = {
 };
 #define NUM_MULTIVERSE_CHOICES (sizeof(s_multiverse_choices) / sizeof(s_multiverse_choices[0]))
 
+static const char *s_weapon_choices[] = {
+    "Desactivado (Raqueta Oficial)",
+    "EE-3: Raqueta Madera 70s",
+    "EE-3: Sarten Metalica (Roddick)",
+    "EE-3: Baguette Gigante"
+};
+#define NUM_WEAPON_CHOICES (sizeof(s_weapon_choices) / sizeof(s_weapon_choices[0]))
+
+static const char *s_bhud_choices[] = {
+    "Desactivado (Oculto)",
+    "Activo (Torneo + Radar km/h + Rally)"
+};
+
+static const char *s_prophys_choices[] = {
+    "Estandar (Arcade VT4 Original)",
+    "Simulacion Pro (Bola Realista)"
+};
+
 static int s_idx_res = 0;
 static int s_idx_win = 0;
 static int s_idx_msaa = 2; // 4x default
@@ -292,6 +367,9 @@ static int s_idx_tvcam = 0;
 static int s_idx_speed = 0;
 static int s_idx_exbrules = 0;
 static int s_idx_multiverse = 0;
+static int s_idx_weapon = 0;
+static int s_idx_bhud = 1;
+static int s_idx_prophys = 0;
 
 static int g_menu_visible = 0;
 static int g_menu_selection = 0;
@@ -350,6 +428,9 @@ static void sync_menu_indices_from_cfg(void) {
     s_idx_speed = (g_cfg_match_speed_mode < (uint32_t)NUM_SPEED_CHOICES) ? (int)g_cfg_match_speed_mode : 0;
     s_idx_exbrules = (g_cfg_exb_rules < (uint32_t)NUM_EXB_RULES_CHOICES) ? (int)g_cfg_exb_rules : 0;
     s_idx_multiverse = (g_cfg_multiverse_mode < (uint32_t)NUM_MULTIVERSE_CHOICES) ? (int)g_cfg_multiverse_mode : 0;
+    s_idx_weapon = (g_cfg_weapon_mode < (uint32_t)NUM_WEAPON_CHOICES) ? (int)g_cfg_weapon_mode : 0;
+    s_idx_bhud = g_cfg_broadcast_hud ? 1 : 0;
+    s_idx_prophys = g_cfg_pro_physics ? 1 : 0;
 }
 
 static void update_config_txt(void) {
@@ -463,6 +544,12 @@ static void save_vt4_settings(void) {
     WritePrivateProfileStringA("Gameplay", "ExhibitionRules", val, ini_path);
     snprintf(val, sizeof(val), "%u", g_cfg_multiverse_mode);
     WritePrivateProfileStringA("Gameplay", "MultiverseMode", val, ini_path);
+    snprintf(val, sizeof(val), "%u", g_cfg_weapon_mode);
+    WritePrivateProfileStringA("Gameplay", "WeaponMode", val, ini_path);
+    snprintf(val, sizeof(val), "%u", g_cfg_broadcast_hud);
+    WritePrivateProfileStringA("Gameplay", "BroadcastHUD", val, ini_path);
+    snprintf(val, sizeof(val), "%u", g_cfg_pro_physics);
+    WritePrivateProfileStringA("Gameplay", "ProPhysics", val, ini_path);
 
     log_msg("[VT4-Mod] Settings saved to %s", ini_path);
 }
@@ -484,6 +571,9 @@ static void apply_and_save_menu_settings(void *dev) {
     g_cfg_match_speed_mode = (uint32_t)s_idx_speed;
     g_cfg_exb_rules = (uint32_t)s_idx_exbrules;
     g_cfg_multiverse_mode = (uint32_t)s_idx_multiverse;
+    g_cfg_weapon_mode = (uint32_t)s_idx_weapon;
+    g_cfg_broadcast_hud = s_idx_bhud ? 1u : 0u;
+    g_cfg_pro_physics = s_idx_prophys ? 1u : 0u;
 
     save_vt4_settings();
     apply_exhibition_rule_preset();
@@ -584,6 +674,9 @@ static int handle_settings_menu_input(int vk, void *dev) {
                 case 8: s_idx_speed = (s_idx_speed - 1 + (int)NUM_SPEED_CHOICES) % (int)NUM_SPEED_CHOICES; break;
                 case 9: s_idx_exbrules = (s_idx_exbrules - 1 + (int)NUM_EXB_RULES_CHOICES) % (int)NUM_EXB_RULES_CHOICES; break;
                 case 10: s_idx_multiverse = (s_idx_multiverse - 1 + (int)NUM_MULTIVERSE_CHOICES) % (int)NUM_MULTIVERSE_CHOICES; break;
+                case 11: s_idx_weapon = (s_idx_weapon - 1 + (int)NUM_WEAPON_CHOICES) % (int)NUM_WEAPON_CHOICES; break;
+                case 12: s_idx_bhud = !s_idx_bhud; break;
+                case 13: s_idx_prophys = !s_idx_prophys; break;
             }
             play_vt4_menu_se(4);
             log_msg("[VT4-Mod] Menu Value Left: item %d changed", g_menu_selection);
@@ -603,6 +696,9 @@ static int handle_settings_menu_input(int vk, void *dev) {
                 case 8: s_idx_speed = (s_idx_speed + 1) % (int)NUM_SPEED_CHOICES; break;
                 case 9: s_idx_exbrules = (s_idx_exbrules + 1) % (int)NUM_EXB_RULES_CHOICES; break;
                 case 10: s_idx_multiverse = (s_idx_multiverse + 1) % (int)NUM_MULTIVERSE_CHOICES; break;
+                case 11: s_idx_weapon = (s_idx_weapon + 1) % (int)NUM_WEAPON_CHOICES; break;
+                case 12: s_idx_bhud = !s_idx_bhud; break;
+                case 13: s_idx_prophys = !s_idx_prophys; break;
             }
             play_vt4_menu_se(4);
             log_msg("[VT4-Mod] Menu Value Right: item %d changed", g_menu_selection);
@@ -719,6 +815,8 @@ static void ensure_d3d9_device_hooks(void *dev);
 typedef HRESULT (WINAPI *D3DXCreateTextureFromFileA_t)(void *pDevice, LPCSTR pSrcFile, void **ppTexture);
 static D3DXCreateTextureFromFileA_t g_d3dx_createtex = NULL;
 static void *g_pCrestTex = NULL;
+static void *g_pOptBtnUnselTex = NULL;
+static void *g_pOptBtnSelTex = NULL;
 
 static void __attribute__((noinline)) init_menu_fonts(void *dev) {
     if (!dev) dev = g_d3d_device;
@@ -742,6 +840,16 @@ static void __attribute__((noinline)) init_menu_fonts(void *dev) {
         snprintf(crest_path, sizeof(crest_path), "%s\\archive\\vt4_legends_crest.png", g_game_dir);
         HRESULT hr_c = g_d3dx_createtex(dev, crest_path, &g_pCrestTex);
         log_msg("[VT4-Mod] Loaded Nano Banana crest texture '%s': %p (hr=0x%08lx)", crest_path, g_pCrestTex, (unsigned long)hr_c);
+    }
+    if (g_d3dx_createtex && !g_pOptBtnUnselTex && g_game_dir[0]) {
+        char btn_path[MAX_PATH];
+        snprintf(btn_path, sizeof(btn_path), "%s\\archive\\opt_btn_unsel.png", g_game_dir);
+        if (FAILED(g_d3dx_createtex(dev, btn_path, &g_pOptBtnUnselTex))) g_pOptBtnUnselTex = NULL;
+    }
+    if (g_d3dx_createtex && !g_pOptBtnSelTex && g_game_dir[0]) {
+        char btn_path[MAX_PATH];
+        snprintf(btn_path, sizeof(btn_path), "%s\\archive\\opt_btn_sel.png", g_game_dir);
+        if (FAILED(g_d3dx_createtex(dev, btn_path, &g_pOptBtnSelTex))) g_pOptBtnSelTex = NULL;
     }
     if (g_d3dx_createsprite && !g_pSprite) {
         HRESULT hr_sp = g_d3dx_createsprite(dev, &g_pSprite);
@@ -850,30 +958,35 @@ static void render_settings_hud(void *dev) {
             draw_textured_quad(dev, g_pCrestTex, cx - rad, cy - rad, cx + rad, cy + rad, 0xF5FFFFFF);
         }
 
-        float x1 = 138.0f * sx, x2 = 594.0f * sx;
-        float y1 = 330.0f * sy, y2 = 376.0f * sy;
         int sel = (g_opt_root_sel == 3);
-        DWORD bg = sel ? 0xF28416DE : 0xECECECEF;
-        DWORD border = sel ? 0xFFD4A0FF : 0xFF848684;
-        DWORD txt_col = sel ? 0xFFFFFFFF : 0xFF60626A;
+        void *btn_tex = sel ? g_pOptBtnSelTex : g_pOptBtnUnselTex;
+        if (btn_tex) {
+            draw_textured_quad(dev, btn_tex,
+                               130.0f * sx - 0.5f, 325.0f * sy - 0.5f,
+                               630.0f * sx - 0.5f, 379.0f * sy - 0.5f,
+                               0xFFFFFFFF);
+        } else {
+            float x1 = 138.0f * sx, x2 = 585.0f * sx;
+            float y1 = 329.0f * sy, y2 = 375.0f * sy;
+            DWORD bg = sel ? 0xFFA115E7 : 0xFFE4E6E4;
+            DWORD border = sel ? 0xFFB217FF : 0xFF737573;
+            DWORD txt_col = sel ? 0xFFFFFFFF : 0xFF7A7C7E;
 
-        draw_screen_quad(dev, x1, y1, x2, y2, bg);
-        draw_screen_quad(dev, x1, y1, x2, y1 + 1.5f * sy, border);
-        draw_screen_quad(dev, x1, y2 - 1.5f * sy, x2, y2, border);
-        if (sel) {
-            draw_screen_quad(dev, x1, y1, x1 + 6.0f * sx, y2, 0xFFE870FF);
-        }
+            draw_screen_quad(dev, x1, y1, x2, y2, bg);
+            draw_screen_quad(dev, x1, y1, x2, y1 + 1.0f * sy, border);
+            draw_screen_quad(dev, x1, y2 - 1.0f * sy, x2, y2, border);
 
-        if (g_pFontTitle && g_pSprite) {
-            void **svtbl = *(void ***)g_pSprite;
-            typedef HRESULT (__stdcall *SpriteBegin_t)(void *, DWORD);
-            typedef HRESULT (__stdcall *SpriteEnd_t)(void *);
-            SpriteBegin_t sp_begin = (SpriteBegin_t)svtbl[8];
-            SpriteEnd_t sp_end = (SpriteEnd_t)svtbl[11];
-            if (sp_begin && sp_begin(g_pSprite, 0x10) >= 0) {
-                RECT r = { (LONG)(x1 + 30.0f * sx), (LONG)y1, (LONG)(x2 - 30.0f * sx), (LONG)y2 };
-                draw_font_text(g_pFontTitle, "GRAFICOS HD Y LEGENDS", &r, txt_col, 1);
-                if (sp_end) sp_end(g_pSprite);
+            if (g_pFontTitle && g_pSprite) {
+                void **svtbl = *(void ***)g_pSprite;
+                typedef HRESULT (__stdcall *SpriteBegin_t)(void *, DWORD);
+                typedef HRESULT (__stdcall *SpriteEnd_t)(void *);
+                SpriteBegin_t sp_begin = (SpriteBegin_t)svtbl[8];
+                SpriteEnd_t sp_end = (SpriteEnd_t)svtbl[11];
+                if (sp_begin && sp_begin(g_pSprite, 0x10) >= 0) {
+                    RECT r = { (LONG)(x1 + 30.0f * sx), (LONG)y1, (LONG)(x2 - 30.0f * sx), (LONG)y2 };
+                    draw_font_text(g_pFontTitle, "GRAFICOS HD Y LEGENDS", &r, txt_col, 1);
+                    if (sp_end) sp_end(g_pSprite);
+                }
             }
         }
 
@@ -901,8 +1014,8 @@ static void render_settings_hud(void *dev) {
 
     float col_x1 = native_style ? (120.0f * sx) : (((float)g_cfg_width - 540.0f) * 0.5f);
     float col_x2 = native_style ? (575.0f * sx) : (col_x1 + 540.0f);
-    float row_start_y = native_style ? (104.0f * sy) : (((float)g_cfg_height - 580.0f) * 0.5f + 48.0f);
-    float row_pitch = 44.0f * sy;
+    float row_start_y = native_style ? (92.0f * sy) : (((float)g_cfg_height - 580.0f) * 0.5f + 44.0f);
+    float row_pitch = 37.5f * sy;
 
     if (!native_style) {
         draw_screen_quad(dev, col_x1 - 18.0f * sx, row_start_y - 54.0f * sy,
@@ -923,6 +1036,9 @@ static void render_settings_hud(void *dev) {
         "VELOCIDAD DE FISICA",
         "REGLAS EXHIBICION",
         "MULTIVERSO ARCADE (FASE 3)",
+        "ARMA ARCADE (EE-3)",
+        "HUD TV RETRANSMISION [F7]",
+        "FISICAS PRO DE BOLA",
         "GUARDAR Y APLICAR CAMBIOS"
     };
 
@@ -938,6 +1054,9 @@ static void render_settings_hud(void *dev) {
         "Ajusta el ritmo Arcade VT2 (1.20x/1.35x) o Pro",
         "Partidos Exhibicion: 1/3/5 Sets de 6 Juegos y Tie-Break",
         "Easter Eggs: Batalla Hielo/Barro (EE-2) y Super Golpes 300% (EE-4)",
+        "Arma 3D en mano: Raqueta Madera 70s, Sarten Metalica o Baguette Gigante",
+        "Overlay TV moderno en partido: Torneo, radar km/h y contador de rally ([F7])",
+        "Ajusta la gravedad y velocidad de bola para peloteos menos flotantes",
         "Guarda vt4_settings.ini y aplica los ajustes ahora"
     };
 
@@ -945,8 +1064,8 @@ static void render_settings_hud(void *dev) {
         float y0 = row_start_y + (float)i * row_pitch;
         int is_sel = (i == g_menu_selection);
         if (i == NUM_SETTINGS_ITEMS - 1) {
-            float by1 = y0 + 3.0f * sy;
-            float by2 = y0 + 33.0f * sy;
+            float by1 = y0 + 2.0f * sy;
+            float by2 = y0 + 30.0f * sy;
             DWORD bg = is_sel ? 0xF2129850 : 0xEA2B5A40;
             DWORD bd = is_sel ? 0xFF40FF98 : 0xFF559070;
             draw_screen_quad(dev, col_x1, by1, col_x2, by2, bg);
@@ -954,17 +1073,17 @@ static void render_settings_hud(void *dev) {
             draw_screen_quad(dev, col_x1, by2 - 1.5f * sy, col_x2, by2, bd);
         } else {
             float top_y1 = y0;
-            float top_y2 = y0 + 19.0f * sy;
+            float top_y2 = y0 + 16.5f * sy;
             float bot_y1 = top_y2;
-            float bot_y2 = y0 + 40.0f * sy;
+            float bot_y2 = y0 + 34.5f * sy;
             DWORD top_bg = is_sel ? 0xF28416DE : 0xFFF5F6F9;
             DWORD bot_bg = is_sel ? 0xF53B0660 : 0xFF5E6068;
             DWORD div_ln = is_sel ? 0xFFD098FF : 0xFF989AA2;
             draw_screen_quad(dev, col_x1, top_y1, col_x2, top_y2, top_bg);
             draw_screen_quad(dev, col_x1, bot_y1, col_x2, bot_y2, bot_bg);
             draw_screen_quad(dev, col_x1, top_y1, col_x2, top_y1 + 1.0f, div_ln);
-            draw_screen_quad(dev, col_x1 + 14.0f * sx, top_y1 + 6.0f * sy,
-                             col_x1 + 22.0f * sx, top_y1 + 13.0f * sy,
+            draw_screen_quad(dev, col_x1 + 14.0f * sx, top_y1 + 5.0f * sy,
+                             col_x1 + 22.0f * sx, top_y1 + 11.5f * sy,
                              is_sel ? 0xFFFFFFFF : 0xFF7A7C84);
         }
     }
@@ -990,9 +1109,9 @@ static void render_settings_hud(void *dev) {
             int is_sel = (i == g_menu_selection);
             if (i == NUM_SETTINGS_ITEMS - 1) {
                 r.left = (LONG)(col_x1 + 10.0f * sx);
-                r.top = (LONG)(y0 + 3.0f * sy);
+                r.top = (LONG)(y0 + 2.0f * sy);
                 r.right = (LONG)(col_x2 - 10.0f * sx);
-                r.bottom = (LONG)(y0 + 33.0f * sy);
+                r.bottom = (LONG)(y0 + 30.0f * sy);
                 draw_font_text(g_pFontTitle, item_labels[i], &r, 0xFFFFFFFF, 1);
             } else {
                 DWORD lbl_col = is_sel ? 0xFFFFFFFF : 0xFF60626C;
@@ -1001,7 +1120,7 @@ static void render_settings_hud(void *dev) {
                 r.left = (LONG)(col_x1 + 30.0f * sx);
                 r.top = (LONG)y0;
                 r.right = (LONG)(col_x2 - 12.0f * sx);
-                r.bottom = (LONG)(y0 + 19.0f * sy);
+                r.bottom = (LONG)(y0 + 16.5f * sy);
                 draw_font_text(g_pFont, item_labels[i], &r, lbl_col, 0);
 
                 switch (i) {
@@ -1016,11 +1135,14 @@ static void render_settings_hud(void *dev) {
                     case 8: snprintf(val_buf, sizeof(val_buf), "< %s >", s_speed_choices[s_idx_speed].desc); break;
                     case 9: snprintf(val_buf, sizeof(val_buf), "< %s >", s_exb_rules_choices[s_idx_exbrules].desc); break;
                     case 10: snprintf(val_buf, sizeof(val_buf), "< %s >", s_multiverse_choices[s_idx_multiverse]); break;
+                    case 11: snprintf(val_buf, sizeof(val_buf), "< %s >", s_weapon_choices[s_idx_weapon]); break;
+                    case 12: snprintf(val_buf, sizeof(val_buf), "< %s >", s_bhud_choices[s_idx_bhud]); break;
+                    case 13: snprintf(val_buf, sizeof(val_buf), "< %s >", s_prophys_choices[s_idx_prophys]); break;
                 }
                 r.left = (LONG)(col_x1 + 12.0f * sx);
-                r.top = (LONG)(y0 + 19.0f * sy);
+                r.top = (LONG)(y0 + 16.5f * sy);
                 r.right = (LONG)(col_x2 - 12.0f * sx);
-                r.bottom = (LONG)(y0 + 40.0f * sy);
+                r.bottom = (LONG)(y0 + 34.5f * sy);
                 draw_font_text(g_pFont, val_buf, &r, val_col, 1);
             }
         }
@@ -1075,23 +1197,293 @@ static void render_settings_hud(void *dev) {
 static uint8_t g_keys_down[256] = {0};
 static uint32_t g_btn_hold[256] = {0};
 static uint32_t g_nav_hold[6] = {0};
+static int g_netplay_menu_visible = 0;
 
 static inline int is_key_down(int vk) {
     if (vk < 0 || vk >= 256) return 0;
     if (g_keys_down[vk]) return 1;
+    static uint32_t s_fg_frame = 0xFFFFFFFFu;
+    static int      s_fg_ok = 1;
+    static uint32_t s_vk_frame[256];
+    static uint8_t  s_vk_val[256];
+    uint32_t cur_f = (g_logic_ticks ? g_logic_ticks : g_present_calls) + 1u;
     if (g_game_hwnd) {
-        HWND fg = GetForegroundWindow();
-        if (fg && fg != g_game_hwnd) return 0;
+        if (s_fg_frame != cur_f) {
+            HWND fg = GetForegroundWindow();
+            s_fg_ok = (!fg || fg == g_game_hwnd) ? 1 : 0;
+            s_fg_frame = cur_f;
+        }
+        if (!s_fg_ok) return 0;
     }
-    return ((GetAsyncKeyState(vk) & 0x8000) != 0);
+    if (s_vk_frame[vk] != cur_f) {
+        s_vk_val[vk] = ((GetAsyncKeyState(vk) & 0x8000) != 0) ? 1 : 0;
+        s_vk_frame[vk] = cur_f;
+    }
+    return (int)s_vk_val[vk];
 }
+
+// ----------------------------------------------------------------------------
+// Dynamic XInput Controller Support + Netplay Interactive P2P Lobby Menu State
+// ----------------------------------------------------------------------------
+typedef struct {
+    WORD  wButtons;
+    BYTE  bLeftTrigger;
+    BYTE  bRightTrigger;
+    SHORT sThumbLX;
+    SHORT sThumbLY;
+    SHORT sThumbRX;
+    SHORT sThumbRY;
+} VT4_XINPUT_GAMEPAD;
+
+typedef struct {
+    DWORD              dwPacketNumber;
+    VT4_XINPUT_GAMEPAD Gamepad;
+} VT4_XINPUT_STATE;
+
+typedef DWORD (WINAPI *VT4_XInputGetState_t)(DWORD dwUserIndex, VT4_XINPUT_STATE *pState);
+static VT4_XInputGetState_t g_xinput_get_state = NULL;
+static int g_xinput_searched = 0;
+static int g_xinput_pad_tbl_inited = 0;
+
+static int xinput_get_p1(float *out_ax, float *out_ay, WORD *out_btns) {
+    static uint32_t s_xi_tick = 0xFFFFFFFFu;
+    static int      s_xi_ok = 0;
+    static float    s_xi_ax = 0.0f, s_xi_ay = 0.0f;
+    static WORD     s_xi_btns = 0;
+
+    if (!g_xinput_searched) {
+        g_xinput_searched = 1;
+        static const char *s_dlls[3] = { "xinput1_4.dll", "xinput1_3.dll", "xinput9_1_0.dll" };
+        for (int i = 0; i < 3; i++) {
+            HMODULE h = GetModuleHandleA(s_dlls[i]);
+            if (!h) h = LoadLibraryA(s_dlls[i]);
+            if (h) {
+                g_xinput_get_state = (VT4_XInputGetState_t)GetProcAddress(h, "XInputGetState");
+                if (g_xinput_get_state) {
+                    log_msg("[VT4-Mod] Dynamic XInput loaded: %s", s_dlls[i]);
+                    break;
+                }
+            }
+        }
+    }
+
+    uint32_t cur_t = (g_logic_ticks ? g_logic_ticks : g_present_calls) + 1u;
+    if (s_xi_tick != cur_t) {
+        s_xi_tick = cur_t;
+        s_xi_ok = 0;
+        s_xi_ax = 0.0f;
+        s_xi_ay = 0.0f;
+        s_xi_btns = 0;
+        if (g_xinput_get_state) {
+            VT4_XINPUT_STATE st;
+            memset(&st, 0, sizeof(st));
+            if (g_xinput_get_state(0, &st) == 0) {
+                s_xi_ok = 1;
+                s_xi_btns = st.Gamepad.wButtons;
+                const SHORT dz = 7849;
+                if (st.Gamepad.sThumbLX > dz || st.Gamepad.sThumbLX < -dz) {
+                    s_xi_ax = (float)st.Gamepad.sThumbLX / 32767.0f;
+                }
+                if (st.Gamepad.sThumbLY > dz || st.Gamepad.sThumbLY < -dz) {
+                    // XInput +Y is Up; VT4 AnalogY -1.0 is Up
+                    s_xi_ay = -(float)st.Gamepad.sThumbLY / 32767.0f;
+                }
+                if (s_xi_btns & 0x0004) s_xi_ax = -1.0f; // DPAD_LEFT
+                else if (s_xi_btns & 0x0008) s_xi_ax = 1.0f; // DPAD_RIGHT
+                if (s_xi_btns & 0x0001) s_xi_ay = -1.0f; // DPAD_UP
+                else if (s_xi_btns & 0x0002) s_xi_ay = 1.0f; // DPAD_DOWN
+
+                // Ensure native VT4 gamepad slot 0 is enabled if no Launcher config.txt ran
+                if (!g_xinput_pad_tbl_inited) {
+                    g_xinput_pad_tbl_inited = 1;
+                    *(uint8_t *)0x00835ee8 = 1;
+                    uint32_t *pad_p1 = (uint32_t *)0x00820f38;
+                    if (pad_p1[2] == 0 && pad_p1[3] == 0) {
+                        memcpy(pad_p1, (const void *)0x00820db0, 21 * sizeof(uint32_t));
+                    }
+                    log_msg("[VT4-Mod] XInput P1 controller detected -> enabled native gamepad slot 0");
+                }
+            }
+        }
+    }
+    if (out_ax) *out_ax = s_xi_ax;
+    if (out_ay) *out_ay = s_xi_ay;
+    if (out_btns) *out_btns = s_xi_btns;
+    return s_xi_ok;
+}
+
+#define NUM_NETPLAY_ITEMS 6
+static int      s_np_sel = 0;
+static uint32_t s_np_mode = 0;
+static char     s_np_ip[64] = "127.0.0.1";
+static uint32_t s_np_port = 7777;
+static uint32_t s_np_delay = 3;
+static char     s_np_local_ip[64] = "127.0.0.1";
+static char     s_np_feedback[128] = "";
+static int      s_np_feedback_timer = 0;
+static uint32_t s_np_feedback_col = 0xFF80FFB8;
+
+static void netplay_ui_sync_from_live(void) {
+    uint16_t p16 = 7777;
+    netplay_get_config(&s_np_mode, s_np_ip, sizeof(s_np_ip), &p16, &s_np_delay);
+    s_np_port = (uint32_t)p16;
+    netplay_get_local_ip(s_np_local_ip, sizeof(s_np_local_ip));
+    s_np_sel = 0;
+}
+
+static void netplay_ui_build_ini_path(char *out, size_t cap) {
+    if (g_game_dir[0]) {
+        snprintf(out, cap, "%s\\vt4_settings.ini", g_game_dir);
+    } else {
+        GetModuleFileNameA(NULL, out, (DWORD)cap);
+        char *sl = strrchr(out, '\\');
+        if (sl) *sl = '\0';
+        strncat(out, "\\vt4_settings.ini", cap - strlen(out) - 1);
+    }
+}
+
+static void close_netplay_menu(void) {
+    g_netplay_menu_visible = 0;
+    g_menu_close_cooldown_frame = g_present_calls;
+}
+
+static int handle_netplay_menu_input(int vk) {
+    if (!g_netplay_menu_visible) return 0;
+
+    if (s_np_sel == 1) {
+        char ch = 0;
+        if (vk >= '0' && vk <= '9') ch = (char)vk;
+        else if (vk >= VK_NUMPAD0 && vk <= VK_NUMPAD9) ch = (char)('0' + (vk - VK_NUMPAD0));
+        else if (vk == VK_OEM_PERIOD || vk == VK_DECIMAL || vk == '.') ch = '.';
+        if (ch) {
+            size_t len = strlen(s_np_ip);
+            if (len + 1 < 40) {
+                s_np_ip[len] = ch;
+                s_np_ip[len + 1] = '\0';
+                play_vt4_menu_se(4);
+            }
+            return 1;
+        }
+        if (vk == VK_BACK) {
+            size_t len = strlen(s_np_ip);
+            if (len > 0) {
+                s_np_ip[len - 1] = '\0';
+                play_vt4_menu_se(4);
+            }
+            return 1;
+        }
+        if (vk == VK_DELETE) {
+            s_np_ip[0] = '\0';
+            play_vt4_menu_se(4);
+            return 1;
+        }
+    } else if (s_np_sel == 2) {
+        int digit = -1;
+        if (vk >= '0' && vk <= '9') digit = vk - '0';
+        else if (vk >= VK_NUMPAD0 && vk <= VK_NUMPAD9) digit = vk - VK_NUMPAD0;
+        if (digit >= 0) {
+            uint32_t np = s_np_port * 10u + (uint32_t)digit;
+            if (np > 65535u) np = (uint32_t)digit;
+            s_np_port = np;
+            play_vt4_menu_se(4);
+            return 1;
+        }
+        if (vk == VK_BACK) {
+            s_np_port /= 10u;
+            play_vt4_menu_se(4);
+            return 1;
+        }
+    }
+
+    switch (vk) {
+        case VK_UP:
+        case 'W':
+            s_np_sel = (s_np_sel - 1 + NUM_NETPLAY_ITEMS) % NUM_NETPLAY_ITEMS;
+            play_vt4_menu_se(3);
+            return 1;
+        case VK_DOWN:
+        case 'S':
+            s_np_sel = (s_np_sel + 1) % NUM_NETPLAY_ITEMS;
+            play_vt4_menu_se(3);
+            return 1;
+        case VK_LEFT:
+        case 'A':
+            if (s_np_sel == 0) s_np_mode = (s_np_mode + 2u) % 3u;
+            else if (s_np_sel == 2) s_np_port = (s_np_port > 1024u) ? (s_np_port - 1u) : 65535u;
+            else if (s_np_sel == 3) s_np_delay = (s_np_delay > 1u) ? (s_np_delay - 1u) : 12u;
+            play_vt4_menu_se(4);
+            return 1;
+        case VK_RIGHT:
+        case 'D':
+            if (s_np_sel == 0) s_np_mode = (s_np_mode + 1u) % 3u;
+            else if (s_np_sel == 2) s_np_port = (s_np_port < 65535u) ? (s_np_port + 1u) : 1024u;
+            else if (s_np_sel == 3) s_np_delay = (s_np_delay < 12u) ? (s_np_delay + 1u) : 1u;
+            play_vt4_menu_se(4);
+            return 1;
+        case VK_RETURN:
+        case VK_SPACE: {
+            char ini_path[MAX_PATH];
+            netplay_ui_build_ini_path(ini_path, sizeof(ini_path));
+            if (s_np_sel == 5) {
+                s_np_mode = 0;
+                netplay_reconfigure_live(0, s_np_ip, (uint16_t)(s_np_port ? s_np_port : 7777u), s_np_delay, ini_path);
+                play_vt4_menu_se(6);
+                close_netplay_menu();
+                return 1;
+            }
+            if (s_np_sel == 4 || s_np_sel < 4) {
+                if (s_np_mode == 0 && s_np_sel == 4) {
+                    s_np_mode = 1; // Pressing CONECTAR while OFF defaults conveniently to HOST P1
+                }
+                if (s_np_port == 0 || s_np_port > 65535u) s_np_port = 7777u;
+                if (!s_np_ip[0]) strcpy(s_np_ip, "127.0.0.1");
+                int ok = netplay_reconfigure_live(s_np_mode, s_np_ip, (uint16_t)s_np_port, s_np_delay, ini_path);
+                if (ok) {
+                    if (s_np_mode == 0) {
+                        snprintf(s_np_feedback, sizeof(s_np_feedback), "MODO LOCAL GUARDADO");
+                    } else if (s_np_mode == 1) {
+                        snprintf(s_np_feedback, sizeof(s_np_feedback), "SALA ABIERTA EN :%u - PULSA ESC Y ENTRA EN EXHIBICION", s_np_port);
+                    } else {
+                        snprintf(s_np_feedback, sizeof(s_np_feedback), "BUSCANDO %s:%u - PULSA ESC Y ENTRA EN EXHIBICION", s_np_ip, s_np_port);
+                    }
+                    s_np_feedback_col = 0xFF80FFB8;
+                } else {
+                    snprintf(s_np_feedback, sizeof(s_np_feedback), "ERROR AL ABRIR UDP :%u / IP '%s'", s_np_port, s_np_ip);
+                    s_np_feedback_col = 0xFFFF7070;
+                }
+                s_np_feedback_timer = 240;
+                play_vt4_menu_se(5);
+                return 1;
+            }
+            return 1;
+        }
+        case VK_ESCAPE:
+        case VK_BACK:
+            close_netplay_menu();
+            play_vt4_menu_se(6);
+            log_msg("[VT4-Mod] Netplay P2P UI closed cleanly by ESC/Back");
+            return 1;
+    }
+    return 0;
+}
+
+static void __cdecl hk_MainMenu_OpenNetplayUI(void *dialog_cfg) {
+    (void)dialog_cfg;
+    g_menu_visible = 0;
+    netplay_ui_sync_from_live();
+    g_netplay_menu_visible = 1;
+    play_vt4_menu_se(5);
+    log_msg("[VT4-Mod] Opened P2P Netplay UI from Main Menu 'EN LINEA' (local_ip=%s)", s_np_local_ip);
+}
+
+#include "multiverse_modes.h"
 
 // ----------------------------------------------------------------------------
 // Roster Pagination & Character Selection Grid
 // ----------------------------------------------------------------------------
-#define NUM_ROSTER_PAGES 3
-#define MAX_ROSTER_PLAYERS 59
-#define NUM_EXTRA_PLAYERS 21
+#define NUM_ROSTER_PAGES 4
+#define MAX_ROSTER_PLAYERS 84
+#define NUM_EXTRA_PLAYERS 46
 
 // Canonical mapping: grid slot [0..23] -> vanilla .fraw character card/label index
 static const uint8_t g_fraw_cell_char_id[24] = {
@@ -1105,52 +1497,66 @@ static const uint8_t g_fraw_cell_char_id[24] = {
     26, 26, 27    // Row 7: CARGAR (26), ACTUAL (26), ALEATORIO (27)
 };
 
-// Page 0: Era Actual & Next-Gen (2010s - 2026: All 21 cards unique)
+// Page 0: Era Actual & Next-Gen (2018 - 2026: All 21 cards unique, incl. Mirra Andreeva 82!)
 static const uint8_t g_roster_page_tour[24] = {
      0,  1,  2,   // Row 0: Federer(0), Nadal(1), Djokovic(2)
     26, 27, 39,   // Row 1: Alcaraz(26), Sinner(27), Medvedev(39)
-    40, 41, 42,   // Row 2: Zverev(40), Tsitsipas(41), Thiem(42)
-    38,  3,  4,   // Row 3: Wawrinka(38), Murray(3), Del Potro(4)
-    43,  6, 34,   // Row 4: Kyrgios(43), Monfils(6), Swiatek(34)
-    35, 33, 17,   // Row 5: Sabalenka(35), Serena(33), Sharapova(17)
-    58, 22, 18,   // Row 6: Muguruza(58), Wozniacki(22), Venus(18)
+    40, 41, 60,   // Row 2: Zverev(40), Tsitsipas(41), Rublev(60)
+    61, 62, 59,   // Row 3: Ruud(61), Fritz(62), Shelton(59)
+    43, 34, 35,   // Row 4: Kyrgios(43), Swiatek(34), Sabalenka(35)
+    63, 64, 65,   // Row 5: Gauff(63), Rybakina(64), Badosa(65)
+    82, 58, 66,   // Row 6: Mirra Andreeva(82), Muguruza(58), Halep(66)
     26, 26, 27    // Row 7: CARGAR (26), ACTUAL (26), ALEATORIO (27)
 };
 
-// Page 1: Era Dorada (1990s - 2000s: All 21 cards unique!)
+// Page 1: Era Dorada (2000s - 2010s: All 21 cards unique)
 static const uint8_t g_roster_page_legends[24] = {
+     3,  4, 38,   // Row 0: Murray(3), Del Potro(4), Wawrinka(38)
+     5, 44, 45,   // Row 1: Roddick(5), Hewitt(44), Safin(45)
+    47, 48, 49,   // Row 2: Ferrero(47), Moya(48), Ferrer(49)
+    50, 67, 46,   // Row 3: Nalbandian(50), Coria(67), Tsonga(46)
+     6, 68, 69,   // Row 4: Monfils(6), Gasquet(68), Nishikori(69)
+     7, 10, 70,   // Row 5: Gonzalez(7), Haas(10), Soderling(70)
+    71, 42, 33,   // Row 6: Berdych(71), Thiem(42), Serena(33)
+    26, 26, 27    // Row 7: CARGAR (26), ACTUAL (26), ALEATORIO (27)
+};
+
+// Page 2: Leyendas 90s & WTA Dorada (All 21 cards unique)
+static const uint8_t g_roster_page_legends2[24] = {
     28, 29, 13,   // Row 0: Sampras(28), Agassi(29), Courier(13)
     14, 11, 12,   // Row 1: Edberg(14), Becker(11), Rafter(12)
-    54, 36, 44,   // Row 2: Ivanisevic(54), Kuerten(36), Hewitt(44)
-    45, 47, 48,   // Row 3: Safin(45), Ferrero(47), Moya(48)
-    49, 50, 46,   // Row 4: Ferrer(49), Nalbandian(50), Tsonga(46)
-     5,  7, 10,   // Row 5: Roddick(5), Gonzalez(7), Haas(10)
-    56, 57, 32,   // Row 6: Seles(56), Henin(57), Graf(32)
+    54, 36, 72,   // Row 2: Ivanisevic(54), Kuerten(36), Chang(72)
+    73, 74, 75,   // Row 3: Rios(73), Muster(74), Bruguera(75)
+    76, 32, 56,   // Row 4: Corretja(76), Graf(32), Seles(56)
+    57, 81, 79,   // Row 5: Henin(57), Clijsters(81), Arantxa(79)
+    80, 18, 17,   // Row 6: Conchita(80), Venus(18), Sharapova(17)
     26, 26, 27    // Row 7: CARGAR (26), ACTUAL (26), ALEATORIO (27)
 };
 
-// Page 2: Pioneros 70s-80s, WTA Tour & Clasicos VT4 (All 21 cards)
-static const uint8_t g_roster_page_legends2[24] = {
+// Page 3: Pioneros 60s-80s & Clasicos VT4 (All 21 cards unique: 84/84 total!)
+static const uint8_t g_roster_page_legends3[24] = {
     30, 31, 51,   // Row 0: Borg(30), McEnroe(31), Lendl(51)
-    52, 53, 37,   // Row 1: Connors(52), Vilas(53), Navratilova(37)
-    55, 19, 20,   // Row 2: Evert(55), Kuznetsova(19), Ivanovic(20)
-    21, 23,  8,   // Row 3: Chakvetadze(21), Robson(23), Kohlschreiber(8)
-     9, 15, 16,   // Row 4: Seppi(9), King(15), Duke(16)
-    24, 25, 29,   // Row 5: Tenniel/VTM(24), Virnie/VTF(25), Agassi(29)
-     0,  1, 26,   // Row 6: Federer(0), Nadal(1), Alcaraz(26)
+    52, 53, 77,   // Row 1: Connors(52), Vilas(53), Wilander(77)
+    78, 37, 55,   // Row 2: Laver(78), Navratilova(37), Evert(55)
+    83, 22, 19,   // Row 3: Billie Jean King(83), Wozniacki(22), Kuznetsova(19)
+    20, 21, 23,   // Row 4: Ivanovic(20), Chakvetadze(21), Robson(23)
+     8,  9, 15,   // Row 5: Kohlschreiber(8), Seppi(9), King(15)
+    16, 24, 25,   // Row 6: Duke(16), Tenniel/VTM(24), Virnie/VTF(25)
     26, 26, 27    // Row 7: CARGAR (26), ACTUAL (26), ALEATORIO (27)
 };
 
 static const uint8_t *g_roster_pages[NUM_ROSTER_PAGES] = {
     g_roster_page_tour,
     g_roster_page_legends,
-    g_roster_page_legends2
+    g_roster_page_legends2,
+    g_roster_page_legends3
 };
 
 static const char *g_roster_page_titles[NUM_ROSTER_PAGES] = {
-    "PAGINA 1/3: ERA ACTUAL & NEXT-GEN (2010-2026)",
-    "PAGINA 2/3: ERA DORADA (1990s - 2000s)",
-    "PAGINA 3/3: PIONEROS 70s-80s & CLASICOS VT4"
+    "PAGINA 1/4: ERA ACTUAL & NEXT-GEN (2018-2026)",
+    "PAGINA 2/4: ERA DORADA (2000s - 2010s)",
+    "PAGINA 3/4: LEYENDAS 90s & WTA DORADA",
+    "PAGINA 4/4: PIONEROS 60s-80s & CLASICOS VT4"
 };
 
 typedef struct {
@@ -1176,27 +1582,52 @@ typedef struct {
 } ExtraPlayerDef;
 
 static const ExtraPlayerDef g_extra_players[NUM_EXTRA_PLAYERS] = {
-    { "WAW", "Stan Wawrinka",         "Wawrinka, Stan",        "Wawrinka",    "Stan",        "S. Wawrinka",    "S.WAWRINKA",    "SUI", "NG", "183", "81",  46, 1, 0, 0,  3,  0,  0,  0 }, // 38
-    { "MED", "Daniil Medvedev",       "Medvedev, Daniil",      "Medvedev",    "Daniil",      "D. Medvedev",    "D.MEDVEDEV",    "RUS", "NG", "198", "83", 119, 1, 0, 1,  6,  2,  2,  2 }, // 39
-    { "ZVE", "Alexander Zverev",      "Zverev, Alexander",     "Zverev",      "Alexander",   "A. Zverev",      "A.ZVEREV",      "GER", "NG", "198", "90",  16, 1, 0, 1,  5,  2,  2, 10 }, // 40
-    { "TSI", "Stefanos Tsitsipas",    "Tsitsipas, Stefanos",   "Tsitsipas",   "Stefanos",    "S. Tsitsipas",   "S.TSITSIPAS",   "GRE", "NG", "193", "89",  19, 1, 0, 0,  0,  0,  0,  0 }, // 41
-    { "THI", "Dominic Thiem",         "Thiem, Dominic",        "Thiem",       "Dominic",     "D. Thiem",       "D.THIEM",       "AUT", "NG", "185", "79",   3, 1, 0, 0,  4,  7,  7, 10 }, // 42
-    { "KYR", "Nick Kyrgios",          "Kyrgios, Nick",         "Kyrgios",     "Nick",        "N. Kyrgios",     "N.KYRGIOS",     "AUS", "NG", "193", "85", 132, 1, 0, 1,  5,  5,  5,  6 }, // 43
-    { "HEW", "Lleyton Hewitt",        "Hewitt, Lleyton",       "Hewitt",      "Lleyton",     "L. Hewitt",      "L.HEWITT",      "AUS", "LG", "178", "77", 132, 1, 0, 1,  6,  6,  5,  5 }, // 44
-    { "SAF", "Marat Safin",           "Safin, Marat",          "Safin",       "Marat",       "M. Safin",       "M.SAFIN",       "RUS", "LG", "193", "88", 119, 1, 0, 1,  4,  2,  2, 11 }, // 45
-    { "TSO", "Jo-Wilfried Tsonga",    "Tsonga, Jo-Wilfried",   "Tsonga",      "Jo-Wilfried", "J.-W. Tsonga",   "J.W.TSONGA",    "FRA", "LG", "188", "91",  15, 1, 0, 1,  4,  6,  6,  6 }, // 46
+    { "WAW", "Stan Wawrinka",         "Wawrinka, Stan",        "Wawrinka",    "Stan",        "S. Wawrinka",    "S.WAWRINKA",    "SUI", "NG", "183", "81",  46, 1, 0, 0,  3,  0, 10,  0 }, // 38
+    { "MED", "Daniil Medvedev",       "Medvedev, Daniil",      "Medvedev",    "Daniil",      "D. Medvedev",    "D.MEDVEDEV",    "RUS", "NG", "198", "83", 119, 1, 0, 1,  6,  2, 14,  2 }, // 39
+    { "ZVE", "Alexander Zverev",      "Zverev, Alexander",     "Zverev",      "Alexander",   "A. Zverev",      "A.ZVEREV",      "GER", "NG", "198", "90",  16, 1, 0, 1,  5,  2,  4, 10 }, // 40
+    { "TSI", "Stefanos Tsitsipas",    "Tsitsipas, Stefanos",   "Tsitsipas",   "Stefanos",    "S. Tsitsipas",   "S.TSITSIPAS",   "GRE", "NG", "193", "89",  19, 1, 0, 0,  0,  0,  1,  0 }, // 41
+    { "THI", "Dominic Thiem",         "Thiem, Dominic",        "Thiem",       "Dominic",     "D. Thiem",       "D.THIEM",       "AUT", "NG", "185", "79",   3, 1, 0, 0,  4,  7, 10, 10 }, // 42
+    { "KYR", "Nick Kyrgios",          "Kyrgios, Nick",         "Kyrgios",     "Nick",        "N. Kyrgios",     "N.KYRGIOS",     "AUS", "NG", "193", "85", 132, 1, 0, 1,  5,  5,  2,  6 }, // 43
+    { "HEW", "Lleyton Hewitt",        "Hewitt, Lleyton",       "Hewitt",      "Lleyton",     "L. Hewitt",      "L.HEWITT",      "AUS", "LG", "178", "77", 132, 1, 0, 1,  6,  6, 13,  5 }, // 44
+    { "SAF", "Marat Safin",           "Safin, Marat",          "Safin",       "Marat",       "M. Safin",       "M.SAFIN",       "RUS", "LG", "194", "88", 119, 1, 0, 1,  4,  2,  3, 11 }, // 45
+    { "TSO", "Jo-Wilfried Tsonga",    "Tsonga, Jo-Wilfried",   "Tsonga",      "Jo-Wilfried", "J.-W. Tsonga",   "J.W.TSONGA",    "FRA", "LG", "188", "91",  15, 1, 0, 1,  4,  6,  2,  6 }, // 46
     { "FRR", "Juan Carlos Ferrero",   "Ferrero, Juan Carlos",  "Ferrero",     "Juan Carlos", "J.C. Ferrero",   "J.C.FERRERO",   "ESP", "LG", "183", "73",  44, 1, 0, 1,  1, 10, 10,  1 }, // 47
-    { "MOY", "Carlos Moya",           "Moya, Carlos",          "Moya",        "Carlos",      "C. Moya",        "C.MOYA",        "ESP", "LG", "191", "86",  44, 1, 0, 1,  7,  1,  1,  1 }, // 48
-    { "FER", "David Ferrer",          "Ferrer, David",         "Ferrer",      "David",       "D. Ferrer",      "D.FERRER",      "ESP", "LG", "175", "73",  44, 1, 0, 1,  1,  9,  9,  1 }, // 49
-    { "NAL", "David Nalbandian",      "Nalbandian, David",     "Nalbandian",  "David",       "D. Nalbandian",  "D.NALBANDIAN",  "ARG", "LG", "180", "79",  74, 1, 0, 1,  9, 13, 13,  4 }, // 50
-    { "LEN", "Ivan Lendl",            "Lendl, Ivan",           "Lendl",       "Ivan",        "I. Lendl",       "I.LENDL",       "CZE", "LG", "188", "79",  11, 1, 0, 0,  7,  0,  0,  0 }, // 51
-    { "CON", "Jimmy Connors",         "Connors, Jimmy",        "Connors",     "Jimmy",       "J. Connors",     "J.CONNORS",     "USA", "LG", "178", "70",  73, 1, 1, 1,  2,  1,  1,  5 }, // 52
-    { "VIL", "Guillermo Vilas",       "Vilas, Guillermo",      "Vilas",       "Guillermo",   "G. Vilas",       "G.VILAS",       "ARG", "LG", "180", "79",  74, 1, 1, 0,  1, 14, 14,  4 }, // 53
-    { "IVN", "Goran Ivanisevic",      "Ivanisevic, Goran",     "Ivanisevic",  "Goran",       "G. Ivanisevic",  "G.IVANISEVIC",  "CRO", "LG", "193", "81",   9, 1, 1, 1,  5,  1,  1,  2 }, // 54
-    { "EVE", "Chris Evert",           "Evert, Chris",          "Evert",       "Chris",       "C. Evert",       "C.EVERT",       "USA", "LG", "168", "57",  73, 0, 0, 1, 19, 19, 19, 18 }, // 55
-    { "SEL", "Monica Seles",          "Seles, Monica",         "Seles",       "Monica",      "M. Seles",       "M.SELES",       "SRB", "LG", "179", "68",  41, 0, 1, 1, 17, 23, 23, 20 }, // 56
-    { "HEN", "Justine Henin",         "Henin, Justine",        "Henin",       "Justine",     "J. Henin",       "J.HENIN",       "BEL", "LG", "167", "57",   6, 0, 0, 0, 22, 22, 22, 17 }, // 57
-    { "MUG", "Garbine Muguruza",      "Muguruza, Garbine",     "Muguruza",    "Garbine",     "G. Muguruza",    "G.MUGURUZA",    "ESP", "NG", "182", "73",  44, 0, 0, 1, 17, 17, 17, 17 }  // 58
+    { "MOY", "Carlos Moya",           "Moya, Carlos",          "Moya",        "Carlos",      "C. Moya",        "C.MOYA",        "ESP", "LG", "191", "86",  44, 1, 0, 1,  7, 13,  4,  1 }, // 48
+    { "FER", "David Ferrer",          "Ferrer, David",         "Ferrer",      "David",       "D. Ferrer",      "D.FERRER",      "ESP", "LG", "175", "73",  44, 1, 0, 1,  1,  9,  0,  1 }, // 49
+    { "NAL", "David Nalbandian",      "Nalbandian, David",     "Nalbandian",  "David",       "D. Nalbandian",  "D.NALBANDIAN",  "ARG", "LG", "180", "79",  74, 1, 0, 1,  9, 13,  8,  4 }, // 50
+    { "LEN", "Ivan Lendl",            "Lendl, Ivan",           "Lendl",       "Ivan",        "I. Lendl",       "I.LENDL",       "CZE", "LG", "188", "79",  11, 1, 0, 0,  7,  0, 14,  0 }, // 51
+    { "CON", "Jimmy Connors",         "Connors, Jimmy",        "Connors",     "Jimmy",       "J. Connors",     "J.CONNORS",     "USA", "LG", "178", "70",  73, 1, 1, 1,  2,  1,  7,  5 }, // 52
+    { "VIL", "Guillermo Vilas",       "Vilas, Guillermo",      "Vilas",       "Guillermo",   "G. Vilas",       "G.VILAS",       "ARG", "LG", "180", "79",  74, 1, 1, 0,  1, 14,  1,  4 }, // 53
+    { "IVN", "Goran Ivanisevic",      "Ivanisevic, Goran",     "Ivanisevic",  "Goran",       "G. Ivanisevic",  "G.IVANISEVIC",  "CRO", "LG", "193", "81",   9, 1, 1, 1,  5,  1,  4,  2 }, // 54
+    { "EVE", "Chris Evert",           "Evert, Chris",          "Evert",       "Chris",       "C. Evert",       "C.EVERT",       "USA", "LG", "168", "57",  73, 0, 0, 1, 19, 19, 21, 18 }, // 55
+    { "SEL", "Monica Seles",          "Seles, Monica",         "Seles",       "Monica",      "M. Seles",       "M.SELES",       "SRB", "LG", "178", "68",  41, 0, 1, 1, 17, 23, 19, 20 }, // 56
+    { "HEN", "Justine Henin",         "Henin, Justine",        "Henin",       "Justine",     "J. Henin",       "J.HENIN",       "BEL", "LG", "167", "57",   6, 0, 0, 0, 22, 22, 20, 17 }, // 57
+    { "MUG", "Garbine Muguruza",      "Muguruza, Garbine",     "Muguruza",    "Garbine",     "G. Muguruza",    "G.MUGURUZA",    "ESP", "NG", "182", "73",  44, 0, 0, 1, 17, 17, 23, 17 }, // 58
+    { "SHE", "Ben Shelton",           "Shelton, Ben",          "Shelton",     "Ben",         "B. Shelton",     "B.SHELTON",     "USA", "NG", "193", "88",  73, 1, 1, 1,  5,  5,  6,  5 }, // 59
+    { "RUB", "Andrey Rublev",         "Rublev, Andrey",        "Rublev",      "Andrey",      "A. Rublev",      "A.RUBLEV",      "RUS", "NG", "188", "75", 119, 1, 0, 1,  7,  2,  1,  2 }, // 60
+    { "RUU", "Casper Ruud",           "Ruud, Casper",          "Ruud",        "Casper",      "C. Ruud",        "C.RUUD",        "NOR", "NG", "183", "81",  36, 1, 0, 1,  1, 13,  4, 14 }, // 61
+    { "FRI", "Taylor Fritz",          "Fritz, Taylor",         "Fritz",       "Taylor",      "T. Fritz",       "T.FRITZ",       "USA", "NG", "196", "86",  73, 1, 0, 1,  5,  2,  0,  5 }, // 62
+    { "GAU", "Coco Gauff",            "Gauff, Coco",           "Gauff",       "Coco",        "C. Gauff",       "C.GAUFF",       "USA", "NG", "175", "65",  73, 0, 0, 1, 18, 18, 18, 18 }, // 63
+    { "RYB", "Elena Rybakina",        "Rybakina, Elena",       "Rybakina",    "Elena",       "E. Rybakina",    "E.RYBAKINA",    "KAZ", "NG", "184", "72", 104, 0, 0, 1, 17, 17, 17, 17 }, // 64
+    { "BAD", "Paula Badosa",          "Badosa, Paula",         "Badosa",      "Paula",       "P. Badosa",      "P.BADOSA",      "ESP", "NG", "180", "72",  44, 0, 0, 1, 17, 17, 20, 17 }, // 65
+    { "HAL", "Simona Halep",          "Halep, Simona",         "Halep",       "Simona",      "S. Halep",       "S.HALEP",       "ROU", "NG", "168", "60",  39, 0, 0, 1, 22, 21, 21, 22 }, // 66
+    { "COR", "Guillermo Coria",       "Coria, Guillermo",      "Coria",       "Guillermo",   "G. Coria",       "G.CORIA",       "ARG", "LG", "175", "67",  74, 1, 0, 1,  6,  9, 13,  4 }, // 67
+    { "GAS", "Richard Gasquet",       "Gasquet, Richard",      "Gasquet",     "Richard",     "R. Gasquet",     "R.GASQUET",     "FRA", "LG", "183", "79",  15, 1, 0, 0,  0,  0, 24,  6 }, // 68
+    { "NIS", "Kei Nishikori",         "Nishikori, Kei",        "Nishikori",   "Kei",         "K. Nishikori",   "K.NISHIKORI",   "JPN", "LG", "178", "75", 102, 1, 0, 1,  3,  3,  8,  8 }, // 69
+    { "SOD", "Robin Soderling",       "Soderling, Robin",      "Soderling",   "Robin",       "R. Soderling",   "R.SODERLING",   "SWE", "LG", "193", "87",  45, 1, 0, 1,  4,  2, 11, 14 }, // 70
+    { "BER", "Tomas Berdych",         "Berdych, Tomas",        "Berdych",     "Tomas",       "T. Berdych",     "T.BERDYCH",     "CZE", "LG", "196", "91",  11, 1, 0, 1,  4,  9, 13, 10 }, // 71
+    { "CHN", "Michael Chang",         "Chang, Michael",        "Chang",       "Michael",     "M. Chang",       "M.CHANG",       "USA", "LG", "175", "72",  73, 1, 0, 1,  6,  6, 13,  5 }, // 72
+    { "RIO", "Marcelo Rios",          "Rios, Marcelo",         "Rios",        "Marcelo",     "M. Rios",        "M.RIOS",        "CHI", "LG", "175", "68",  77, 1, 1, 1,  9,  1, 12,  7 }, // 73
+    { "MUS", "Thomas Muster",         "Muster, Thomas",        "Muster",      "Thomas",      "T. Muster",      "T.MUSTER",      "AUT", "LG", "180", "75",   3, 1, 1, 0,  1, 10, 10, 10 }, // 74
+    { "BRU", "Sergi Bruguera",        "Bruguera, Sergi",       "Bruguera",    "Sergi",       "S. Bruguera",    "S.BRUGUERA",    "ESP", "LG", "188", "76",  44, 1, 0, 1,  1, 13, 14,  1 }, // 75
+    { "CRT", "Alex Corretja",         "Corretja, Alex",        "Corretja",    "Alex",        "A. Corretja",    "A.CORRETJA",    "ESP", "LG", "180", "76",  44, 1, 0, 0,  1, 10, 10,  1 }, // 76
+    { "WLD", "Mats Wilander",         "Wilander, Mats",        "Wilander",    "Mats",        "M. Wilander",    "M.WILANDER",    "SWE", "LG", "183", "77",  45, 1, 0, 1,  3,  3,  4, 14 }, // 77
+    { "LAV", "Rod Laver",             "Laver, Rod",            "Laver",       "Rod",         "R. Laver",       "R.LAVER",       "AUS", "LG", "173", "68", 132, 1, 1, 0,  0, 11, 11, 12 }, // 78
+    { "ASV", "Arantxa Sanchez",       "Sanchez, Arantxa",      "Arantxa",     "Arantxa",     "A. Sanchez",     "A.SANCHEZ",     "ESP", "LG", "169", "60",  44, 0, 0, 1, 22, 21, 20, 17 }, // 79
+    { "CMT", "Conchita Martinez",     "Martinez, Conchita",    "Conchita",    "Conchita",    "C. Martinez",    "C.MARTINEZ",    "ESP", "LG", "173", "65",  44, 0, 0, 0, 19, 23, 23, 19 }, // 80
+    { "CLI", "Kim Clijsters",         "Clijsters, Kim",        "Clijsters",   "Kim",         "K. Clijsters",   "K.CLIJSTERS",   "BEL", "LG", "174", "68",   6, 0, 0, 1, 19, 19, 23, 22 }, // 81
+    { "AND", "Mirra Andreeva",        "Andreeva, Mirra",       "Andreeva",    "Mirra",       "M. Andreeva",    "M.ANDREEVA",    "RUS", "NG", "175", "62", 119, 0, 0, 1, 22, 22, 20, 22 }, // 82
+    { "BJK", "Billie Jean King",      "King, Billie Jean",     "B.J. King",   "Billie Jean", "B.J. King",      "B.J.KING",      "USA", "LG", "164", "59",  73, 0, 0, 0, 21, 21, 19, 18 }  // 83
 };
 
 // ----------------------------------------------------------------------------
@@ -1242,15 +1673,28 @@ static float g_player_bone_scales[MAX_ROSTER_PLAYERS * 60] = {0};
 typedef void (__thiscall *PlayStyleLoadChar_t)(void *self, int char_id);
 static PlayStyleLoadChar_t g_real_playstyle_loadchar = NULL;
 static const uint8_t g_custom_playstyle_proxy[12] = { 1, 2, 0, 10, 14, 11, 17, 18, 22, 20, 12, 18 };
-static const uint8_t g_custom_anim_proxy[12]      = { 1, 2, 0, 10, 14, 11, 17, 18, 22, 21, 12, 18 };
+static const uint8_t g_custom_anim_proxy[12]      = { 2, 2, 0, 13, 3, 11, 17, 18, 22, 21, 12, 18 };
 
 static void __thiscall hk_PlayStyle_LoadChar(void *self, int char_id) {
+    int orig_id = char_id;
+    if (char_id >= 0 && char_id < VP_MAX_ROSTER_IDS) {
+        if (g_present_calls > g_vp_load_frame + 60 || g_vp_p1_id < 0) {
+            g_vp_p1_id = char_id;
+            g_vp_p2_id = -1;
+            g_vp_load_frame = g_present_calls;
+        } else if (g_vp_p2_id < 0) {
+            g_vp_p2_id = char_id;
+        }
+    }
     if (char_id >= 26 && char_id < 38) {
         char_id = (int)g_custom_playstyle_proxy[char_id - 26];
     } else if (char_id >= 38 && char_id < MAX_ROSTER_PLAYERS) {
         char_id = (int)g_extra_players[char_id - 38].playstyle_proxy;
     }
     if (g_real_playstyle_loadchar) g_real_playstyle_loadchar(self, char_id);
+    if (orig_id >= 26 && orig_id < MAX_ROSTER_PLAYERS) {
+        apply_custom_player_stats(self, orig_id, (int)g_cfg_debug_log);
+    }
 }
 
 typedef void (__thiscall *SetServeMotionIdFn_t)(void *self, int id1, int id2);
@@ -1292,6 +1736,74 @@ static int __stdcall hk_GetPlayerFlag(int id) {
 typedef const char *(__thiscall *StoLookup_t)(void *sto_obj, int table_id, int row_id);
 static StoLookup_t g_real_sto_lookup = NULL;
 static void *g_tr_common_sto = NULL;
+static int g_sto_tbl_dob = -1;
+
+/* Verified real birth dates (D/M/YYYY, matching TR_COMMON.sto) for custom IDs 26..83 */
+static const char *g_custom_dob[MAX_ROSTER_PLAYERS - 26] = {
+    "5/5/2003",   /* 26: Carlos Alcaraz */
+    "16/8/2001",  /* 27: Jannik Sinner */
+    "12/8/1971",  /* 28: Pete Sampras */
+    "29/4/1970",  /* 29: Andre Agassi */
+    "6/6/1956",   /* 30: Bjorn Borg */
+    "16/2/1959",  /* 31: John McEnroe */
+    "14/6/1969",  /* 32: Steffi Graf */
+    "26/9/1981",  /* 33: Serena Williams */
+    "31/5/2001",  /* 34: Iga Swiatek */
+    "5/5/1998",   /* 35: Aryna Sabalenka */
+    "10/9/1976",  /* 36: Gustavo Kuerten */
+    "18/10/1956", /* 37: Martina Navratilova */
+    "28/3/1985",  /* 38: Stan Wawrinka */
+    "11/2/1996",  /* 39: Daniil Medvedev */
+    "20/4/1997",  /* 40: Alexander Zverev */
+    "12/8/1998",  /* 41: Stefanos Tsitsipas */
+    "3/9/1993",   /* 42: Dominic Thiem */
+    "27/4/1995",  /* 43: Nick Kyrgios */
+    "24/2/1981",  /* 44: Lleyton Hewitt */
+    "27/1/1980",  /* 45: Marat Safin */
+    "17/4/1985",  /* 46: Jo-Wilfried Tsonga */
+    "12/2/1980",  /* 47: Juan Carlos Ferrero */
+    "27/8/1976",  /* 48: Carlos Moya */
+    "2/4/1982",   /* 49: David Ferrer */
+    "1/1/1982",   /* 50: David Nalbandian */
+    "7/3/1960",   /* 51: Ivan Lendl */
+    "2/9/1952",   /* 52: Jimmy Connors */
+    "17/8/1952",  /* 53: Guillermo Vilas */
+    "13/9/1971",  /* 54: Goran Ivanisevic */
+    "21/12/1954", /* 55: Chris Evert */
+    "2/12/1973",  /* 56: Monica Seles */
+    "1/6/1982",   /* 57: Justine Henin */
+    "8/10/1993",  /* 58: Garbine Muguruza */
+    "9/10/2002",  /* 59: Ben Shelton */
+    "20/10/1997", /* 60: Andrey Rublev */
+    "22/12/1998", /* 61: Casper Ruud */
+    "28/10/1997", /* 62: Taylor Fritz */
+    "13/3/2004",  /* 63: Coco Gauff */
+    "17/6/1999",  /* 64: Elena Rybakina */
+    "15/11/1997", /* 65: Paula Badosa */
+    "27/9/1991",  /* 66: Simona Halep */
+    "13/1/1982",  /* 67: Guillermo Coria */
+    "18/6/1986",  /* 68: Richard Gasquet */
+    "29/12/1989", /* 69: Kei Nishikori */
+    "14/8/1984",  /* 70: Robin Soderling */
+    "17/9/1985",  /* 71: Tomas Berdych */
+    "22/2/1972",  /* 72: Michael Chang */
+    "26/12/1975", /* 73: Marcelo Rios */
+    "2/10/1967",  /* 74: Thomas Muster */
+    "16/1/1971",  /* 75: Sergi Bruguera */
+    "11/4/1974",  /* 76: Alex Corretja */
+    "22/8/1964",  /* 77: Mats Wilander */
+    "9/8/1938",   /* 78: Rod Laver */
+    "18/12/1971", /* 79: Arantxa Sanchez Vicario */
+    "16/4/1972",  /* 80: Conchita Martinez */
+    "8/6/1983",   /* 81: Kim Clijsters */
+    "29/4/2007",  /* 82: Mirra Andreeva */
+    "22/11/1943"  /* 83: Billie Jean King */
+};
+
+static int sto_is_federer_dob(const char *s) {
+    if (!s || !s[0]) return 0;
+    return (strstr(s, "8/8/1981") != NULL || strstr(s, "1981/8/8") != NULL);
+}
 
 static const char *__fastcall hk_StoLookup(void *sto_obj, void *edx, int table_id, int row_id) {
     (void)edx;
@@ -1300,45 +1812,67 @@ static const char *__fastcall hk_StoLookup(void *sto_obj, void *edx, int table_i
         const char *probe = g_real_sto_lookup(sto_obj, 0, 0);
         if (probe && strcmp(probe, "Roger Federer") == 0) {
             g_tr_common_sto = sto_obj;
-            log_msg("[VT4-Mod] Identified TR_COMMON.sto object: %p", sto_obj);
+            g_sto_tbl_dob = -1;
+            for (int t = 7; t <= 13; t++) {
+                const char *s = g_real_sto_lookup(sto_obj, t, 0);
+                if (s && s[0]) {
+                    log_msg("[VT4-Mod] TR_COMMON.sto tbl[%d][0] = \"%s\"", t, s);
+                    if (g_sto_tbl_dob < 0 && sto_is_federer_dob(s)) {
+                        g_sto_tbl_dob = t;
+                    }
+                }
+            }
+            log_msg("[VT4-Mod] Identified TR_COMMON.sto object: %p (dob_tbl=%d)", sto_obj, g_sto_tbl_dob);
         }
     }
-    if (sto_obj == g_tr_common_sto && row_id >= 26 && row_id < MAX_ROSTER_PLAYERS) {
-        if (row_id < 38) {
-            int idx = row_id - 26;
-            switch (table_id) {
-                case 0: return g_custom_full_names[idx];
-                case 1: return g_custom_last_first[idx];
-                case 2: return g_custom_card_names[idx];
-                case 3: return g_custom_first_names[idx];
-                case 4: return g_custom_banner_names[idx];
-                case 5: return g_custom_short_upper[idx];
-                case 6: return g_custom_ioc_codes[idx];
-                case 8:  return g_real_sto_lookup(sto_obj, 8, g_custom_lefty[idx] ? 1 : 0);
-                case 10: return g_real_sto_lookup(sto_obj, 10, g_custom_bh2[idx] ? 2 : 0);
-                case 7:
-                case 11:
-                case 13:
-                    return g_real_sto_lookup(sto_obj, table_id, (int)g_custom_bio_proxy[idx]);
-                default: break;
+    if (sto_obj == g_tr_common_sto) {
+        if (g_sto_tbl_dob < 0 && table_id > 6) {
+            const char *fed = g_real_sto_lookup(sto_obj, table_id, 0);
+            if (sto_is_federer_dob(fed)) {
+                g_sto_tbl_dob = table_id;
+                log_msg("[VT4-Mod] Auto-detected TR_COMMON.sto DOB table_id=%d (\"%s\")", table_id, fed);
             }
-        } else {
-            const ExtraPlayerDef *ep = &g_extra_players[row_id - 38];
-            switch (table_id) {
-                case 0: return ep->full_name;
-                case 1: return ep->last_first;
-                case 2: return ep->card_name;
-                case 3: return ep->first_name;
-                case 4: return ep->banner_name;
-                case 5: return ep->short_name;
-                case 6: return ep->ioc_code;
-                case 8:  return g_real_sto_lookup(sto_obj, 8, ep->lefty ? 1 : 0);
-                case 10: return g_real_sto_lookup(sto_obj, 10, ep->bh2 ? 2 : 0);
-                case 7:
-                case 11:
-                case 13:
-                    return g_real_sto_lookup(sto_obj, table_id, (int)ep->bio_proxy);
-                default: break;
+        }
+        if (row_id >= 26 && row_id < MAX_ROSTER_PLAYERS) {
+            if (g_sto_tbl_dob >= 0 && table_id == g_sto_tbl_dob) {
+                return g_custom_dob[row_id - 26];
+            }
+            if (row_id < 38) {
+                int idx = row_id - 26;
+                switch (table_id) {
+                    case 0: return g_custom_full_names[idx];
+                    case 1: return g_custom_last_first[idx];
+                    case 2: return g_custom_card_names[idx];
+                    case 3: return g_custom_first_names[idx];
+                    case 4: return g_custom_banner_names[idx];
+                    case 5: return g_custom_short_upper[idx];
+                    case 6: return g_custom_ioc_codes[idx];
+                    case 8:  return g_real_sto_lookup(sto_obj, 8, g_custom_lefty[idx] ? 1 : 0);
+                    case 10: return g_real_sto_lookup(sto_obj, 10, g_custom_bh2[idx] ? 2 : 0);
+                    case 7:
+                    case 11:
+                    case 13:
+                        return g_real_sto_lookup(sto_obj, table_id, (int)g_custom_bio_proxy[idx]);
+                    default: break;
+                }
+            } else {
+                const ExtraPlayerDef *ep = &g_extra_players[row_id - 38];
+                switch (table_id) {
+                    case 0: return ep->full_name;
+                    case 1: return ep->last_first;
+                    case 2: return ep->card_name;
+                    case 3: return ep->first_name;
+                    case 4: return ep->banner_name;
+                    case 5: return ep->short_name;
+                    case 6: return ep->ioc_code;
+                    case 8:  return g_real_sto_lookup(sto_obj, 8, ep->lefty ? 1 : 0);
+                    case 10: return g_real_sto_lookup(sto_obj, 10, ep->bh2 ? 2 : 0);
+                    case 7:
+                    case 11:
+                    case 13:
+                        return g_real_sto_lookup(sto_obj, table_id, (int)ep->bio_proxy);
+                    default: break;
+                }
             }
         }
     }
@@ -1460,6 +1994,8 @@ static void *__cdecl hk_PlayerDB_GetVoiceSE(void *out_fstr, int id) {
 }
 
 static int g_agassi_skin = 0; // 0 = '91 Melena Rubia + Cinta, 1 = '06 Calvo + Perilla
+static int g_agassi_skin_dirty = 0;
+static int g_agassi_hovered_cs = 0;
 
 static uint8_t __cdecl hk_PlayerDB_GetModelPrefix(void *sb, int id) {
     if (id == 29 && g_agassi_skin == 1) {
@@ -1491,9 +2027,14 @@ static float __fastcall hk_ServeMin_GetFloat(void *fwdb, void *edx, int row) {
 
 static float __fastcall hk_ServeMax_GetFloat(void *fwdb, void *edx, int row) {
     int id = row - 0xbe;
+    if (id >= CUSTOM_STATS_FIRST_ID && id < CUSTOM_STATS_FIRST_ID + CUSTOM_STATS_COUNT) {
+        return g_custom_player_stats[id - CUSTOM_STATS_FIRST_ID].serve_max_kmh;
+    }
     if (id >= 38 && id < MAX_ROSTER_PLAYERS) row = (int)g_extra_players[id - 38].playstyle_proxy + 0xbe;
     return ((FwDB_GetFloat_t)0x006252e0)(fwdb, row);
 }
+
+#include "broadcast_hud.h"
 
 static int g_current_roster_page = 0;
 static void *g_pCharaSelect = NULL;
@@ -1611,8 +2152,18 @@ static void switch_roster_page(int dir) {
 
 static void toggle_agassi_skin(void) {
     g_agassi_skin = g_agassi_skin ? 0 : 1;
+    g_agassi_skin_dirty = 1;
+    memcpy(&g_player_bone_scales[29 * 60], &g_player_bone_scales[(g_agassi_skin ? 2 : 1) * 60], 240);
     log_msg("[VT4-Mod] Agassi skin toggled -> %d (%s)", g_agassi_skin,
             g_agassi_skin ? "2006 Calvo + Perilla" : "1991 Melena Rubia + Cinta");
+}
+
+static void toggle_weapon_mode(void) {
+    g_cfg_weapon_mode = (g_cfg_weapon_mode + 1u) % 4u;
+    sync_menu_indices_from_cfg();
+    save_vt4_settings();
+    log_msg("[VT4-Mod] [EE-3] WeaponMode toggled -> %u (%s)",
+            g_cfg_weapon_mode, s_weapon_choices[g_cfg_weapon_mode]);
 }
 
 static int check_roster_arrow_click(int mx, int my) {
@@ -1632,10 +2183,15 @@ static int check_roster_arrow_click(int mx, int my) {
         switch_roster_page(1);
         return 1;
     }
-    if (g_current_roster_page >= 1 &&
+    if (g_agassi_hovered_cs &&
         fx >= 828.0f * sx && fx <= 1451.0f * sx &&
         fy >= 854.0f * sy && fy <= 888.0f * sy) {
         toggle_agassi_skin();
+        return 1;
+    }
+    if (fx >= 828.0f * sx && fx <= 1451.0f * sx &&
+        fy >= 894.0f * sy && fy <= 926.0f * sy) {
+        toggle_weapon_mode();
         return 1;
     }
     return 0;
@@ -1738,6 +2294,29 @@ static void __thiscall hk_FPCharaSelect_Update(void *self) {
         }
     }
 
+    // Force reload of Agassi's 2D VR portrait (photo_L/S) when skin toggles in CharaSelect
+    if (g_agassi_skin_dirty && grid) {
+        g_agassi_skin_dirty = 0;
+        typedef void (__thiscall *UpdateDisplay_t)(void *grid_self, int player_idx);
+        typedef void (__thiscall *SetPlayerCharacter_t)(void *grid_self, int player_idx);
+        UpdateDisplay_t update_disp = (UpdateDisplay_t)0x005df5d0;
+        SetPlayerCharacter_t set_player_char = (SetPlayerCharacter_t)0x005e03b0;
+        const uint8_t *active_slots = (const uint8_t *)0x007c5f6c;
+        for (int i = 0; i < 4; i++) {
+            char *pi = (char *)grid + 0x0c + i * 0x48;
+            if (pi[0x08] == 0 || *(int *)pi == 8) continue;
+            int col = *(int *)(pi + 0x0c);
+            int row = *(int *)(pi + 0x10);
+            int slot = row * 3 + col;
+            if ((slot >= 0 && slot < 21 && active_slots[slot] == 29) || *(int *)(pi + 0x14) == 29) {
+                *(int *)(pi + 0x14) = 29;
+                set_player_char(grid, i);
+                update_disp(grid, i);
+                log_msg("[VT4-Mod] Refreshed Agassi VR portrait for player %d (skin=%d)", i, g_agassi_skin);
+            }
+        }
+    }
+
     if (g_real_charaselect_update) {
         g_real_charaselect_update(self);
     }
@@ -1745,7 +2324,9 @@ static void __thiscall hk_FPCharaSelect_Update(void *self) {
     // Safely snapshot live P1/P2 grid slots while grid is guaranteed alive
     g_cs_p_slots[0] = -1;
     g_cs_p_slots[1] = -1;
+    int hov_multi = 0;
     if (grid) {
+        const uint8_t *active_slots = (const uint8_t *)0x007c5f6c;
         for (int p = 0; p < 2; p++) {
             char *pi = (char *)grid + 0x0c + p * 0x48;
             if (pi[0x08] != 0 && *(int *)pi != 8) {
@@ -1754,10 +2335,13 @@ static void __thiscall hk_FPCharaSelect_Update(void *self) {
                 int sl = row * 3 + col;
                 if (col >= 0 && col < 3 && row >= 0 && row < 7 && sl >= 0 && sl < 21) {
                     g_cs_p_slots[p] = sl;
+                    if (active_slots[sl] == 29) hov_multi = 1;
                 }
+                if (*(int *)(pi + 0x14) == 29) hov_multi = 1;
             }
         }
     }
+    g_agassi_hovered_cs = hov_multi;
 }
 
 static void *create_text_texture(void *dev, const char *text, int w, int h, int font_px, int bold, DWORD rgb_color) {
@@ -1846,12 +2430,12 @@ static void *create_text_texture(void *dev, const char *text, int w, int h, int 
 
 static void *g_pTexPillLeft = NULL;
 static void *g_pTexPillRight = NULL;
-static void *g_pTexHeaderP1 = NULL;
-static void *g_pTexHeaderP2 = NULL;
-static void *g_pTexHeaderP3 = NULL;
+static void *g_pTexHeaderPage[NUM_ROSTER_PAGES] = { NULL };
 static void *g_pTexSkinAg91 = NULL;
 static void *g_pTexSkinAg06 = NULL;
+static void *g_pTexWeaponPill[4] = { NULL };
 static void *g_pEyeTex[MAX_ROSTER_PLAYERS] = { NULL };
+static void *g_pEyeTexAg91 = NULL;
 static void *g_pCardNameTex[MAX_ROSTER_PLAYERS] = { NULL };
 static void *g_pCardNameShadowTex[MAX_ROSTER_PLAYERS] = { NULL };
 static void *g_pTexBadgeP1 = NULL;
@@ -1872,7 +2456,9 @@ static void init_roster_card_textures(void *dev) {
                 snprintf(eye_path, sizeof(eye_path), "%s\\archive\\HIGH\\Frontend\\VR\\photo_eye\\%d.dds", g_game_dir, id);
                 if (SUCCEEDED(g_d3dx_createtexture(dev, eye_path, &g_pEyeTex[id])) && g_pEyeTex[id]) ok++;
             }
-            log_msg("[VT4-Mod] Loaded %d/%d CharaSelect eye-strip textures", ok, MAX_ROSTER_PLAYERS);
+            snprintf(eye_path, sizeof(eye_path), "%s\\archive\\HIGH\\Frontend\\VR\\photo_eye\\29_91.dds", g_game_dir);
+            if (!SUCCEEDED(g_d3dx_createtexture(dev, eye_path, &g_pEyeTexAg91))) g_pEyeTexAg91 = NULL;
+            log_msg("[VT4-Mod] Loaded %d/%d CharaSelect eye-strip textures (ag91=%p)", ok, MAX_ROSTER_PLAYERS, g_pEyeTexAg91);
         }
     }
 
@@ -1911,11 +2497,16 @@ static void render_roster_pagination_hud(void *dev) {
         s_tex_init_done = 1;
         g_pTexPillLeft  = create_text_texture(dev, "< Q / LB", 96, 36, 17, 1, 0xFFFFFF);
         g_pTexPillRight = create_text_texture(dev, "E / RB >", 96, 36, 17, 1, 0xFFFFFF);
-        g_pTexHeaderP1  = create_text_texture(dev, "PAGINA 1/3: ACTUAL & NEXT-GEN (2010-2026)", 412, 36, 16, 1, 0xFFFFFF);
-        g_pTexHeaderP2  = create_text_texture(dev, "PAGINA 2/3: ERA DORADA (1990s - 2000s)", 412, 36, 17, 1, 0x00E5FF);
-        g_pTexHeaderP3  = create_text_texture(dev, "PAGINA 3/3: PIONEROS 70s-80s & CLASICOS", 412, 36, 17, 1, 0xFFD54F);
+        g_pTexHeaderPage[0] = create_text_texture(dev, "PAGINA 1/4: ACTUAL & NEXT-GEN (2015-2026)", 412, 36, 16, 1, 0xFFFFFF);
+        g_pTexHeaderPage[1] = create_text_texture(dev, "PAGINA 2/4: ERA DORADA (2000s - 2010s)", 412, 36, 17, 1, 0x00E5FF);
+        g_pTexHeaderPage[2] = create_text_texture(dev, "PAGINA 3/4: LEYENDAS 90s & WTA CLASICA", 412, 36, 17, 1, 0xFFA726);
+        g_pTexHeaderPage[3] = create_text_texture(dev, "PAGINA 4/4: PIONEROS 60s-80s & VT4", 412, 36, 17, 1, 0xFFD54F);
         g_pTexSkinAg91  = create_text_texture(dev, "[F] SKIN AGASSI: 1991 MELENA RUBIA + CINTA", 623, 34, 16, 1, 0xFF70C8);
         g_pTexSkinAg06  = create_text_texture(dev, "[F] SKIN AGASSI: 2006 CALVO + PERILLA", 623, 34, 16, 1, 0xD8E2EE);
+        g_pTexWeaponPill[0] = create_text_texture(dev, "[R] ARMA EE-3: RAQUETA OFICIAL (NORMAL)", 623, 32, 15, 1, 0xD0DCE8);
+        g_pTexWeaponPill[1] = create_text_texture(dev, "[R] ARMA EE-3: RAQUETA DE MADERA (ANOS 70)", 623, 32, 15, 1, 0xFFD080);
+        g_pTexWeaponPill[2] = create_text_texture(dev, "[R] ARMA EE-3: SARTEN METALICA (MODO RODDICK)", 623, 32, 15, 1, 0x70E8FF);
+        g_pTexWeaponPill[3] = create_text_texture(dev, "[R] ARMA EE-3: BAGUETTE GIGANTE", 623, 32, 15, 1, 0xFFE66D);
     }
     init_roster_card_textures(dev);
 
@@ -1940,8 +2531,9 @@ static void render_roster_pagination_hud(void *dev) {
         int is_p2 = (p_slots[1] == slot);
         int is_hov = is_p1 || is_p2;
 
-        if (g_pEyeTex[cid]) {
-            draw_textured_quad(dev, g_pEyeTex[cid], x1, y1, x2, y2, is_hov ? 0xFFFFFFFF : 0xFFD4DAE4);
+        void *eye_tex = (cid == 29 && g_agassi_skin == 0 && g_pEyeTexAg91) ? g_pEyeTexAg91 : g_pEyeTex[cid];
+        if (eye_tex) {
+            draw_textured_quad(dev, eye_tex, x1, y1, x2, y2, is_hov ? 0xFFFFFFFF : 0xFFD4DAE4);
         } else {
             draw_screen_quad(dev, x1, y1, x2, y2, 0xFF282D38);
         }
@@ -2004,21 +2596,37 @@ static void render_roster_pagination_hud(void *dev) {
     // Subtle header bar above grid (grid is x=830..1450, y=218..780)
     float hdr_x1 = 934.0f * sx, hdr_y1 = 172.0f * sy, hdr_x2 = 1346.0f * sx, hdr_y2 = 208.0f * sy;
     draw_screen_quad(dev, hdr_x1, hdr_y1, hdr_x2, hdr_y2, 0xCC0A1424);
-    DWORD accent = (g_current_roster_page == 2) ? 0xFFFFD54F : ((g_current_roster_page == 1) ? 0xFF00E5FF : 0xFF4585E5);
-    draw_screen_quad(dev, hdr_x1, hdr_y2 - 3.0f * sy, hdr_x2, hdr_y2, accent);
+    static const DWORD k_page_accents[NUM_ROSTER_PAGES] = { 0xFF4585E5, 0xFF00E5FF, 0xFFFFA726, 0xFFFFD54F };
+    int p_idx = (g_current_roster_page >= 0 && g_current_roster_page < NUM_ROSTER_PAGES) ? g_current_roster_page : 0;
+    draw_screen_quad(dev, hdr_x1, hdr_y2 - 3.0f * sy, hdr_x2, hdr_y2, k_page_accents[p_idx]);
 
     if (g_pTexPillLeft)  draw_textured_quad(dev, g_pTexPillLeft,  l_x, l_y, l_x + pill_w, l_y + pill_h, 0xFFFFFFFF);
     if (g_pTexPillRight) draw_textured_quad(dev, g_pTexPillRight, r_x, r_y, r_x + pill_w, r_y + pill_h, 0xFFFFFFFF);
-    void *hdr_tex = (g_current_roster_page == 2) ? g_pTexHeaderP3 : ((g_current_roster_page == 1) ? g_pTexHeaderP2 : g_pTexHeaderP1);
+    void *hdr_tex = g_pTexHeaderPage[p_idx];
     if (hdr_tex) draw_textured_quad(dev, hdr_tex, hdr_x1, hdr_y1, hdr_x2, hdr_y2, 0xFFFFFFFF);
 
-    if (g_current_roster_page >= 1) {
+    int has_multi_hovered = 0;
+    for (int p = 0; p < 2; p++) {
+        if (p_slots[p] >= 0 && p_slots[p] < 21 && active_slots[p_slots[p]] == 29) {
+            has_multi_hovered = 1;
+        }
+    }
+    if (has_multi_hovered) {
         float sk_x1 = 828.0f * sx, sk_x2 = 1451.0f * sx, sk_y1 = 854.0f * sy, sk_y2 = 888.0f * sy;
         draw_screen_quad(dev, sk_x1, sk_y1, sk_x2, sk_y2, 0xCC0A1424);
         DWORD sk_acc = g_agassi_skin ? 0xFFD0D8E4 : 0xFFFF40A8;
         draw_screen_quad(dev, sk_x1, sk_y2 - 3.0f * sy, sk_x2, sk_y2, sk_acc);
         void *sk_tex = g_agassi_skin ? g_pTexSkinAg06 : g_pTexSkinAg91;
         if (sk_tex) draw_textured_quad(dev, sk_tex, sk_x1, sk_y1, sk_x2, sk_y2, 0xFFFFFFFF);
+    }
+
+    {
+        float wp_x1 = 828.0f * sx, wp_x2 = 1451.0f * sx, wp_y1 = 894.0f * sy, wp_y2 = 926.0f * sy;
+        draw_screen_quad(dev, wp_x1, wp_y1, wp_x2, wp_y2, 0xC00A1424);
+        static const DWORD k_wp_acc[4] = { 0xFF566880, 0xFFFF9F40, 0xFF38D4FF, 0xFFFFE040 };
+        uint32_t wm = (g_cfg_weapon_mode < 4u) ? g_cfg_weapon_mode : 0u;
+        draw_screen_quad(dev, wp_x1, wp_y2 - 2.5f * sy, wp_x2, wp_y2, k_wp_acc[wm]);
+        if (g_pTexWeaponPill[wm]) draw_textured_quad(dev, g_pTexWeaponPill[wm], wp_x1, wp_y1, wp_x2, wp_y2, 0xFFFFFFFF);
     }
 
     end_overlay_state(dev);
@@ -2045,18 +2653,18 @@ static void __fastcall hk_Renderer_CalcPipelineSettings(PipelineSettings *settin
     settings->height = g_cfg_height;
     settings->msaa_samples = g_cfg_antialiasing;
     settings->unk_0c = 4;
-    settings->bloom_w = (g_cfg_width >= 1920) ? 2048 : 1024;
-    settings->bloom_h = (g_cfg_height >= 1080) ? 1024 : 512;
-    settings->shadow_w = 2048;
-    settings->shadow_h = 2048;
+    settings->bloom_w = perf_get_bloom_w();
+    settings->bloom_h = perf_get_bloom_h();
+    settings->shadow_w = perf_get_shadow_size();
+    settings->shadow_h = perf_get_shadow_size();
 
     *(uint32_t *)0x00a75d24 = g_cfg_width;
     *(uint32_t *)0x00a75d28 = g_cfg_height;
     *(uint32_t *)0x00a75d7c = g_cfg_antialiasing;
 
-    log_msg("[VT4-Mod] hk_Renderer_CalcPipelineSettings: 3D=%ux%u MSAA=%u Shadows=%ux%u Bloom=%ux%u",
+    log_msg("[VT4-Mod] hk_Renderer_CalcPipelineSettings: 3D=%ux%u MSAA=%u Shadows=%ux%u Bloom=%ux%u (Profile=%u)",
             settings->width, settings->height, settings->msaa_samples,
-            settings->shadow_w, settings->shadow_h, settings->bloom_w, settings->bloom_h);
+            settings->shadow_w, settings->shadow_h, settings->bloom_w, settings->bloom_h, g_cfg_perf_profile);
 }
 
 typedef void (__thiscall *OptionMode_Update_t)(void *);
@@ -2162,6 +2770,7 @@ static HRESULT __stdcall hk_Reset(void *dev, void *pp) {
         ((Rel_t)vtbl[2])(g_pOverlaySB);
         g_pOverlaySB = NULL;
     }
+    ngfx_on_reset();
     return g_real_reset(dev, pp);
 }
 
@@ -2393,6 +3002,7 @@ static LRESULT CALLBACK hk_GameWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
             }
             if (wParam == VK_F2) { // F2 toggle graphics options menu
                 if (!(lParam & (1 << 30))) {
+                    g_netplay_menu_visible = 0;
                     g_menu_visible = !g_menu_visible;
                     if (!g_menu_visible) {
                         close_legends_settings_menu();
@@ -2401,14 +3011,36 @@ static LRESULT CALLBACK hk_GameWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                 }
                 return 0;
             }
+            if (wParam == VK_F7) { // F7 toggle Broadcast TV HUD live
+                if (!(lParam & (1 << 30))) {
+                    g_cfg_broadcast_hud = g_cfg_broadcast_hud ? 0u : 1u;
+                    sync_menu_indices_from_cfg();
+                    save_vt4_settings();
+                    log_msg("[VT4-Mod] [BHUD] F7 toggled BroadcastHUD=%u", g_cfg_broadcast_hud);
+                }
+                return 0;
+            }
             if (wParam == VK_TAB && g_option_mode_active) {
                 if (!(lParam & (1 << 30))) {
+                    g_netplay_menu_visible = 0;
                     g_menu_visible = !g_menu_visible;
                     if (!g_menu_visible) {
                         close_legends_settings_menu();
                     }
                     log_msg("[VT4-Mod] TAB in OptionMode: g_menu_visible=%d", g_menu_visible);
                 }
+                return 0;
+            }
+            if (g_netplay_menu_visible) {
+                int is_repeat = (lParam & (1 << 30)) != 0;
+                if (is_repeat && (wParam == VK_RETURN || wParam == VK_SPACE || wParam == VK_ESCAPE)) {
+                    return 0;
+                }
+                if (handle_netplay_menu_input((int)wParam)) {
+                    if (wParam < 256) g_keys_down[wParam] = 0;
+                    return 0;
+                }
+                if (wParam < 256) g_keys_down[wParam] = 0;
                 return 0;
             }
             if (!g_menu_visible && g_chara_select_frames > 0 && !(lParam & (1 << 30))) {
@@ -2420,8 +3052,12 @@ static LRESULT CALLBACK hk_GameWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                     switch_roster_page(1);
                     return 0;
                 }
-                if (wParam == 'F' || wParam == 'f') {
+                if ((wParam == 'F' || wParam == 'f') && g_agassi_hovered_cs) {
                     toggle_agassi_skin();
+                    return 0;
+                }
+                if (wParam == 'R' || wParam == 'r') {
+                    toggle_weapon_mode();
                     return 0;
                 }
             }
@@ -2639,7 +3275,8 @@ static uint32_t g_target_draw_counts[8] = {0};
 static inline void record_draw_target(void) {
     if (g_in_overlay) return;
     g_draw_calls++;
-    if (g_current_target) {
+    perf_bench_on_draw();
+    if (g_cfg_debug_log && g_current_target) {
         g_last_draw_target = g_current_target;
         for (int i = 0; i < g_num_tracked_targets; i++) {
             if (g_tracked_targets[i] == g_current_target) {
@@ -2663,6 +3300,7 @@ static DrawIndexedPrimitive_t g_real_drawindexedprimitive = NULL;
 static HRESULT __stdcall hk_DrawIndexedPrimitive(void *dev, int type, INT base_vtx, UINT min_idx, UINT num_vtx, UINT start_idx, UINT prim_count) {
     ensure_valid_viewport(dev);
     record_draw_target();
+    perf_bench_on_dip();
     return g_real_drawindexedprimitive(dev, type, base_vtx, min_idx, num_vtx, start_idx, prim_count);
 }
 
@@ -2686,14 +3324,188 @@ typedef HRESULT (__stdcall *EndScene_t)(void *);
 static BeginScene_t g_real_beginscene = NULL;
 static EndScene_t   g_real_endscene = NULL;
 
+#include "nextgen_fx.h"
+#include "netplay.h"
+
+static void render_netplay_hud(void *dev) {
+    char hud_txt[160];
+    uint32_t txt_col = 0xFF80FFB0;
+    if (!netplay_get_hud_text(hud_txt, sizeof(hud_txt), &txt_col)) return;
+    if (!dev) dev = g_d3d_device;
+    if (!dev || !*(void ***)dev) return;
+    if (!g_pFont || !g_pSprite) init_menu_fonts(dev);
+    if (!begin_overlay_state(dev)) return;
+
+    float sx = (float)g_cfg_width / 1280.0f;
+    float sy = (float)g_cfg_height / 720.0f;
+    float x1 = 16.0f * sx, y1 = 12.0f * sy, x2 = 540.0f * sx, y2 = 40.0f * sy;
+    draw_screen_quad(dev, x1, y1, x2, y2, 0xCC0A101C);
+    draw_screen_quad(dev, x1, y2 - 2.0f * sy, x2, y2, txt_col);
+
+    if (g_pFont && g_pSprite) {
+        void **svtbl = *(void ***)g_pSprite;
+        typedef HRESULT (__stdcall *SpriteBegin_t)(void *, DWORD);
+        typedef HRESULT (__stdcall *SpriteEnd_t)(void *);
+        SpriteBegin_t sp_begin = (SpriteBegin_t)svtbl[8];
+        SpriteEnd_t   sp_end   = (SpriteEnd_t)svtbl[11];
+        if (sp_begin && sp_begin(g_pSprite, 0x10) >= 0) {
+            RECT r = { (LONG)(x1 + 10.0f * sx), (LONG)y1, (LONG)(x2 - 8.0f * sx), (LONG)y2 };
+            draw_font_text(g_pFont, hud_txt, &r, txt_col, 0);
+            if (sp_end) sp_end(g_pSprite);
+        }
+    }
+    end_overlay_state(dev);
+}
+
+static void render_netplay_menu(void *dev) {
+    if (!g_netplay_menu_visible) return;
+    if (!dev) dev = g_d3d_device;
+    if (!dev || !*(void ***)dev) return;
+    if (!g_pFont || !g_pFontTitle || !g_pSprite) init_menu_fonts(dev);
+    if (!begin_overlay_state(dev)) return;
+
+    void **vtbl = *(void ***)dev;
+    typedef HRESULT (__stdcall *SetViewport_t)(void *, const void *);
+    SetViewport_t set_vp = (SetViewport_t)vtbl[47];
+    uint32_t full_vp[6] = { 0, 0, g_cfg_width, g_cfg_height, 0, 0x3f800000 };
+    if (set_vp) set_vp(dev, full_vp);
+
+    float sx = (float)g_cfg_width / 1280.0f;
+    float sy = (float)g_cfg_height / 720.0f;
+
+    float px1 = 230.0f * sx, py1 = 95.0f * sy, px2 = 1050.0f * sx, py2 = 635.0f * sy;
+    draw_screen_quad(dev, 0.0f, 0.0f, (float)g_cfg_width, (float)g_cfg_height, 0x99080A14);
+    draw_screen_quad(dev, px1, py1, px2, py2, 0xF2121626);
+    draw_screen_quad(dev, px1, py1, px2, py1 + 4.0f * sy, 0xFFB020FF);
+    draw_screen_quad(dev, px1, py2 - 3.0f * sy, px2, py2, 0xFFB020FF);
+
+    // Status bar
+    char status_buf[160];
+    uint32_t st_col = 0xFFFFD54F;
+    netplay_get_status_spanish(status_buf, sizeof(status_buf), &st_col);
+    draw_screen_quad(dev, px1 + 24.0f * sx, py1 + 54.0f * sy, px2 - 24.0f * sx, py1 + 88.0f * sy, 0xCC1C2238);
+
+    const char *labels[NUM_NETPLAY_ITEMS] = {
+        "MODO DE CONEXION",
+        "IP DEL RIVAL (ESCRIBIR)",
+        "PUERTO UDP (PC <-> ANDROID)",
+        "DELAY DE RED (FRAMES)",
+        "CONECTAR / APLICAR NETPLAY",
+        "DESCONECTAR Y VOLVER"
+    };
+
+    float row_y0 = py1 + 132.0f * sy;
+    float row_pitch = 56.0f * sy;
+    for (int i = 0; i < NUM_NETPLAY_ITEMS; i++) {
+        float ry1 = row_y0 + (float)i * row_pitch;
+        float ry2 = ry1 + 46.0f * sy;
+        int sel = (i == s_np_sel);
+        DWORD bg;
+        if (i == 4) bg = sel ? 0xF2149850 : 0xCC1B4632;
+        else if (i == 5) bg = sel ? 0xF2982848 : 0xCC3E1E2C;
+        else bg = sel ? 0xF27C1CE0 : 0xCC1C2134;
+        draw_screen_quad(dev, px1 + 28.0f * sx, ry1, px2 - 28.0f * sx, ry2, bg);
+        if (sel) {
+            draw_screen_quad(dev, px1 + 28.0f * sx, ry1, px1 + 34.0f * sx, ry2, 0xFFFFFFFF);
+        }
+    }
+
+    if (s_np_feedback_timer > 0) {
+        s_np_feedback_timer--;
+        draw_screen_quad(dev, px1 + 28.0f * sx, py2 - 102.0f * sy, px2 - 28.0f * sx, py2 - 66.0f * sy, 0xE0142420);
+    }
+
+    if (g_pFont && g_pFontTitle && g_pSprite) {
+        void **svtbl = *(void ***)g_pSprite;
+        typedef HRESULT (__stdcall *SpriteBegin_t)(void *, DWORD);
+        typedef HRESULT (__stdcall *SpriteEnd_t)(void *);
+        SpriteBegin_t sp_begin = (SpriteBegin_t)svtbl[8];
+        SpriteEnd_t   sp_end   = (SpriteEnd_t)svtbl[11];
+        if (sp_begin && sp_begin(g_pSprite, 0x10) >= 0) {
+            RECT r;
+            r.left = (LONG)(px1 + 24.0f * sx); r.top = (LONG)(py1 + 12.0f * sy);
+            r.right = (LONG)(px2 - 24.0f * sx); r.bottom = (LONG)(py1 + 48.0f * sy);
+            draw_font_text(g_pFontTitle, "EN LINEA - NETPLAY P2P (PC <-> ANDROID / LAN)", &r, 0xFFFFFFFF, 1);
+
+            r.left = (LONG)(px1 + 36.0f * sx); r.top = (LONG)(py1 + 54.0f * sy);
+            r.right = (LONG)(px2 - 36.0f * sx); r.bottom = (LONG)(py1 + 88.0f * sy);
+            draw_font_text(g_pFont, status_buf, &r, st_col, 1);
+
+            char info_buf[160];
+            snprintf(info_buf, sizeof(info_buf), "Tu IP local (para compartir si eres Host): %s : %u",
+                     s_np_local_ip, s_np_port);
+            r.top = (LONG)(py1 + 92.0f * sy); r.bottom = (LONG)(py1 + 122.0f * sy);
+            draw_font_text(g_pFont, info_buf, &r, 0xFF9AC8FF, 1);
+
+            static const char *s_mode_names[3] = {
+                "DESACTIVADO (OFF)",
+                "CREAR SALA (HOST P1)",
+                "UNIRSE A IP (CLIENT P2)"
+            };
+            char val[96];
+            for (int i = 0; i < NUM_NETPLAY_ITEMS; i++) {
+                float ry1 = row_y0 + (float)i * row_pitch;
+                float ry2 = ry1 + 46.0f * sy;
+                int sel = (i == s_np_sel);
+                if (i >= 4) {
+                    r.left = (LONG)(px1 + 28.0f * sx); r.top = (LONG)ry1;
+                    r.right = (LONG)(px2 - 28.0f * sx); r.bottom = (LONG)ry2;
+                    draw_font_text(g_pFontTitle, labels[i], &r, 0xFFFFFFFF, 1);
+                } else {
+                    r.left = (LONG)(px1 + 48.0f * sx); r.top = (LONG)ry1;
+                    r.right = (LONG)(px1 + 420.0f * sx); r.bottom = (LONG)ry2;
+                    draw_font_text(g_pFont, labels[i], &r, sel ? 0xFFFFFFFF : 0xFFD0D4E0, 0);
+
+                    if (i == 0) snprintf(val, sizeof(val), "< %s >", s_mode_names[s_np_mode % 3u]);
+                    else if (i == 1) snprintf(val, sizeof(val), "%s%s", s_np_ip, (sel && ((g_present_calls / 20u) & 1u)) ? "_" : "");
+                    else if (i == 2) snprintf(val, sizeof(val), "< %u >", s_np_port);
+                    else snprintf(val, sizeof(val), "< %u frames (~%ums) >", s_np_delay, s_np_delay * 16u);
+
+                    r.left = (LONG)(px1 + 420.0f * sx); r.top = (LONG)ry1;
+                    r.right = (LONG)(px2 - 48.0f * sx); r.bottom = (LONG)ry2;
+                    draw_font_text(g_pFont, val, &r, sel ? 0xFFFFE57F : 0xFFFFFFFF, 2);
+                }
+            }
+
+            if (s_np_feedback_timer > 0) {
+                r.left = (LONG)(px1 + 28.0f * sx); r.top = (LONG)(py2 - 102.0f * sy);
+                r.right = (LONG)(px2 - 28.0f * sx); r.bottom = (LONG)(py2 - 66.0f * sy);
+                draw_font_text(g_pFontTitle, s_np_feedback, &r, s_np_feedback_col, 1);
+            }
+
+            r.left = (LONG)(px1 + 24.0f * sx); r.top = (LONG)(py2 - 54.0f * sy);
+            r.right = (LONG)(px2 - 24.0f * sx); r.bottom = (LONG)(py2 - 14.0f * sy);
+            draw_font_text(g_pFont,
+                "Flechas: Mover / Cambiar | Teclado: Escribir IP y Puerto | Enter: Aplicar | ESC: Volver (luego entra en EXHIBICION)",
+                &r, 0xFFB8C0D8, 1);
+
+            if (sp_end) sp_end(g_pSprite);
+        }
+    }
+    end_overlay_state(dev);
+}
+
 static HRESULT __stdcall hk_EndScene(void *dev) {
     static int s_es_hud_logged = 0;
     if (g_menu_visible && !s_es_hud_logged) {
         s_es_hud_logged = 1;
         log_msg("[VT4-Mod] hk_EndScene: rendering settings HUD (frame=%u, dev=%p)", g_present_calls, dev);
     }
+    ee_render_match_overlay(dev, (float)g_cfg_width / 1280.0f, (float)g_cfg_height / 720.0f);
+    {
+        int bhud_live = (g_ee_live_match_present_frame != 0 &&
+                         g_present_calls <= g_ee_live_match_present_frame + 4 &&
+                         *(uint8_t *)0x008232f6 == 0 &&
+                         *(int *)0x008232f0 == 0);
+        render_broadcast_tv_hud(dev, bhud_live, g_cfg_broadcast_hud,
+                                g_menu_visible, g_netplay_menu_visible, g_ee1_fury_active,
+                                g_vp_p1_id, g_vp_p2_id,
+                                (float)g_cfg_width / 1280.0f, (float)g_cfg_height / 720.0f);
+    }
     render_roster_pagination_hud(dev);
     render_settings_hud(dev);
+    render_netplay_hud(dev);
+    render_netplay_menu(dev);
     HRESULT hr = g_real_endscene ? g_real_endscene(dev) : 0;
     ensure_d3d9_device_hooks(dev);
     if (hr != 0) {
@@ -2708,22 +3520,26 @@ static HRESULT __stdcall hk_BeginScene(void *dev) {
 
     if (g_sampler_dirty > 0) {
         g_sampler_dirty--;
-        void **vtbl = *(void ***)dev;
-        typedef HRESULT (__stdcall *SetRenderState_t)(void *, DWORD, DWORD);
-        SetRenderState_t set_rs = (SetRenderState_t)vtbl[57];
-        if (set_rs && g_cfg_antialiasing > 0) {
-            set_rs(dev, 161, 1); // D3DRS_MULTISAMPLEANTIALIAS = TRUE
-            set_rs(dev, 176, 1); // D3DRS_ANTIALIASEDLINEENABLE = TRUE
-        }
-        if (g_cfg_anisotropic > 0) {
-            typedef HRESULT (__stdcall *SetSamplerState_t)(void *, DWORD, DWORD, DWORD);
-            SetSamplerState_t set_sampler = (SetSamplerState_t)vtbl[69];
-            if (set_sampler) {
-                for (DWORD s = 0; s < 8; s++) {
-                    set_sampler(dev, s, 1, 3); // D3DSAMP_MAGFILTER = D3DTEXF_ANISOTROPIC
-                    set_sampler(dev, s, 2, 3); // D3DSAMP_MINFILTER = D3DTEXF_ANISOTROPIC
-                    set_sampler(dev, s, 3, 2); // D3DSAMP_MIPFILTER = D3DTEXF_LINEAR
-                    set_sampler(dev, s, 10, g_cfg_anisotropic); // D3DSAMP_MAXANISOTROPY
+        if (g_cfg_antialiasing > 0 || g_cfg_anisotropic > 0) {
+            void **vtbl = *(void ***)dev;
+            if (g_cfg_antialiasing > 0) {
+                typedef HRESULT (__stdcall *SetRenderState_t)(void *, DWORD, DWORD);
+                SetRenderState_t set_rs = (SetRenderState_t)vtbl[57];
+                if (set_rs) {
+                    set_rs(dev, 161, 1); // D3DRS_MULTISAMPLEANTIALIAS = TRUE
+                    set_rs(dev, 176, 1); // D3DRS_ANTIALIASEDLINEENABLE = TRUE
+                }
+            }
+            if (g_cfg_anisotropic > 0) {
+                typedef HRESULT (__stdcall *SetSamplerState_t)(void *, DWORD, DWORD, DWORD);
+                SetSamplerState_t set_sampler = (SetSamplerState_t)vtbl[69];
+                if (set_sampler) {
+                    for (DWORD s = 0; s < 8; s++) {
+                        set_sampler(dev, s, 1, 3); // D3DSAMP_MAGFILTER = D3DTEXF_ANISOTROPIC
+                        set_sampler(dev, s, 2, 3); // D3DSAMP_MINFILTER = D3DTEXF_ANISOTROPIC
+                        set_sampler(dev, s, 3, 2); // D3DSAMP_MIPFILTER = D3DTEXF_LINEAR
+                        set_sampler(dev, s, 10, g_cfg_anisotropic); // D3DSAMP_MAXANISOTROPY
+                    }
                 }
             }
         }
@@ -2734,6 +3550,8 @@ static HRESULT __stdcall hk_BeginScene(void *dev) {
     }
     return hr;
 }
+
+static void check_and_restore_native_audio(void);
 
 static HRESULT __stdcall hk_Present(void *dev, const RECT *src, const RECT *dst, HWND dstWnd, const void *dirty) {
     g_present_calls++;
@@ -2758,6 +3576,12 @@ static HRESULT __stdcall hk_Present(void *dev, const RECT *src, const RECT *dst,
                 g_present_calls, g_clear_calls, (unsigned long)g_last_clear_color, g_draw_calls, g_begin_scene_calls,
                 __builtin_return_address(0), g_last_draw_target);
     }
+    if (g_present_calls == 120 || g_present_calls == 300) {
+        check_and_restore_native_audio();
+    }
+
+    netplay_poll_background();
+    ngfx_on_present(dev);
 
     if (is_key_down(VK_F10)) {
         g_screenshot_requested = 1;
@@ -2777,6 +3601,7 @@ static HRESULT __stdcall hk_Present(void *dev, const RECT *src, const RECT *dst,
     if (pres_hr != 0) {
         log_msg("[VT4-Mod] hk_Present frame %u: real_present returned 0x%08lx", g_present_calls, (unsigned long)pres_hr);
     }
+    perf_bench_on_present_after();
     return pres_hr;
 }
 
@@ -2880,7 +3705,11 @@ static HRESULT __stdcall hk_CreateDevice(void *self, UINT adapter, DWORD devtype
         if (!pp->hDeviceWindow) pp->hDeviceWindow = focus;
         pp->Windowed = TRUE;
         pp->FullScreen_RefreshRateInHz = 0;
-        pp->PresentationInterval = g_cfg_vsync ? 1u : 0x80000000u;
+        pp->PresentationInterval = (g_perf_pacer_active || !g_cfg_vsync) ? 0x80000000u : 1u;
+        if (g_cfg_perf_profile == 2) {
+            pp->BackBufferCount = 1;
+            pp->SwapEffect = 1; // D3DSWAPEFFECT_DISCARD (cleanest for DXVK/Turnip)
+        }
         pp->MultiSampleType = g_cfg_antialiasing;
         pp->MultiSampleQuality = 0;
         pp->EnableAutoDepthStencil = TRUE;
@@ -3088,8 +3917,61 @@ static void __stdcall hk_ExitProcess(UINT code) {
     else ExitProcess(code);
 }
 
+__attribute__((used)) volatile uint32_t g_sound_play_calls = 0;
+
+static void check_and_restore_native_audio(void) {
+    void *xa2 = *(void **)0x00a66198;
+    void *mvoice = *(void **)0x00a6619c;
+    void *svoice = *(void **)0x00a661a0;
+    uintptr_t mgr = *(uintptr_t *)0x00836afc;
+    uintptr_t impl = (mgr >= 0x10000) ? *(uintptr_t *)(mgr + 4) : 0;
+    uintptr_t state = (impl >= 0x10000) ? *(uintptr_t *)(impl + 4) : 0;
+    float master_vol = -1.0f, cat0 = -1.0f, cat4 = -1.0f;
+    if (state >= 0x10000) {
+        float *pm = (float *)state;
+        if (*pm < 0.05f) {
+            float prev = *pm;
+            *pm = 1.0f;
+            log_msg("[VT4-Mod] Native Audio: MasterVolume was %.2f -> restored to 1.00", prev);
+        }
+        master_vol = *pm;
+        int all_zero = 1;
+        for (int i = 0; i < 7; i++) {
+            float cv = *(float *)(state + 8 + (size_t)i * 0x112c);
+            if (cv >= 0.05f) {
+                all_zero = 0;
+                break;
+            }
+        }
+        if (all_zero) {
+            for (int i = 0; i < 7; i++) {
+                *(float *)(state + 8 + (size_t)i * 0x112c) = 0.8f;
+            }
+            log_msg("[VT4-Mod] Native Audio: Category volumes 0..6 were 0.0 -> restored to 0.80");
+        }
+        cat0 = *(float *)(state + 8);
+        cat4 = *(float *)(state + 8 + 4 * 0x112c);
+    }
+    log_msg("[VT4-Mod] Native Audio Status: XAudio2=%p MasterVoice=%p SourceVoice=%p SoundMgr=%p SoundPlayCalls=%u MasterVol=%.2f Cat0=%.2f Cat4=%.2f",
+            xa2, mvoice, svoice, (void *)mgr, (unsigned)g_sound_play_calls, master_vol, cat0, cat4);
+}
+
 static void __attribute__((naked)) hk_SoundPlay(void) {
     __asm__(
+        "cmpl $0x10000, %ecx\n"
+        "jb 1f\n"
+        "mov 4(%ecx), %eax\n"
+        "cmpl $0x10000, %eax\n"
+        "jb 1f\n"
+        "mov 4(%esp), %eax\n"
+        "cmpl $0x10000, %eax\n"
+        "jb 1f\n"
+        "incl _g_sound_play_calls\n"
+        "push $-1\n"
+        "push $0x0077c13f\n"
+        "mov $0x006375f7, %eax\n"
+        "jmp *%eax\n"
+        "1:\n"
         "xor %eax, %eax\n"
         "ret $4\n"
     );
@@ -3810,33 +4692,37 @@ static inline int original_IsButtonPressed(void *self, int button) {
 }
 
 static int is_mapped_button_down(int button) {
+    if (g_menu_visible || g_netplay_menu_visible) return 0;
+    float ax = 0.0f, ay = 0.0f;
+    WORD xb = 0;
+    xinput_get_p1(&ax, &ay, &xb);
     switch (button) {
         // Directions (Up, Down, Left, Right)
         case 0x94: case 0x90: case 0x8E: // Up
-            return is_key_down(VK_UP) || is_key_down('W');
+            return is_key_down(VK_UP) || is_key_down('W') || (xb & 0x0001) || (ay < -0.5f);
         case 0x95: case 0x91: case 0x8F: // Down
-            return is_key_down(VK_DOWN) || is_key_down('S');
+            return is_key_down(VK_DOWN) || is_key_down('S') || (xb & 0x0002) || (ay > 0.5f);
         case 0x96: case 0x92: case 0x8C: // Left
-            return is_key_down(VK_LEFT) || is_key_down('A');
+            return is_key_down(VK_LEFT) || is_key_down('A') || (xb & 0x0004) || (ax < -0.5f);
         case 0x97: case 0x93: case 0x8D: // Right
-            return is_key_down(VK_RIGHT) || is_key_down('D');
+            return is_key_down(VK_RIGHT) || is_key_down('D') || (xb & 0x0008) || (ax > 0.5f);
 
         // Action Buttons
         case 0x81: // Confirm / A Button / Lob
-            return is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || is_key_down('C') || is_key_down('K');
+            return is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || is_key_down('C') || is_key_down('K') || (xb & 0x1000);
         case 0x80: // Cancel / Back / B Button / Topspin
         case 0x0E: // Virtual Cancel / Escape (used by FPPlayerEntry and Sega AFC)
-            return is_key_down(VK_ESCAPE) || is_key_down('Z') || is_key_down('J') || is_key_down(VK_BACK);
+            return is_key_down(VK_ESCAPE) || is_key_down('Z') || is_key_down('J') || is_key_down(VK_BACK) || (xb & 0x2000);
         case 0x82: // X Button / Slice
-            return is_key_down('X') || is_key_down('L');
+            return is_key_down('X') || is_key_down('L') || (xb & 0x4000);
         case 0x83: // Y Button / Dropshot
-            return is_key_down('V') || is_key_down('I');
+            return is_key_down('V') || is_key_down('I') || (xb & 0x8000);
         case 0x84: // LB
-            return is_key_down('Q');
+            return is_key_down('Q') || (xb & 0x0100);
         case 0x85: // RB
-            return is_key_down('E');
+            return is_key_down('E') || (xb & 0x0200);
         case 0x50: // Start / Pause (never hijack Enter as Pause during live matches)
-            return is_key_down(VK_SPACE) || is_key_down('P');
+            return is_key_down(VK_SPACE) || is_key_down('P') || (xb & 0x0010);
 
         // Pass-through for standard VK codes if checked directly
         case VK_RETURN:
@@ -3869,6 +4755,7 @@ static int is_mapped_button_down(int button) {
 }
 
 static int __thiscall hk_IsButtonDown(void *self, int button) {
+    if (g_menu_visible || g_netplay_menu_visible) return 0;
     if (is_mapped_button_down(button)) {
         return 1;
     }
@@ -3876,7 +4763,8 @@ static int __thiscall hk_IsButtonDown(void *self, int button) {
 }
 
 static int __thiscall hk_IsButtonPressed(void *self, int button) {
-    if (g_chara_select_frames > 0 && !g_menu_visible) {
+    if (g_menu_visible || g_netplay_menu_visible) return 0;
+    if (g_chara_select_frames > 0) {
         if (button == 0x84) { // LB
             switch_roster_page(-1);
         } else if (button == 0x85) { // RB
@@ -3908,7 +4796,7 @@ static int __thiscall hk_IsButtonPressed(void *self, int button) {
 
 // ----------------------------------------------------------------------------
 // In-Match fwInputDevice Bit Hooks (0x0062BF50 / 0x0062BF90 / 0x0062BFE0)
-// Ensures Arrows+Z/X/C/V and WASD+J/K/L/I both work inside live tennis matches
+// Ensures Arrows+Z/X/C/V, WASD+J/K/L/I & XInput work inside live tennis matches
 // ----------------------------------------------------------------------------
 typedef int (__thiscall *FwInputBitFn_t)(void *self, int bit_idx);
 static FwInputBitFn_t g_real_fwinput_isbitdown = NULL;
@@ -3920,18 +4808,20 @@ static uint8_t  g_fwkbd_prev[256] = {0};
 static uint8_t  g_fwkbd_cur[256] = {0};
 
 static int fwkbd_bit_down(int bit_idx) {
-    if (g_menu_visible) return 0;
+    if (g_menu_visible || g_netplay_menu_visible) return 0;
+    WORD xb = 0;
+    xinput_get_p1(NULL, NULL, &xb);
     switch (bit_idx) {
-        case VK_UP:     return is_key_down(VK_UP)    || is_key_down('W');
-        case VK_DOWN:   return is_key_down(VK_DOWN)  || is_key_down('S');
-        case VK_LEFT:   return is_key_down(VK_LEFT)  || is_key_down('A');
-        case VK_RIGHT:  return is_key_down(VK_RIGHT) || is_key_down('D');
-        case 'Z':       return is_key_down('Z') || is_key_down('J') || (g_chara_select_frames <= 0 && is_key_down(VK_RETURN));
-        case 'X':       return is_key_down('X') || is_key_down('L');
-        case 'C':       return is_key_down('C') || is_key_down('K');
-        case 'V':       return is_key_down('V') || is_key_down('I');
+        case VK_UP:     return is_key_down(VK_UP)    || is_key_down('W') || (xb & 0x0001);
+        case VK_DOWN:   return is_key_down(VK_DOWN)  || is_key_down('S') || (xb & 0x0002);
+        case VK_LEFT:   return is_key_down(VK_LEFT)  || is_key_down('A') || (xb & 0x0004);
+        case VK_RIGHT:  return is_key_down(VK_RIGHT) || is_key_down('D') || (xb & 0x0008);
+        case 'Z':       return is_key_down('Z') || is_key_down('J') || (g_chara_select_frames <= 0 && is_key_down(VK_RETURN)) || (xb & 0x1000);
+        case 'X':       return is_key_down('X') || is_key_down('L') || (xb & 0x4000);
+        case 'C':       return is_key_down('C') || is_key_down('K') || (xb & 0x2000);
+        case 'V':       return is_key_down('V') || is_key_down('I') || (xb & 0x8000);
         case 'B':       return is_key_down('B');
-        case VK_SPACE:  return is_key_down(VK_SPACE);
+        case VK_SPACE:  return is_key_down(VK_SPACE) || (xb & 0x0010);
         case VK_ESCAPE: return is_key_down(VK_ESCAPE);
         default:
             if (bit_idx > 0 && bit_idx < 256) return is_key_down(bit_idx);
@@ -3952,7 +4842,7 @@ static void fwkbd_sync_bit(int bit_idx) {
     }
 }
 
-static void fwkbd_poll_frame_end(void) {
+static void fwkbd_poll_frame_start(void) {
     static const int s_keys[] = {
         VK_UP, VK_DOWN, VK_LEFT, VK_RIGHT,
         'Z', 'X', 'C', 'V', 'B',
@@ -3968,8 +4858,8 @@ static void fwkbd_poll_frame_end(void) {
 }
 
 static void __thiscall hk_SceneTreeRootPreUpdate(void *root) {
-    fwkbd_poll_frame_end();
     g_logic_ticks++;
+    fwkbd_poll_frame_start();
     typedef void (__thiscall *TreePreUpdate_t)(void *);
     ((TreePreUpdate_t)0x0062fb00)(root);
 }
@@ -3989,8 +4879,8 @@ static inline int is_fw_keyboard_device(void *self) {
 }
 
 static int __thiscall hk_FwInput_IsBitDown(void *self, int bit_idx) {
+    if (g_menu_visible || g_netplay_menu_visible) return 0;
     if (is_fw_keyboard_device(self) && bit_idx >= 0 && bit_idx < 256) {
-        if (g_menu_visible) return 0;
         fwkbd_sync_bit(bit_idx);
         if (g_fwkbd_cur[bit_idx]) {
             return 1;
@@ -4000,8 +4890,8 @@ static int __thiscall hk_FwInput_IsBitDown(void *self, int bit_idx) {
 }
 
 static int __thiscall hk_FwInput_IsBitPressed(void *self, int bit_idx) {
+    if (g_menu_visible || g_netplay_menu_visible) return 0;
     if (is_fw_keyboard_device(self) && bit_idx >= 0 && bit_idx < 256) {
-        if (g_menu_visible) return 0;
         fwkbd_sync_bit(bit_idx);
         if (!g_fwkbd_prev[bit_idx] && g_fwkbd_cur[bit_idx]) {
             return 1;
@@ -4013,22 +4903,29 @@ static int __thiscall hk_FwInput_IsBitPressed(void *self, int bit_idx) {
 static uint32_t g_live_match_frame = 0;
 
 static int __thiscall hk_FwInput_IsBitReleased(void *self, int bit_idx) {
+    if (g_menu_visible || g_netplay_menu_visible) return 0;
     if (is_fw_keyboard_device(self) && bit_idx >= 0 && bit_idx < 256) {
-        if (g_menu_visible) return 0;
         fwkbd_sync_bit(bit_idx);
         if (g_fwkbd_prev[bit_idx] && !g_fwkbd_cur[bit_idx]) return 1;
     }
     return g_real_fwinput_isbitreleased ? g_real_fwinput_isbitreleased(self, bit_idx) : 0;
 }
 
-// Live-match pause check hook (0x00480492 -> 0x00455710): allows both SPACE and ESC to pause gameplay
+// Live-match pause check hook (0x00480492 -> 0x00455710): allows SPACE, ESC and Xbox Start to pause gameplay
 // without aliasing ESC to VK_SPACE (0x00455590 confirm/start) inside menus.
 static uint8_t __thiscall hk_MatchPauseCheck(void *self, int user_id) {
+    if (g_menu_visible || g_netplay_menu_visible) return 0;
     typedef uint8_t (__thiscall *OrigPause_t)(void *, int);
     if (((OrigPause_t)0x00455710)(self, user_id)) return 1;
-    if (!g_menu_visible && user_id == 0) {
+    if (user_id == 0) {
         fwkbd_sync_bit(VK_ESCAPE);
         if (!g_fwkbd_prev[VK_ESCAPE] && g_fwkbd_cur[VK_ESCAPE]) return 1;
+        WORD xb = 0;
+        static WORD s_prev_start = 0;
+        xinput_get_p1(NULL, NULL, &xb);
+        int st_edge = ((xb & 0x0010) && !(s_prev_start & 0x0010));
+        s_prev_start = xb;
+        if (st_edge) return 1;
     }
     return 0;
 }
@@ -4053,16 +4950,129 @@ static uint8_t __thiscall hk_ShotCamera_Trigger(void *self, int arg1, int arg2) 
     return g_real_shotcam_trigger ? g_real_shotcam_trigger(self, arg1, arg2) : 0;
 }
 
+typedef void (__thiscall *CommitInputFn_t)(void *self, int slot, const uint8_t *pkt);
+typedef void (__thiscall *RandomSetSeedFn_t)(void *self, const char *name, uint32_t seed);
+static CommitInputFn_t    g_real_commit_input_482e10    = NULL;
+static NpSampleInputFn_t  g_real_sample_input_483190    = NULL;
+static RandomSetSeedFn_t  g_real_random_setseed_632cf0  = NULL;
+static void              *g_np_match_input_mgr          = NULL;
+
+static void __thiscall hk_CommitInput_482e10(void *self, int slot, const uint8_t *pkt) {
+    g_np_match_input_mgr = self;
+    if (netplay_is_stepping() && (slot == 0 || slot == 1) && pkt) {
+        const uint8_t *np_pkt = netplay_get_slot_input(slot);
+        if (np_pkt) {
+            uint8_t sub[3];
+            sub[0] = np_pkt[0];
+            sub[1] = np_pkt[1];
+            sub[2] = (uint8_t)((np_pkt[2] & 0x1Fu) | (pkt[2] & 0x40u));
+            if (g_real_commit_input_482e10) g_real_commit_input_482e10(self, slot, sub);
+            return;
+        }
+    }
+    if (g_real_commit_input_482e10) g_real_commit_input_482e10(self, slot, pkt);
+}
+
+static void sample_p1_override_input(uint8_t *out3) {
+    if (!out3 || g_menu_visible || g_netplay_menu_visible) return;
+    static uint32_t s_p1_tick = 0xFFFFFFFFu;
+    static uint8_t  s_p1_prev_mask = 0;
+    static uint8_t  s_p1_cur_mask = 0;
+
+    WORD xbtns = 0;
+    xinput_get_p1(NULL, NULL, &xbtns);
+
+    uint32_t cur_t = current_input_tick() + 1u;
+    if (s_p1_tick != cur_t) {
+        s_p1_tick = cur_t;
+        s_p1_prev_mask = s_p1_cur_mask;
+        uint8_t m = 0;
+        if (is_key_down('Z') || is_key_down('J') || is_key_down(VK_RETURN) || (xbtns & 0x1000)) m |= 1u; // Topspin / A
+        if (is_key_down('X') || is_key_down('L') || (xbtns & 0x4000))                           m |= 2u; // Slice   / X
+        if (is_key_down('C') || is_key_down('K') || (xbtns & 0x2000))                           m |= 4u; // Lob     / B
+        if (is_key_down('V') || is_key_down('I') || (xbtns & 0x8000))                           m |= 8u; // Dropshot/ Y
+        s_p1_cur_mask = m;
+    }
+
+    uint8_t rising = (uint8_t)(s_p1_cur_mask & ~s_p1_prev_mask);
+    if (rising & 1u) out3[2] |= 0x01u;
+    if (rising & 2u) out3[2] |= 0x11u;
+    if (rising & 4u) out3[2] |= 0x02u;
+    if (rising & 8u) out3[2] |= 0x04u;
+    if (s_p1_cur_mask & 0x07u) out3[2] |= 0x08u;
+
+    static int s_itest_init = 0;
+    static int s_itest_on = 0;
+    static int s_itest_cnt = 0;
+    if (!s_itest_init) {
+        s_itest_init = 1;
+        char ibuf[16];
+        if (GetEnvironmentVariableA("VT4_INPUT_TEST", ibuf, sizeof(ibuf)) > 0 && ibuf[0] == '1') {
+            s_itest_on = 1;
+        }
+    }
+    if (s_itest_on && s_itest_cnt < 40 && (out3[0] || out3[1] || (out3[2] & 0x1Fu))) {
+        s_itest_cnt++;
+        log_msg("[VT4-InputTest] tick=%u dx=%d dy=%d btns=0x%02x mask=0x%x->0x%x",
+                cur_t, (int)(int8_t)out3[0], (int)(int8_t)out3[1], (unsigned)out3[2],
+                (unsigned)s_p1_prev_mask, (unsigned)s_p1_cur_mask);
+    }
+}
+
+static uint8_t *__thiscall hk_SamplePlayerInput_483190(void *self, uint8_t *out3, int slot, uint8_t cam_rot) {
+    g_np_match_input_mgr = self;
+    if (netplay_is_stepping() && (slot == 0 || slot == 1) && out3) {
+        const uint8_t *np_pkt = netplay_get_slot_input(slot);
+        if (np_pkt) {
+            out3[0] = np_pkt[0];
+            out3[1] = np_pkt[1];
+            out3[2] = np_pkt[2];
+        } else {
+            out3[0] = 0; out3[1] = 0; out3[2] = 0;
+        }
+        return out3;
+    }
+    uint8_t *res = g_real_sample_input_483190 ? g_real_sample_input_483190(self, out3, slot, cam_rot) : out3;
+    if (slot == 0 && res) {
+        sample_p1_override_input(res);
+    }
+    return res;
+}
+
+static void __thiscall hk_Random_SetSeed_632cf0(void *self, const char *name, uint32_t seed) {
+    if (netplay_has_session_seed()) {
+        seed = netplay_get_session_seed();
+    }
+    if (g_real_random_setseed_632cf0) g_real_random_setseed_632cf0(self, name, seed);
+}
+
+static void __thiscall hk_MatchInputUpdate_481a60(void *match_self) {
+    if (match_self) {
+        g_np_match_input_mgr = (char *)match_self + 0x60;
+        netplay_ensure_p2_human(match_self);
+    }
+    typedef void (__thiscall *MatchInputUpd_t)(void *);
+    ((MatchInputUpd_t)0x00481a60)(match_self);
+}
+
 static void __thiscall hk_LiveMatchTracker_4803e0(void *self) {
     if (self &&
         *(uint8_t *)((char *)self + 0x134) == 1 &&
         *(int *)((char *)self + 0x78) == 2 &&
         *(uint8_t *)0x008232f6 == 0 &&
         *(int *)0x008232f0 == 0) {
+        g_np_match_input_mgr = (char *)self + 0x60;
         if (g_live_match_frame == 0 || g_present_calls > g_live_match_frame + 120) {
             log_msg("[VT4-Mod] LiveMatch ready at frame %u", g_present_calls);
+            bhud_reset_match_telemetry();
+            if (g_vp_p1_id >= 0) {
+                vp_on_match_start(g_vp_p1_id, g_vp_p2_id);
+            }
+            netplay_on_live_match_ready(self, g_vp_p1_id, g_vp_p2_id);
         }
         g_live_match_frame = g_present_calls;
+        perf_bench_on_live_match_ready();
+        ee_on_live_match_tick(self);
     }
     typedef void (__thiscall *Orig_t)(void *);
     ((Orig_t)0x004803e0)(self);
@@ -4075,19 +5085,43 @@ static void __cdecl hk_FrameStep_42fa90(int ticks, int flag) {
                          g_present_calls <= g_live_match_frame + 1 &&
                          *(uint8_t *)0x008232f6 == 0 &&
                          *(int *)0x008232f0 == 0 &&
-                         !g_menu_visible);
+                         !g_menu_visible &&
+                         !g_netplay_menu_visible);
+    if (in_live_match && netplay_is_enabled()) {
+        g_match_speed_acc = 0.0f;
+        if (!netplay_pre_step(g_np_match_input_mgr, g_real_sample_input_483190)) {
+            Sleep(1);
+            return;
+        }
+        perf_bench_on_logic_tick(1);
+        real_step(1, 0);
+        netplay_post_step();
+        if (g_perf_pacer_active) perf_pacer_wait();
+        return;
+    }
     if (!in_live_match || g_cfg_match_speed_mode == 0 ||
         g_cfg_match_speed_mode >= (uint32_t)NUM_SPEED_CHOICES) {
         g_match_speed_acc = 0.0f;
+        if (g_perf_pacer_active) {
+            perf_bench_on_logic_tick(1);
+            real_step(1, 0);
+            perf_pacer_wait();
+            return;
+        }
+        perf_bench_on_logic_tick(flag ? 1 : ticks);
         real_step(ticks, flag);
         return;
     }
     float mult = s_speed_choices[g_cfg_match_speed_mode].mult;
-    g_match_speed_acc += mult * (float)(ticks > 0 ? ticks : 1);
+    g_match_speed_acc += mult * (float)(g_perf_pacer_active ? 1 : (ticks > 0 ? ticks : 1));
     int run_ticks = (int)g_match_speed_acc;
     g_match_speed_acc -= (float)run_ticks;
-    // Clear flag (arg2=0) when run_ticks > 1 so 0x0042fad4 does not clamp subticks back to 1
-    real_step(run_ticks, run_ticks > 1 ? 0 : flag);
+    if (run_ticks > 0) {
+        perf_bench_on_logic_tick(run_ticks);
+        // Clear flag (arg2=0) when run_ticks > 1 so 0x0042fad4 does not clamp subticks back to 1
+        real_step(run_ticks, g_perf_pacer_active ? 0 : (run_ticks > 1 ? 0 : flag));
+    }
+    if (g_perf_pacer_active) perf_pacer_wait();
 }
 
 // ----------------------------------------------------------------------------
@@ -4193,7 +5227,9 @@ static void __fastcall hk_BallSimulateTrajectory(
     float *start_pos, float *vel, float arg3, uint32_t arg4, uint32_t arg5) {
     typedef void (__fastcall *SimTrajFn_t)(void *, void *, float *, float *, float, uint32_t, uint32_t);
     SimTrajFn_t real_sim = (SimTrajFn_t)0x00477740;
-    if (!ball_phys || !vel || (g_cfg_multiverse_mode == 0 && !g_cfg_debug_log)) {
+    if (!ball_phys || !vel ||
+        (g_cfg_multiverse_mode == 0 && g_cfg_weapon_mode == 0 && !g_cfg_pro_physics &&
+         !g_cfg_broadcast_hud && !g_cfg_debug_log)) {
         real_sim(ball_phys, edx_unused, start_pos, vel, arg3, arg4, arg5);
         return;
     }
@@ -4223,6 +5259,13 @@ static void __fastcall hk_BallSimulateTrajectory(
         vel[1] *= k;
         vel[2] *= k;
         *(float *)((char *)ball_phys + 0x65cc) = orig_grav * (k * k);
+    } else if (g_cfg_pro_physics && !netplay_is_enabled()) {
+        // Pro Physics: crisp +12% ball pace with matching k^2 gravity so landing spot stays identical
+        const float kp = 1.12f;
+        vel[0] *= kp;
+        vel[1] *= kp;
+        vel[2] *= kp;
+        *(float *)((char *)ball_phys + 0x65cc) = orig_grav * (kp * kp);
     }
 
     if (g_cfg_multiverse_mode != 0) {
@@ -4237,6 +5280,8 @@ static void __fastcall hk_BallSimulateTrajectory(
         }
     }
 
+    ee_on_ball_simulate(ball_phys, start_pos, vel);
+    bhud_on_ball_simulate(vel, (int)g_cfg_debug_log);
     real_sim(ball_phys, edx_unused, start_pos, vel, arg3, arg4, arg5);
 
     if (g_cfg_debug_log) {
@@ -4276,9 +5321,19 @@ static void __fastcall hk_BallSimulateTrajectory(
 static void __thiscall hk_BallLaunch_480561(void *ball_phys, void *hit_info, void *player_anim) {
     typedef void (__thiscall *OrigLaunch_t)(void *, void *, void *);
     ((OrigLaunch_t)0x00478c20)(ball_phys, hit_info, player_anim);
-    if ((g_cfg_multiverse_mode == 2 || g_cfg_multiverse_mode == 3) && hit_info) {
-        *(float *)((char *)hit_info + 0x18) *= 1.55f;
+    if (hit_info) {
+        if (g_cfg_multiverse_mode == 2 || g_cfg_multiverse_mode == 3) {
+            *(float *)((char *)hit_info + 0x18) *= 1.55f;
+        } else if (g_cfg_pro_physics && g_cfg_multiverse_mode == 0 && !netplay_is_enabled()) {
+            *(float *)((char *)hit_info + 0x18) *= 1.12f;
+        }
+        bhud_on_ball_launch(*(const uint32_t *)((const char *)hit_info + 0x00) == 0u);
     }
+    ee_on_ball_launch(ball_phys, hit_info);
+}
+
+static void *__cdecl hk_ParseSdoBuffer(void *dec_buf, uint32_t dec_len) {
+    return ee_parse_and_patch_sdo(dec_buf, dec_len);
 }
 
 // ----------------------------------------------------------------------------
@@ -4306,6 +5361,7 @@ static int eval_action_repeat(int active, uint32_t *hold, uint32_t delay, uint32
 }
 
 static int __thiscall hk_CheckAction_62d830(void *self, uint32_t tag, int user_id) {
+    if (g_menu_visible || g_netplay_menu_visible) return 0;
     int slot = -1;
     if (tag == 0x5570) slot = 0;           // "Up"
     else if (tag == 0x446F776E) slot = 1;  // "Down"
@@ -4320,25 +5376,28 @@ static int __thiscall hk_CheckAction_62d830(void *self, uint32_t tag, int user_i
             int active = 0;
             uint32_t *hold = NULL;
             uint32_t delay = 18, rate = 6;
+            float ax = 0.0f, ay = 0.0f;
+            WORD xb = 0;
+            xinput_get_p1(&ax, &ay, &xb);
             switch (slot) {
                 case 0: // Up
-                    active = is_key_down(VK_UP) || is_key_down('W');
+                    active = is_key_down(VK_UP) || is_key_down('W') || (xb & 0x0001) || (ay < -0.5f);
                     hold = &g_hold_up;
                     break;
                 case 1: // Down
-                    active = is_key_down(VK_DOWN) || is_key_down('S');
+                    active = is_key_down(VK_DOWN) || is_key_down('S') || (xb & 0x0002) || (ay > 0.5f);
                     hold = &g_hold_down;
                     break;
                 case 2: // Left
-                    active = is_key_down(VK_LEFT) || is_key_down('A');
+                    active = is_key_down(VK_LEFT) || is_key_down('A') || (xb & 0x0004) || (ax < -0.5f);
                     hold = &g_hold_left;
                     break;
                 case 3: // Right
-                    active = is_key_down(VK_RIGHT) || is_key_down('D');
+                    active = is_key_down(VK_RIGHT) || is_key_down('D') || (xb & 0x0008) || (ax > 0.5f);
                     hold = &g_hold_right;
                     break;
                 case 4: // Deci
-                    active = is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || is_key_down('C');
+                    active = is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || is_key_down('C') || (xb & 0x1000);
                     hold = &g_hold_deci;
                     delay = 30; rate = 20;
                     break;
@@ -4378,7 +5437,7 @@ static uint32_t g_nav_last_frame[6] = {0};
 static int      g_nav_val[6] = {0};
 
 static inline int eval_nav_key(int slot, int active, uint32_t delay, uint32_t rate) {
-    uint32_t nav_tick = (g_chara_select_frames > 0 && !g_menu_visible) ? (0x80000000u | g_chara_select_ticks) : (current_input_tick() + 1u);
+    uint32_t nav_tick = (g_chara_select_frames > 0 && !g_menu_visible && !g_netplay_menu_visible) ? (0x80000000u | g_chara_select_ticks) : (current_input_tick() + 1u);
     if (g_nav_last_frame[slot] != nav_tick) {
         g_nav_last_frame[slot] = nav_tick;
         if (active) {
@@ -4420,9 +5479,19 @@ static inline int original_menu_input_offset(void *self, int user, int offset) {
 
 // 0x00455180: Menu / Slider Left
 static int __thiscall hk_MenuInput_Left(void *self, int user) {
-    int active = is_key_down(VK_LEFT) || is_key_down('A');
+    float ax = 0.0f; WORD xb = 0;
+    xinput_get_p1(&ax, NULL, &xb);
+    int kbd_active = is_key_down(VK_LEFT) || is_key_down('A');
+    int xi_active  = (xb & 0x0004) || (ax < -0.5f);
+    int active     = kbd_active || xi_active;
+    if (g_netplay_menu_visible) {
+        if (!kbd_active && eval_nav_key(0, xi_active || original_menu_input_offset(self, user, 0x08), 14, 4)) {
+            handle_netplay_menu_input(VK_LEFT);
+        }
+        return 0;
+    }
     if (g_menu_visible) {
-        if (!active && eval_nav_key(0, original_menu_input_offset(self, user, 0x08), 14, 4)) {
+        if (!kbd_active && eval_nav_key(0, xi_active || original_menu_input_offset(self, user, 0x08), 14, 4)) {
             handle_settings_menu_input(VK_LEFT, NULL);
         }
         return 0;
@@ -4442,9 +5511,19 @@ static int __thiscall hk_MenuInput_Left(void *self, int user) {
 
 // 0x004551E0: Menu / Slider Right
 static int __thiscall hk_MenuInput_Right(void *self, int user) {
-    int active = is_key_down(VK_RIGHT) || is_key_down('D');
+    float ax = 0.0f; WORD xb = 0;
+    xinput_get_p1(&ax, NULL, &xb);
+    int kbd_active = is_key_down(VK_RIGHT) || is_key_down('D');
+    int xi_active  = (xb & 0x0008) || (ax > 0.5f);
+    int active     = kbd_active || xi_active;
+    if (g_netplay_menu_visible) {
+        if (!kbd_active && eval_nav_key(1, xi_active || original_menu_input_offset(self, user, 0x28), 14, 4)) {
+            handle_netplay_menu_input(VK_RIGHT);
+        }
+        return 0;
+    }
     if (g_menu_visible) {
-        if (!active && eval_nav_key(1, original_menu_input_offset(self, user, 0x28), 14, 4)) {
+        if (!kbd_active && eval_nav_key(1, xi_active || original_menu_input_offset(self, user, 0x28), 14, 4)) {
             handle_settings_menu_input(VK_RIGHT, NULL);
         }
         return 0;
@@ -4464,9 +5543,19 @@ static int __thiscall hk_MenuInput_Right(void *self, int user) {
 
 // 0x00455240: Menu Up
 static int __thiscall hk_MenuInput_Up(void *self, int user) {
-    int active = is_key_down(VK_UP) || is_key_down('W');
+    float ay = 0.0f; WORD xb = 0;
+    xinput_get_p1(NULL, &ay, &xb);
+    int kbd_active = is_key_down(VK_UP) || is_key_down('W');
+    int xi_active  = (xb & 0x0001) || (ay < -0.5f);
+    int active     = kbd_active || xi_active;
+    if (g_netplay_menu_visible) {
+        if (!kbd_active && eval_nav_key(2, xi_active || original_menu_input_offset(self, user, 0x48), 18, 6)) {
+            handle_netplay_menu_input(VK_UP);
+        }
+        return 0;
+    }
     if (g_menu_visible) {
-        if (!active && eval_nav_key(2, original_menu_input_offset(self, user, 0x48), 18, 6)) {
+        if (!kbd_active && eval_nav_key(2, xi_active || original_menu_input_offset(self, user, 0x48), 18, 6)) {
             handle_settings_menu_input(VK_UP, NULL);
         }
         return 0;
@@ -4486,9 +5575,19 @@ static int __thiscall hk_MenuInput_Up(void *self, int user) {
 
 // 0x004552A0: Menu Down
 static int __thiscall hk_MenuInput_Down(void *self, int user) {
-    int active = is_key_down(VK_DOWN) || is_key_down('S');
+    float ay = 0.0f; WORD xb = 0;
+    xinput_get_p1(NULL, &ay, &xb);
+    int kbd_active = is_key_down(VK_DOWN) || is_key_down('S');
+    int xi_active  = (xb & 0x0002) || (ay > 0.5f);
+    int active     = kbd_active || xi_active;
+    if (g_netplay_menu_visible) {
+        if (!kbd_active && eval_nav_key(3, xi_active || original_menu_input_offset(self, user, 0x68), 18, 6)) {
+            handle_netplay_menu_input(VK_DOWN);
+        }
+        return 0;
+    }
     if (g_menu_visible) {
-        if (!active && eval_nav_key(3, original_menu_input_offset(self, user, 0x68), 18, 6)) {
+        if (!kbd_active && eval_nav_key(3, xi_active || original_menu_input_offset(self, user, 0x68), 18, 6)) {
             handle_settings_menu_input(VK_DOWN, NULL);
         }
         return 0;
@@ -4509,9 +5608,11 @@ static int __thiscall hk_MenuInput_Down(void *self, int user) {
 // 0x0078b6d8: Carousel Navigation Handlers
 // Carousel calls vtable[1] (+4) for Prev (moves backwards/up) and vtable[2] (+8) for Next (moves forwards/down)
 static int __thiscall hk_Carousel_Prev(void *self) {
-    if (g_menu_visible) return 0;
-    int up = is_key_down(VK_UP) || is_key_down('W');
-    int left = is_key_down(VK_LEFT) || is_key_down('A');
+    if (g_menu_visible || g_netplay_menu_visible) return 0;
+    float ax = 0.0f, ay = 0.0f; WORD xb = 0;
+    xinput_get_p1(&ax, &ay, &xb);
+    int up = is_key_down(VK_UP) || is_key_down('W') || (xb & 0x0001) || (ay < -0.5f);
+    int left = is_key_down(VK_LEFT) || is_key_down('A') || (xb & 0x0004) || (ax < -0.5f);
     if (eval_nav_key(2, up || left, 18, 6)) {
         if (g_present_calls < 600) {
             log_msg("[VT4-Mod] Carousel Prev triggered (UP/LEFT) at frame %u", g_present_calls);
@@ -4522,9 +5623,11 @@ static int __thiscall hk_Carousel_Prev(void *self) {
 }
 
 static int __thiscall hk_Carousel_Next(void *self) {
-    if (g_menu_visible) return 0;
-    int down = is_key_down(VK_DOWN) || is_key_down('S');
-    int right = is_key_down(VK_RIGHT) || is_key_down('D');
+    if (g_menu_visible || g_netplay_menu_visible) return 0;
+    float ax = 0.0f, ay = 0.0f; WORD xb = 0;
+    xinput_get_p1(&ax, &ay, &xb);
+    int down = is_key_down(VK_DOWN) || is_key_down('S') || (xb & 0x0002) || (ay > 0.5f);
+    int right = is_key_down(VK_RIGHT) || is_key_down('D') || (xb & 0x0008) || (ax > 0.5f);
     if (eval_nav_key(3, down || right, 18, 6)) {
         if (g_present_calls < 600) {
             log_msg("[VT4-Mod] Carousel Next triggered (DOWN/RIGHT) at frame %u", g_present_calls);
@@ -4542,11 +5645,25 @@ static int __thiscall hk_MenuInput_Decide(void *self, int user) {
     if (s_menu_enter_cooldown > 0) {
         return 0; // Debounce lockout: ignore buffered Enter while transitioning from Title
     }
-    int active = is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || is_key_down('C');
+    WORD xb = 0;
+    xinput_get_p1(NULL, NULL, &xb);
+    int kbd_active = is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || is_key_down('C');
+    int xi_active  = (xb & 0x1000) != 0;
+    int active     = kbd_active || xi_active;
+    if (g_netplay_menu_visible) {
+        if (!kbd_active && eval_nav_key(4, xi_active || (g_real_menu_decide ? g_real_menu_decide(self, user) : 0), 30, 20)) {
+            handle_netplay_menu_input(VK_RETURN);
+        }
+        return 0;
+    }
     if (g_menu_visible) {
-        if (!active && eval_nav_key(4, g_real_menu_decide ? g_real_menu_decide(self, user) : 0, 30, 20)) {
+        if (!kbd_active && eval_nav_key(4, xi_active || (g_real_menu_decide ? g_real_menu_decide(self, user) : 0), 30, 20)) {
             handle_settings_menu_input(VK_RETURN, NULL);
         }
+        return 0;
+    }
+    if (g_menu_close_cooldown_frame != 0 && g_present_calls <= g_menu_close_cooldown_frame + 12) {
+        eval_nav_key(4, active, 30, 20);
         return 0;
     }
     if (active) {
@@ -4571,10 +5688,24 @@ static int __thiscall hk_MenuInput_Decide(void *self, int user) {
 // 0x00455440: Menu Cancel / Escape
 static MenuInputFn_t g_real_menu_cancel = NULL;
 static int __thiscall hk_MenuInput_Cancel(void *self, int user) {
-    int active = is_key_down(VK_ESCAPE) || is_key_down('Z') || is_key_down(VK_BACK);
+    WORD xb = 0;
+    xinput_get_p1(NULL, NULL, &xb);
+    int kbd_active = is_key_down(VK_ESCAPE) || is_key_down('Z') || is_key_down(VK_BACK);
+    int xi_active  = (xb & 0x2000) != 0;
+    int active     = kbd_active || xi_active;
+    if (g_netplay_menu_visible) {
+        int real_cancel = (!kbd_active && (xi_active || (g_real_menu_cancel ? g_real_menu_cancel(self, user) : 0))) ? 1 : 0;
+        if (!kbd_active && eval_nav_key(5, real_cancel, 30, 20)) {
+            close_netplay_menu();
+            play_vt4_menu_se(6);
+        } else {
+            eval_nav_key(5, active, 30, 20);
+        }
+        return 0;
+    }
     if (g_menu_visible) {
-        int real_cancel = (!active && g_real_menu_cancel) ? g_real_menu_cancel(self, user) : 0;
-        if (!active && eval_nav_key(5, real_cancel, 30, 20)) {
+        int real_cancel = (!kbd_active && (xi_active || (g_real_menu_cancel ? g_real_menu_cancel(self, user) : 0))) ? 1 : 0;
+        if (!kbd_active && eval_nav_key(5, real_cancel, 30, 20)) {
             log_msg("[VT4-Mod] Menu closed by hk_MenuInput_Cancel (real_cancel=%d, self=%p, user=%d, frame=%u)",
                     real_cancel, self, user, g_present_calls);
             close_legends_settings_menu();
@@ -4610,19 +5741,23 @@ static AnalogAxisFn_t g_real_analog_x = NULL;
 static AnalogAxisFn_t g_real_analog_y = NULL;
 
 static float __thiscall hk_AnalogX(void *self, int user) {
-    if (g_menu_visible) return 0.0f;
+    if (g_menu_visible || g_netplay_menu_visible) return 0.0f;
     if (user <= 0) {
         if (is_key_down(VK_LEFT) || is_key_down('A')) return -1.0f;
         if (is_key_down(VK_RIGHT) || is_key_down('D')) return 1.0f;
+        float ax = 0.0f;
+        if (xinput_get_p1(&ax, NULL, NULL) && ax != 0.0f) return ax;
     }
     return g_real_analog_x ? g_real_analog_x(self, user) : 0.0f;
 }
 
 static float __thiscall hk_AnalogY(void *self, int user) {
-    if (g_menu_visible) return 0.0f;
+    if (g_menu_visible || g_netplay_menu_visible) return 0.0f;
     if (user <= 0) {
         if (is_key_down(VK_UP) || is_key_down('W')) return -1.0f;
         if (is_key_down(VK_DOWN) || is_key_down('S')) return 1.0f;
+        float ay = 0.0f;
+        if (xinput_get_p1(NULL, &ay, NULL) && ay != 0.0f) return ay;
     }
     return g_real_analog_y ? g_real_analog_y(self, user) : 0.0f;
 }
@@ -4683,10 +5818,17 @@ static int __thiscall hk_CheckInput_455300(void *self, int user) {
 
 static int is_loose_file_override(const char *rel_path, char *out_path, size_t out_size) {
     if (!rel_path || !rel_path[0]) return 0;
+
+    LARGE_INTEGER _io_t0;
+    if (g_cfg_bench_log) {
+        g_bench_io_calls++;
+        QueryPerformanceCounter(&_io_t0);
+    }
     
     // Ignore requests for the archive containers themselves
     if (strstr(rel_path, "resource.bin") != NULL ||
         strstr(rel_path, "resource.1.bin") != NULL) {
+        if (g_cfg_bench_log) { LARGE_INTEGER _t1; QueryPerformanceCounter(&_t1); g_bench_io_qpc_ticks += (_t1.QuadPart - _io_t0.QuadPart); }
         return 0;
     }
     
@@ -4704,7 +5846,10 @@ static int is_loose_file_override(const char *rel_path, char *out_path, size_t o
         sub += 8;
     }
     
-    if (!sub[0]) return 0;
+    if (!sub[0]) {
+        if (g_cfg_bench_log) { LARGE_INTEGER _t1; QueryPerformanceCounter(&_t1); g_bench_io_qpc_ticks += (_t1.QuadPart - _io_t0.QuadPart); }
+        return 0;
+    }
     
     char clean[MAX_PATH];
     strncpy(clean, sub, sizeof(clean) - 1);
@@ -4712,45 +5857,76 @@ static int is_loose_file_override(const char *rel_path, char *out_path, size_t o
     for (char *p = clean; *p; p++) {
         if (*p == '/') *p = '\\';
     }
+
+    // Dynamic Agassi skin portrait override: skin 0 ('91 blonde) redirects 29.dds -> 29_91.dds
+    if (g_agassi_skin == 0) {
+        if (stricmp(clean, "HIGH\\Frontend\\VR\\photo_L\\29.dds") == 0) {
+            strcpy(clean, "HIGH\\Frontend\\VR\\photo_L\\29_91.dds");
+        } else if (stricmp(clean, "HIGH\\Frontend\\VR\\photo_S\\29.dds") == 0) {
+            strcpy(clean, "HIGH\\Frontend\\VR\\photo_S\\29_91.dds");
+        } else if (stricmp(clean, "HIGH\\Frontend\\VR\\photo_eye\\29.dds") == 0) {
+            strcpy(clean, "HIGH\\Frontend\\VR\\photo_eye\\29_91.dds");
+        }
+    }
     
+    // Fast O(1) RAM hash cache lookup (0 GetFileAttributesA disk syscalls!)
+    if (g_perf_io_ready) {
+        int hit = perf_io_lookup(clean, out_path, out_size);
+        if (g_cfg_bench_log) {
+            if (hit) g_bench_io_hits++;
+            LARGE_INTEGER _t1;
+            QueryPerformanceCounter(&_t1);
+            g_bench_io_qpc_ticks += (_t1.QuadPart - _io_t0.QuadPart);
+        }
+        return hit;
+    }
+
     char candidate[MAX_PATH * 2];
     
     // 1. Check in game/archive/<clean>
     snprintf(candidate, sizeof(candidate), "%s\\archive\\%s", g_game_dir, clean);
+    if (g_cfg_bench_log) g_bench_io_syscalls++;
     DWORD attr = GetFileAttributesA(candidate);
     if (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
         if (out_path && out_size > 0) {
             strncpy(out_path, candidate, out_size - 1);
             out_path[out_size - 1] = '\0';
         }
+        if (g_cfg_bench_log) { g_bench_io_hits++; LARGE_INTEGER _t1; QueryPerformanceCounter(&_t1); g_bench_io_qpc_ticks += (_t1.QuadPart - _io_t0.QuadPart); }
         return 1;
     }
     
     // 2. Check in game/<clean> (only for subdirectories, to avoid matching root executables/dlls)
     if (strchr(clean, '\\') != NULL) {
         snprintf(candidate, sizeof(candidate), "%s\\%s", g_game_dir, clean);
+        if (g_cfg_bench_log) g_bench_io_syscalls++;
         attr = GetFileAttributesA(candidate);
         if (attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY)) {
             if (out_path && out_size > 0) {
                 strncpy(out_path, candidate, out_size - 1);
                 out_path[out_size - 1] = '\0';
             }
+            if (g_cfg_bench_log) { g_bench_io_hits++; LARGE_INTEGER _t1; QueryPerformanceCounter(&_t1); g_bench_io_qpc_ticks += (_t1.QuadPart - _io_t0.QuadPart); }
             return 1;
         }
     }
     
+    if (g_cfg_bench_log) { LARGE_INTEGER _t1; QueryPerformanceCounter(&_t1); g_bench_io_qpc_ticks += (_t1.QuadPart - _io_t0.QuadPart); }
     return 0;
 }
 
 static uint32_t g_loose_checks = 0;
 static int check_loose_file(const char *rel_path) {
-    if (g_loose_checks < 20) {
+    bhud_on_archive_lookup(rel_path);
+    if (g_cfg_debug_log && g_loose_checks < 20) {
         log_msg("[VT4-Mod] Archive lookup #%u: '%s'", g_loose_checks, rel_path ? rel_path : "NULL");
         g_loose_checks++;
     }
     char resolved[MAX_PATH * 2];
     if (is_loose_file_override(rel_path, resolved, sizeof(resolved))) {
-        log_msg("[VT4-Mod] [LOOSE] Archive override detected: %s -> %s", rel_path, resolved);
+        if (g_cfg_debug_log) {
+            log_msg("[VT4-Mod] [LOOSE] Archive override detected: %s -> %s", rel_path, resolved);
+        }
         return 1;
     }
     return 0;
@@ -4769,7 +5945,9 @@ static HANDLE WINAPI hk_CreateFileA(LPCSTR lpFileName, DWORD dwDesiredAccess, DW
     if (lpFileName && lpFileName[0]) {
         char resolved[MAX_PATH * 2];
         if (is_loose_file_override(lpFileName, resolved, sizeof(resolved))) {
-            log_msg("[VT4-Mod] [LOOSE] CreateFileA redirected: %s -> %s", lpFileName, resolved);
+            if (g_cfg_debug_log) {
+                log_msg("[VT4-Mod] [LOOSE] CreateFileA redirected: %s -> %s", lpFileName, resolved);
+            }
             return g_real_createfilea(resolved, dwDesiredAccess, dwShareMode,
                                       lpSecurityAttributes, dwCreationDisposition,
                                       dwFlagsAndAttributes, hTemplateFile);
@@ -4787,7 +5965,9 @@ static int __cdecl hk_fopen_s(FILE **pFile, const char *filename, const char *mo
     if (filename && filename[0]) {
         char resolved[MAX_PATH * 2];
         if (is_loose_file_override(filename, resolved, sizeof(resolved))) {
-            log_msg("[VT4-Mod] [LOOSE] fopen_s redirected: %s -> %s", filename, resolved);
+            if (g_cfg_debug_log) {
+                log_msg("[VT4-Mod] [LOOSE] fopen_s redirected: %s -> %s", filename, resolved);
+            }
             return g_real_fopens(pFile, resolved, mode);
         }
     }
@@ -4801,7 +5981,9 @@ static FILE *__cdecl hk_fopen(const char *filename, const char *mode) {
     if (filename && filename[0]) {
         char resolved[MAX_PATH * 2];
         if (is_loose_file_override(filename, resolved, sizeof(resolved))) {
-            log_msg("[VT4-Mod] [LOOSE] fopen redirected: %s -> %s", filename, resolved);
+            if (g_cfg_debug_log) {
+                log_msg("[VT4-Mod] [LOOSE] fopen redirected: %s -> %s", filename, resolved);
+            }
             return g_real_fopen(resolved, mode);
         }
     }
@@ -4815,7 +5997,9 @@ static BOOL WINAPI hk_PathFileExistsA(LPCSTR pszPath) {
     if (pszPath && pszPath[0]) {
         char resolved[MAX_PATH * 2];
         if (is_loose_file_override(pszPath, resolved, sizeof(resolved))) {
-            log_msg("[VT4-Mod] [LOOSE] PathFileExistsA redirected: %s -> %s", pszPath, resolved);
+            if (g_cfg_debug_log) {
+                log_msg("[VT4-Mod] [LOOSE] PathFileExistsA redirected: %s -> %s", pszPath, resolved);
+            }
             return TRUE;
         }
     }
@@ -5016,10 +6200,18 @@ static void apply_vt4_patches(void) {
     patch_bytes(0x0040c589, clear_async_slot_flags, sizeof(clear_async_slot_flags));
     log_msg("[VT4-Mod] Loose file mod loader active: 0x004079c4 -> hk_Archive_CheckDirectory, 0x00407380 -> hk_ArchiveDir_FindIndex, 0x0040c763 NOPped (7 bytes), 0x0040c589 clears [esi+0xa9]");
 
-    // 5. Unlock all legends & hidden characters (King, Duke, Becker, Edberg, Courier...)
-    // FUN_005dfe90 returns BOOL (eax = 1): mov eax, 1; ret 4
+    // 5. Unlock all legends, hidden characters, SPT catalog items, wear & play styles (EXTRA-1 100%)
+    // Every UnlockManager getter uses __stdcall(int id) -> BOOL: mov eax, 1; ret 4
     const uint8_t unlock_all_patch[8] = { 0xB8, 0x01, 0x00, 0x00, 0x00, 0xC2, 0x04, 0x00 };
     patch_bytes(0x005dfe90, unlock_all_patch, 8);
+    patch_bytes(0x00463b80, unlock_all_patch, 8); /* UnlockManager::IsUnlocked_Master */
+    patch_bytes(0x004638c0, unlock_all_patch, 8); /* UnlockManager::IsMaleGearUnlocked */
+    patch_bytes(0x00463a40, unlock_all_patch, 8); /* UnlockManager::IsFemaleGearUnlocked */
+    patch_bytes(0x00463510, unlock_all_patch, 8); /* UnlockManager::IsSpecialUnlocked */
+    patch_bytes(0x00463230, unlock_all_patch, 8); /* UnlockManager::IsCommonUnlocked */
+    patch_bytes(0x00463390, unlock_all_patch, 8); /* UnlockManager::IsPlayStyleUnlocked */
+    patch_bytes(0x004640a0, unlock_all_patch, 8); /* UnlockManager::IsPlayStyleAvailable */
+    log_msg("[VT4-Mod] EXTRA-1: Unlocked 100%% characters, SPT shop gear, wear catalog & play styles");
 
     // 5b. Roster Expansion: Roster Pagination (Page 0 = ATP/WTA, Page 1 = Legends)
     // Initialize base 24-entry grid so Slots 21..23 remain Cargar (26), Actual (26), Aleatorio (27)
@@ -5092,7 +6284,7 @@ static void apply_vt4_patches(void) {
 
     // Clone 60-float bone scale table (0x007b9230[26]) -> g_player_bone_scales[59] matched to each star's base .sdo skeleton
     memcpy(g_player_bone_scales, (const void *)0x007b9230, 26 * 240);
-    static const uint8_t proxy_bone_base[12] = { 1, 2, 0, 10, 14, 11, 17, 18, 22, 21, 12, 23 };
+    static const uint8_t proxy_bone_base[12] = { 2, 3, 14, 1, 1, 4, 17, 18, 20, 17, 1, 19 };
     for (int i = 0; i < 12; i++) {
         memcpy(&g_player_bone_scales[(26 + i) * 60], &g_player_bone_scales[proxy_bone_base[i] * 60], 240);
     }
@@ -5165,7 +6357,7 @@ static void apply_vt4_patches(void) {
 
     g_real_sto_lookup = (StoLookup_t)make_trampoline(0x00668fa0, 7);
     install_jmp(0x00668fa0, (void *)hk_StoLookup, 7);
-    log_msg("[VT4-Mod] Fase 2 + Page 3 Era Roster Expansion active: IDs 26..58 (%d players, %d pages, TR_COMMON full-table hook)",
+    log_msg("[VT4-Mod] Fase 2 + Page 3 + Page 4 Roster Expansion active: IDs 26..81 (%d players, %d pages, TR_COMMON full-table hook)",
             MAX_ROSTER_PLAYERS, NUM_ROSTER_PAGES);
 
     // 6. Fix Sega European Region ESRB infinite loop deadlock
@@ -5285,7 +6477,8 @@ static void apply_vt4_patches(void) {
     install_jmp(0x004438e0, (void *)hk_OptionMode_InnerUpdate, 7);
     g_real_fpsubmenu_setsel = (FPSubMenu_SetSel_t)make_trampoline(0x005e92a0, 6);
     install_jmp(0x005e92a0, (void *)hk_FPSubMenu_SetSel, 6);
-    log_msg("[VT4-Mod] Installed Loading, MainMenu, and Native OptionMode (Row 3 LegendsHD) hooks");
+    patch_call(0x0043f3f3, (void *)hk_MainMenu_OpenNetplayUI);
+    log_msg("[VT4-Mod] Installed Loading, MainMenu (EN LINEA -> P2P UI), and Native OptionMode (Row 3 LegendsHD) hooks");
 
     // 18. Hook MessageBoxA and MessageBoxW to prevent assert popups from blocking
     void *hk_mba = (void *)hk_MessageBoxA;
@@ -5389,6 +6582,13 @@ static void apply_vt4_patches(void) {
     g_real_shotcam_trigger = (ShotCamTriggerFn_t)make_trampoline(0x00558890, 8);
     install_jmp(0x00558890, (void *)hk_ShotCamera_Trigger, 8);
     patch_call(0x00482aa1, (void *)hk_LiveMatchTracker_4803e0);
+    patch_call(0x00482a70, (void *)hk_MatchInputUpdate_481a60);
+    g_real_commit_input_482e10 = (CommitInputFn_t)make_trampoline(0x00482e10, 8);
+    install_jmp(0x00482e10, (void *)hk_CommitInput_482e10, 8);
+    g_real_sample_input_483190 = (NpSampleInputFn_t)make_trampoline(0x00483190, 6);
+    install_jmp(0x00483190, (void *)hk_SamplePlayerInput_483190, 6);
+    g_real_random_setseed_632cf0 = (RandomSetSeedFn_t)make_trampoline(0x00632cf0, 8);
+    install_jmp(0x00632cf0, (void *)hk_Random_SetSeed_632cf0, 8);
     patch_call(0x0043037b, (void *)hk_FrameStep_42fa90);
     // EXTRA-5: Fix ExhibitionAdvancedSetting NULL! assert (push 0 instead of 1 at 0x004351e0)
     const uint8_t push0_arg = 0x00;
@@ -5401,7 +6601,9 @@ static void apply_vt4_patches(void) {
     install_jmp(0x004a9460, (void *)hk_RenderPostEffects, 6);
     patch_call(0x00478bf3, (void *)hk_BallSimulateTrajectory);
     patch_call(0x00480561, (void *)hk_BallLaunch_480561);
-    log_msg("[VT4-Mod] In-match P1 keyboard, fwInputMgr, Classic TV Cam, Speed, EXTRA-5, EXTRA-6 (PostFX) & Fase 3 Multiverse hooks active");
+    patch_call(0x004583e7, (void *)hk_ParseSdoBuffer);
+    patch_call(0x00531591, (void *)hk_ParseSdoBuffer);
+    log_msg("[VT4-Mod] In-match P1 keyboard, fwInputMgr, Classic TV Cam, Speed, EXTRA-5, EXTRA-6 (PostFX) & Fase 3 Multiverse + EE-1/EE-3/EE-4 hooks active");
 
     // 27. Neutralize focus loss / blanking: force IsWindowFocused (0x00404dc0) to ALWAYS return TRUE
     const uint8_t ret_true3_focus[3] = { 0xB0, 0x01, 0xC3 }; // mov al, 1; ret
@@ -5428,6 +6630,7 @@ static void apply_vt4_patches(void) {
         }
     }
 
+    perf_apply_engine_patches();
     log_msg("[VT4-Mod] Startup patches applied cleanly.");
 }
 
@@ -5521,17 +6724,18 @@ uint32_t __stdcall xlive_73(void *pAddr) { // XNetGetTitleXnAddr
     if (pAddr) memset(pAddr, 0, 36);
     return 4; // XNET_GET_XNADDR_STATIC
 }
+typedef struct {
+    ULONG_PTR InternalLow;
+    ULONG_PTR InternalHigh;
+    ULONG_PTR InternalContext;
+    HANDLE    hEvent;
+    PVOID     pCompletionRoutine;
+    DWORD_PTR dwCompletionContext;
+    DWORD     dwExtendedError;
+} GFWL_OVERLAPPED;
+
 static void complete_overlapped(void *pOverlapped, DWORD result) {
     if (!pOverlapped) return;
-    typedef struct {
-        ULONG_PTR InternalLow;
-        ULONG_PTR InternalHigh;
-        ULONG_PTR InternalContext;
-        HANDLE    hEvent;
-        PVOID     pCompletionRoutine;
-        DWORD_PTR dwCompletionContext;
-        DWORD     dwExtendedError;
-    } GFWL_OVERLAPPED;
     GFWL_OVERLAPPED *ov = (GFWL_OVERLAPPED *)pOverlapped;
     ov->InternalLow = result;
     ov->InternalHigh = 0;
@@ -5541,7 +6745,12 @@ static void complete_overlapped(void *pOverlapped, DWORD result) {
     }
 }
 
-uint32_t __stdcall xlive_1082(uint32_t pOverlapped) { return 0; } // XGetOverlappedExtendedError
+uint32_t __stdcall xlive_1082(void *pOverlapped) { // XGetOverlappedExtendedError
+    if (pOverlapped) {
+        return ((GFWL_OVERLAPPED *)pOverlapped)->dwExtendedError;
+    }
+    return 0;
+}
 uint32_t __stdcall xlive_5007(uint32_t pParams) { return 0; } // XLiveOnResetDevice
 uint32_t __stdcall xlive_5030(uint32_t pMsg) { return 0; } // XLivePreTranslateMessage
 uint32_t __stdcall xlive_5038(uint32_t h) { return 0; } // XLiveCloseProtectedDataContext
@@ -5609,10 +6818,17 @@ uint32_t __stdcall xlive_11(uint32_t s, const struct sockaddr *name, int namelen
 uint32_t __stdcall xlive_57(uint32_t a, uint32_t b, uint32_t c) { return 0; } // XNetXnAddrToInAddr
 uint32_t __stdcall xlive_71(uint32_t a, uint32_t b, uint32_t c) { return 0; } // XNetQosServiceLookup
 uint32_t __stdcall xlive_1083(void *pOverlapped, uint32_t *pResult, uint32_t bWait) { // XGetOverlappedResult
-    log_msg("[VT4-Mod] XGetOverlappedResult(pOver=%p bWait=%u)", pOverlapped, bWait);
-    if (pOverlapped) complete_overlapped(pOverlapped, 0);
+    DWORD err = 0;
+    if (pOverlapped) {
+        GFWL_OVERLAPPED *ov = (GFWL_OVERLAPPED *)pOverlapped;
+        err = ov->dwExtendedError;
+        if (err == 0) {
+            complete_overlapped(pOverlapped, 0);
+        }
+    }
+    log_msg("[VT4-Mod] XGetOverlappedResult(pOver=%p bWait=%u) -> err=0x%08X", pOverlapped, bWait, (unsigned)err);
     if (pResult) *pResult = 0;
-    return 0;
+    return err;
 }
 uint32_t __stdcall xlive_5214(uint32_t a, uint32_t b, uint32_t c) { return 0; } // XShowPlayerReviewUI
 uint32_t __stdcall xlive_5252(uint32_t a, uint32_t b, uint32_t c) { return 0; } // XShowGamerCardUI
@@ -5625,7 +6841,14 @@ uint32_t __stdcall xlive_5263(uint32_t idx, char *szName, uint32_t cchName) { //
     return 0;
 }
 uint32_t __stdcall xlive_5265(uint32_t idx, uint32_t priv, uint32_t *pResult) { // XUserCheckPrivilege
-    if (pResult) *pResult = 1;
+    // Deny GFWL online multiplayer / live comms privileges (240..255) cleanly so clicking
+    // "Online" in the main menu never enters dead GFWL Live matchmaking & returns gracefully.
+    uint32_t allowed = (priv >= 240 && priv <= 255) ? 0 : 1;
+    static uint32_t priv_log = 0;
+    if (++priv_log <= 12) {
+        log_msg("[VT4-Mod] XUserCheckPrivilege(idx=%u priv=%u) -> allowed=%u", idx, priv, allowed);
+    }
+    if (pResult) *pResult = allowed;
     return 0;
 }
 uint32_t __stdcall xlive_5267(uint32_t idx, uint32_t dwFlags, void *pInfo) { // XUserGetSigninInfo / XUID
@@ -5710,13 +6933,23 @@ uint32_t __stdcall xlive_5256(uint32_t hEnum, void *pvBuffer, uint32_t cbBuffer,
     return 0; // ERROR_SUCCESS
 }
 uint32_t __stdcall xlive_5312(uint32_t a, uint32_t b, uint32_t c, uint32_t *pcb, uint32_t *ph) {
+    log_msg("[VT4-Mod] xlive_5312(XFriendsCreateEnumerator) -> ERROR_NOT_CONNECTED");
     if (pcb) *pcb = 0;
     if (ph) *ph = 0;
-    return 0;
+    return 0x800704C6;
 }
-uint32_t __stdcall xlive_5322(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e) { return 0; }
-uint32_t __stdcall xlive_5326(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e) { return 0; }
-uint32_t __stdcall xlive_5327(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e) { return 0; }
+uint32_t __stdcall xlive_5322(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e) {
+    if (e) complete_overlapped((void *)(uintptr_t)e, 0x800704C6);
+    return 0x800704C6;
+}
+uint32_t __stdcall xlive_5326(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e) {
+    if (e) complete_overlapped((void *)(uintptr_t)e, 0x800704C6);
+    return 0x800704C6;
+}
+uint32_t __stdcall xlive_5327(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e) {
+    if (e) complete_overlapped((void *)(uintptr_t)e, 0x800704C6);
+    return 0x800704C6;
+}
 
 // ============================================================================
 // 6 arguments (ret 24)
@@ -5728,30 +6961,46 @@ uint32_t __stdcall xlive_24(uint32_t s, const char *buf, int len, int flags, con
     return sendto((SOCKET)s, buf, len, flags, to, tolen);
 }
 uint32_t __stdcall xlive_5273(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e, uint32_t f) { return 0; }
-uint32_t __stdcall xlive_5317(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e, uint32_t f) { return 0; }
-uint32_t __stdcall xlive_5320(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e, uint32_t f) { return 0; }
+uint32_t __stdcall xlive_5317(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e, uint32_t f) {
+    log_msg("[VT4-Mod] xlive_5317(XSessionWriteStats) -> ERROR_NOT_CONNECTED");
+    if (f) complete_overlapped((void *)(uintptr_t)f, 0x800704C6);
+    return 0x800704C6;
+}
+uint32_t __stdcall xlive_5320(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e, uint32_t f) {
+    log_msg("[VT4-Mod] xlive_5320(XSessionSearchByID) -> ERROR_NOT_CONNECTED");
+    if (f) complete_overlapped((void *)(uintptr_t)f, 0x800704C6);
+    return 0x800704C6;
+}
 
 // ============================================================================
 // 7 arguments (ret 28)
 // ============================================================================
 uint32_t __stdcall xlive_5284(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e, uint32_t *pcb, uint32_t *ph) {
+    log_msg("[VT4-Mod] xlive_5284(XPresenceCreateEnumerator) -> ERROR_NOT_CONNECTED");
     if (pcb) *pcb = 0;
     if (ph) *ph = 0;
-    return 0;
+    return 0x800704C6;
 }
 uint32_t __stdcall xlive_5303(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e, uint32_t f, uint32_t g) { return 0; }
-uint32_t __stdcall xlive_5333(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e, uint32_t f, uint32_t g) { return 0; }
+uint32_t __stdcall xlive_5333(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e, uint32_t f, uint32_t g) {
+    log_msg("[VT4-Mod] xlive_5333(XSessionArbitrationRegister) -> ERROR_NOT_CONNECTED");
+    if (g) complete_overlapped((void *)(uintptr_t)g, 0x800704C6);
+    return 0x800704C6;
+}
 
 // ============================================================================
 // 8 arguments (ret 32)
 // ============================================================================
 uint32_t __stdcall xlive_5281(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e, uint32_t *pcb, void *pRes, void *pOver) {
     if (pcb) *pcb = 0;
+    if (pOver) complete_overlapped(pOver, 0);
     return 0;
 }
 uint32_t __stdcall xlive_5300(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e, uint32_t f, uint32_t g, uint32_t *ph) {
-    if (ph) *ph = 1;
-    return 0;
+    log_msg("[VT4-Mod] xlive_5300(XSessionCreate) -> ERROR_NOT_CONNECTED");
+    if (ph) *ph = 0;
+    if (g) complete_overlapped((void *)(uintptr_t)g, 0x800704C6);
+    return 0x800704C6;
 }
 
 // ============================================================================
@@ -5764,16 +7013,20 @@ uint32_t __stdcall xlive_5280(uint32_t a, uint32_t b, uint32_t c, uint32_t d, ui
     return 0;
 }
 uint32_t __stdcall xlive_5339(uint32_t a, uint32_t b, uint32_t c, uint32_t d, uint32_t e, uint32_t f, uint32_t *pcb, void *pRes, void *pOver) {
+    log_msg("[VT4-Mod] xlive_5339(XUserReadStats) -> ERROR_NOT_CONNECTED");
     if (pcb) *pcb = 0;
-    return 0;
+    if (pOver) complete_overlapped(pOver, 0x800704C6);
+    return 0x800704C6;
 }
 
 // ============================================================================
 // 10 arguments (ret 40)
 // ============================================================================
 uint32_t __stdcall xlive_5321(uint32_t a1, uint32_t a2, uint32_t a3, uint32_t a4, uint32_t a5, uint32_t a6, uint32_t a7, uint32_t *pcb, void *pRes, void *pOver) {
+    log_msg("[VT4-Mod] xlive_5321(XSessionSearch) -> ERROR_NOT_CONNECTED");
     if (pcb) *pcb = 0;
-    return 0;
+    if (pOver) complete_overlapped(pOver, 0x800704C6);
+    return 0x800704C6;
 }
 
 // ============================================================================
@@ -5921,6 +7174,10 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved) {
         AddVectoredExceptionHandler(1, CrashHandler);
         apply_vt4_patches();
     } else if (fdwReason == DLL_PROCESS_DETACH) {
+        netplay_shutdown();
+        ngfx_on_reset();
+        vp_shutdown();
+        perf_shutdown();
         if (g_log) {
             fclose(g_log);
             g_log = NULL;

@@ -79,16 +79,24 @@ El selector original de VT4 cuenta con una cuadrícula fija de 24 casillas (`FPC
 
 ---
 
-## 6. Fase 5: Viabilidad de Portabilidad a Android y Otras Plataformas
-¿Es factible recompilar o portar VT4 a Android?
+## 6. Fase 5: Exportación y Portabilidad a Android (Mejores Prácticas)
+El proyecto contempla como requisito oficial que el mod sea **exportable a Android** siguiendo las mejores prácticas vigentes (a contrastar y validar mediante investigación online actualizada antes de la implementación).
 
-### Ruta A: Port Nativo mediante Decompilación (C++ / SDL2 / Vulkan o GLES)
-- **Concepto**: Similar a proyectos como *re3 (GTA)* o *Ship of Harkinian (Zelda)*.
-- **Ventaja**: Rendimiento nativo total a 60/120 FPS en cualquier procesador ARM64, consumo mínimo de batería y soporte para controles táctiles en pantalla o mandos Bluetooth (Razer Kishi, Xbox, PS5).
+### Estrategia Principal (Recomendada): Bundle Portable + Winlator (Bionic/Cmod) / GameNative / APK Contenedor
+Gracias a la eliminación completa de GFWL, el guardado local sin registro de Windows y el parcheo limpio de Direct3D 9, nuestra edición de PC (`VT4.exe` + `xlive.dll` + `game/archive/`) es ejecutable directamente en Android mediante capas de traducción modernas sin reescribir el motor:
+- **Stack objetivo a validar online**: **Wine (WoW64)** + **Box64 / FEXCore** + **DXVK (D3D9 → Vulkan)** con drivers **Turnip** (Snapdragon/Adreno) y fallback **Vortek/VirGL** (Mali/otros), más audio **ALSA-Reflector** para `XAudio2_7.dll`.
+- **Formato tipo app (APK + datos/OBB)**:
+  - **Vía rápida y mantenible**: generar un bundle portable limpio (`tools/export_android_bundle.py`) listo para **Winlator Bionic/Cmod** o **GameNative**, usando la exportación nativa de **acceso directo como APK standalone** para abrir el juego directamente desde la pantalla de inicio.
+  - **Vía APK + OBB / datos autocontenido**: empaquetar un runtime open-source embebido + datos del juego gestionados conforme a **Android 14/15/16 (Scoped Storage)**, evitando cuello de botella de **FUSE** y bloqueos de `/Android/obb` (almacenamiento privado de la app / `getExternalFilesDir()`, partición `main` + `patch` si se emplea OBB por los ~3,2 GB de `resource.bin` + `resource.1.bin`, y caché de shaders DXVK siempre en ruta escribible).
+- **Requisitos técnicos del mod para Android**:
+  - Perfil gráfico ligero en `vt4_settings.ini` (`720p`, MSAA desactivado, sombras ajustables, `VSync=1`) y `dxvk.conf` para 60 FPS estables sin estrangulamiento térmico.
+  - *DLL overrides* documentados (`xlive=n`, `d3dx9_43=n`, `xaudio2_7=n`) y auditoría de *case-sensitivity* en rutas de `game/archive/`.
+  - Soporte plug-and-play para mandos Bluetooth/USB-C (XInput) y perfil de controles táctiles mapeado a acciones de pista y atajos del mod.
+  - Distribución responsable: separar el parche/mod de los archivos propietarios originales de SEGA.
 
-### Ruta B: Recompilación / Wrapper del binario de PS Vita (*Virtua Tennis 4: World Tour Edition*)
-- **Dato clave**: VT4 tuvo versión nativa para **PlayStation Vita**, la cual está compilada directamente para arquitectura **ARM (ARMv7)**.
-- **Técnica**: La comunidad de emulación y preservación (como los ports de Rinnegatamante y TheFlow para GTA San Andreas, Bully, Max Payne) utiliza cargadores `.so` que toman el ejecutable ARM de Vita y reemplazan las llamadas a la GPU (GXM) y al SO con OpenGL ES/Android NDK. Esto permitiría ejecutar VT4 de forma 100% nativa en Android con un esfuerzo infinitamente menor al de reescribir todo el juego desde cero.
+### Rutas No Prioritarias / Descartadas a Corto Plazo
+- **APK 100% nativo ARM (Decompilación / Recompilación estática de `VT4.exe`)**: Requeriría decompilar o recompilar estáticamente un binario Windows x86 de 5 MB, portar Direct3D 9/XAudio2 a Vulkan/Android NDK y reescribir los hooks de `xlive.c`; queda fuera del alcance práctico a corto/medio plazo.
+- **Binario ARM de PS Vita**: Los cargadores de comunidad estilo *Rinnegatamante/TheFlow* cargan `.so` de Android en PS Vita (el sentido inverso); ejecutar VT4 de Vita en Android equivale a usar un emulador como **Vita3K**, que además no incorporaría nuestro mod de PC.
+- **Nintendo Wii**: No es posible compilar la versión PC/x86 para Wii (PowerPC 729 MHz, 88 MB RAM, GPU GX sin D3D9). La única alternativa en Wii sería portar parte de los assets/datos como parche **Riivolution** sobre la versión oficial de *Virtua Tennis 4* de Wii (2011).
 
-### Ruta C: Capa de Traducción x86/DirectX (Winlator / Box64 / DXVK)
-- **Estado actual**: Gracias a las optimizaciones que hemos realizado (eliminación de GFWL, soporte de resolución configurable sin registros de Windows, compatibilidad limpia con Direct3D 9), la versión resultante ya es compatible con emuladores de entorno Windows en Android como **Winlator** o **Mobox** con aceleración por hardware Adreno (Turnip drivers).
+El desglose de tareas ejecutables y verificables (`ANDROID-1` a `ANDROID-5`) se sigue en `ROADMAP_ROSTER.md` (Fase 5).

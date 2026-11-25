@@ -188,15 +188,30 @@ def parse_sdo_dds_slots(dec: bytes):
 
 
 def replace_sdo_tex(dec_ba: bytearray, slot: dict, img: Image.Image):
-    """Replace DDS payload inside decompressed .sdo while preserving EXACT byte size and mipmap count."""
+    """Replace DDS payload inside decompressed .sdo while preserving EXACT byte size and mipmap count.
+    Resizes RGB and Alpha channels independently so PIL's premultiplied RGBA resize never zeros RGB
+    to black (or creates Lanczos ringing) where SEGA's AO/cavity alpha channel is 0.
+    """
     w, h, mips, fcc = slot["w"], slot["h"], slot["mips"], slot["fourcc"]
     assert fcc in (b"DXT1", b"DXT5"), f"Unsupported fourcc {fcc}"
     enc_fn = encode_dxt1_payload if fcc == b"DXT1" else encode_dxt5_payload
-    cur = img.convert("RGBA").resize((w, h), Image.LANCZOS)
+    rgba = img.convert("RGBA")
+    r0, g0, b0, a0 = rgba.split()
+    base_rgb = Image.merge("RGB", (r0, g0, b0))
+    if base_rgb.size != (w, h):
+        base_rgb = base_rgb.resize((w, h), Image.LANCZOS)
+        base_a = a0.resize((w, h), Image.LANCZOS)
+    else:
+        base_a = a0
     payload = bytearray()
     mw, mh = w, h
     for _ in range(mips):
-        mimg = cur if cur.size == (mw, mh) else cur.resize((mw, mh), Image.LANCZOS)
+        if (mw, mh) == (w, h):
+            mrgb, ma = base_rgb, base_a
+        else:
+            mrgb = base_rgb.resize((mw, mh), Image.LANCZOS)
+            ma = base_a.resize((mw, mh), Image.LANCZOS)
+        mimg = Image.merge("RGBA", (*mrgb.split(), ma))
         payload.extend(enc_fn(mimg))
         mw = max(1, mw // 2)
         mh = max(1, mh // 2)

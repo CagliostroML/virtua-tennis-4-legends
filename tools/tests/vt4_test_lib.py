@@ -39,31 +39,41 @@ VK_F10 = 0x79
 PAGE_TOUR = [
      0,  1,  2,
     26, 27, 39,
-    40, 41, 42,
-    38,  3,  4,
-    43,  6, 34,
-    35, 33, 17,
-    58, 22, 18,
+    40, 41, 60,
+    61, 62, 59,
+    43, 34, 35,
+    63, 64, 65,
+    82, 58, 66,
 ]
 
 PAGE_LEGENDS = [
-    28, 29, 13,
-    14, 11, 12,
-    54, 36, 44,
-    45, 47, 48,
-    49, 50, 46,
-     5,  7, 10,
-    56, 57, 32,
+     3,  4, 38,
+     5, 44, 45,
+    47, 48, 49,
+    50, 67, 46,
+     6, 68, 69,
+     7, 10, 70,
+    71, 42, 33,
 ]
 
 PAGE_LEGENDS2 = [
+    28, 29, 13,
+    14, 11, 12,
+    54, 36, 72,
+    73, 74, 75,
+    76, 32, 56,
+    57, 81, 79,
+    80, 18, 17,
+]
+
+PAGE_LEGENDS3 = [
     30, 31, 51,
-    52, 53, 37,
-    55, 19, 20,
-    21, 23,  8,
-     9, 15, 16,
-    24, 25, 29,
-     0,  1, 26,
+    52, 53, 77,
+    78, 37, 55,
+    83, 22, 19,
+    20, 21, 23,
+     8,  9, 15,
+    16, 24, 25,
 ]
 
 
@@ -225,7 +235,10 @@ def locate_char(char_id):
     if char_id in PAGE_LEGENDS2:
         idx = PAGE_LEGENDS2.index(char_id)
         return 2, idx // 3, idx % 3
-    raise ValueError(f"char_id {char_id} is not on PAGE_TOUR, PAGE_LEGENDS, or PAGE_LEGENDS2")
+    if char_id in PAGE_LEGENDS3:
+        idx = PAGE_LEGENDS3.index(char_id)
+        return 3, idx // 3, idx % 3
+    raise ValueError(f"char_id {char_id} is not on PAGE_TOUR..PAGE_LEGENDS3")
 
 
 def verify_pngs():

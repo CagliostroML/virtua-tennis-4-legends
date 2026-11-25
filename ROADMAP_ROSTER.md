@@ -29,91 +29,112 @@ Este documento es nuestra hoja de ruta viva. Iremos marcando con `[x]` cada elem
 - [x] **06. Juan Martín del Potro (ARG)** — Diestro (Revés 2M) | *Derecha Demoledora (Hard Hitter)* (Stats Prime aplicados en `fwDataDB_Player`)
 
 ### II. La Nueva Era ("Next-Gen" & Actualidad hasta 2026)
-- [x] **07. Carlos Alcaraz (ESP)** — Diestro (Revés 2M) | *Todoterreno Explosivo / Rey de la Dejada* (`ID 26`, `P_M_ALC_NG.sdo`, retrato `photo_L/26.dds` sin viñeta vía PhotoCraft, jugable y verificado en partido con `0` asserts)
-- [x] **08. Jannik Sinner (ITA)** — Diestro (Revés 2M) | *Golpeador de Ritmo Frenético* (`ID 27`, `P_M_SIN_NG.sdo`, retrato `photo_L/27.dds` sin viñeta vía PhotoCraft, jugable y verificado en partido con `0` asserts)
-- [x] **09. Daniil Medvedev (RUS)** — Diestro (Revés 2M) | *Muro Heterodoxo / Contragolpeador Profundo* (`ID 39`, `P_M_MED_NG.sdo`, `photo_L/39.dds` vía PhotoCraft, Página 3)
-- [x] **10. Alexander Zverev (GER)** — Diestro (Revés 2M) | *Gran Sacador + Potencia de Revés* (`ID 40`, `P_M_ZVE_NG.sdo`, `photo_L/40.dds` vía PhotoCraft, Página 3)
-- [x] **11. Stefanos Tsitsipas (GRE)** — Diestro (Revés 1M) | *Ataque de Derecha y Red* (`ID 41`, `P_M_TSI_NG.sdo`, `photo_L/41.dds` vía PhotoCraft, Página 3)
-- [x] **12. Dominic Thiem (AUT)** — Diestro (Revés 1M) | *Potencia Pesada en Tierra Batida* (`ID 42`, `P_M_THI_NG.sdo`, `photo_L/42.dds` vía PhotoCraft, Página 3)
-- [x] **13. Nick Kyrgios (AUS)** — Diestro (Revés 2M) | *Impredecible / Gran Sacador / Saque por debajo* (`ID 43`, `P_M_KYR_NG.sdo`, `photo_L/43.dds` vía PhotoCraft, Página 3)
-- [ ] **14. Ben Shelton (USA)** — Zurdo (Revés 2M) | *Cañonero Zurdo (Big Server)*
+- [x] **07. Carlos Alcaraz (ESP)** — Diestro (Revés 2M) | *Todoterreno Explosivo / Rey de la Dejada* (`ID 26`, `P_M_ALC_NG.sdo`, retrato `photo_L/26.dds` provisional a rehacer con Nano Banana, jugable y verificado en partido con `0` asserts)
+- [x] **08. Jannik Sinner (ITA)** — Diestro (Revés 2M) | *Golpeador de Ritmo Frenético* (`ID 27`, `P_M_SIN_NG.sdo`, retrato `photo_L/27.dds` limpiado vía PhotoCraft CLI, jugable y verificado en partido con `0` asserts)
+- [x] **09. Daniil Medvedev (RUS)** — Diestro (Revés 2M) | *Muro Heterodoxo / Contragolpeador Profundo* (`ID 39`, `P_M_MED_NG.sdo`, `photo_L/39.dds` vía PhotoCraft, Página 1/4)
+- [x] **10. Alexander Zverev (GER)** — Diestro (Revés 2M) | *Gran Sacador + Potencia de Revés* (`ID 40`, `P_M_ZVE_NG.sdo`, `photo_L/40.dds` vía PhotoCraft, Página 1/4)
+- [x] **11. Stefanos Tsitsipas (GRE)** — Diestro (Revés 1M) | *Ataque de Derecha y Red* (`ID 41`, `P_M_TSI_NG.sdo`, `photo_L/41.dds` vía PhotoCraft, Página 1/4)
+- [x] **12. Dominic Thiem (AUT)** — Diestro (Revés 1M) | *Potencia Pesada en Tierra Batida* (`ID 42`, `P_M_THI_NG.sdo`, `photo_L/42.dds` vía PhotoCraft, Página 1/4)
+- [x] **13. Nick Kyrgios (AUS)** — Diestro (Revés 2M) | *Impredecible / Gran Sacador / Saque por debajo* (`ID 43`, `P_M_KYR_NG.sdo`, `photo_L/43.dds` vía PhotoCraft, Página 1/4)
+- [x] **14. Ben Shelton (USA)** — Zurdo (Revés 2M) | *Cañonero Zurdo (Big Server)* (`ID 59`, `P_M_SHE_NG.sdo`, `photo_L/59.dds`, Página 1/4, verificado en US Open y `test_roster_matrix`; también verificados en Página 1/4 `60` Rublev, `61` Ruud, `62` Fritz, `63` Coco Gauff, `64` Rybakina y `82` Mirra Andreeva)
 
 ### III. Leyendas de los 2000s y 2010s (La Guardia Clásica)
-- [x] **15. Andy Roddick (USA)** — Diestro (Revés 2M) | *Gran Sacador (249 km/h) + Derecha* (Stats Prime aplicados en `fwDataDB_Player`)
-- [x] **16. Lleyton Hewitt (AUS)** — Diestro (Revés 2M) | *Velocista Incansable / Globos y Passing* (`ID 44`, `P_M_HEW_LG.sdo`, `photo_L/44.dds` vía PhotoCraft, Página 3)
-- [x] **17. Marat Safin (RUS)** — Diestro (Revés 2M) | *Potencia Pura / Revés a dos manos letal* (`ID 45`, `P_M_SAF_LG.sdo`, `photo_L/45.dds` vía PhotoCraft, Página 3)
-- [x] **18. Gustavo "Guga" Kuerten (BRA)** — Diestro (Revés 1M) | *Rey de la Tierra / Revés Liftado 1M* (`ID 36`, foto real `photo_L/36.dds`, modelo `P_M_KUE_LG.sdo` y Página 2)
-- [x] **19. Juan Carlos Ferrero (ESP)** — Diestro (Revés 2M) | *El Mosquito (Velocidad + Derecha Cruzada)* (`ID 47`, `P_M_FRR_LG.sdo`, `photo_L/47.dds` vía PhotoCraft, Página 3)
-- [x] **20. Carlos Moyá (ESP)** — Diestro (Revés 2M) | *Derecha Invertida Demoledora* (`ID 48`, `P_M_MOY_LG.sdo`, `photo_L/48.dds` vía PhotoCraft, Página 3)
-- [x] **21. David Ferrer (ESP)** — Diestro (Revés 2M) | *Muro Físico / Restador Incansable* (`ID 49`, `P_M_FER_LG.sdo`, `photo_L/49.dds` vía PhotoCraft, Página 3)
-- [x] **22. David Nalbandian (ARG)** — Diestro (Revés 2M) | *Ángulos Imposibles / Revés Cruzado* (`ID 50`, `P_M_NAL_LG.sdo`, `photo_L/50.dds` vía PhotoCraft, Página 3)
-- [ ] **23. Guillermo Coria (ARG)** — Diestro (Revés 2M) | *El Mago (Dejadas + Velocidad en Tierra)*
-- [x] **24. Jo-Wilfried Tsonga (FRA)** — Diestro (Revés 2M) | *Tenis Espectáculo (Saque + Derecha + Red)* (`ID 46`, `P_M_TSO_LG.sdo`, `photo_L/46.dds` vía PhotoCraft, Página 3)
-- [ ] **25. Gaël Monfils (FRA)** — Diestro (Revés 2M) | *Showman Acrobático (Fast Runner)*
-- [ ] **26. Richard Gasquet (FRA)** — Diestro (Revés 1M) | *Revés a Una Mano Artístico*
-- [ ] **27. Tommy Haas (GER)** — Diestro (Revés 1M) | *Clásico Completo*
-- [ ] **28. Fernando González (CHI)** — Diestro (Revés 1M) | *Mano de Piedra (Strong Forehand)*
-- [ ] **29. Kei Nishikori (JPN)** — Diestro (Revés 2M) | *Golpeo Pronto sobre la Línea*
-- [ ] **30. Robin Söderling / Tomas Berdych** — Diestro (Revés 2M) | *Cañonero Plano*
+- [x] **15. Andy Roddick (USA)** — Diestro (Revés 2M) | *Gran Sacador (249 km/h) + Derecha* (Stats Prime aplicados en `fwDataDB_Player`, Página 2/4)
+- [x] **16. Lleyton Hewitt (AUS)** — Diestro (Revés 2M) | *Velocista Incansable / Globos y Passing* (`ID 44`, `P_M_HEW_LG.sdo`, `photo_L/44.dds` vía PhotoCraft, Página 2/4)
+- [x] **17. Marat Safin (RUS)** — Diestro (Revés 2M) | *Potencia Pura / Revés a dos manos letal* (`ID 45`, `P_M_SAF_LG.sdo`, `photo_L/45.dds` vía PhotoCraft, Página 2/4)
+- [x] **18. Gustavo "Guga" Kuerten (BRA)** — Diestro (Revés 1M) | *Rey de la Tierra / Revés Liftado 1M* (`ID 36`, foto real `photo_L/36.dds`, modelo `P_M_KUE_LG.sdo` y Página 2/4)
+- [x] **19. Juan Carlos Ferrero (ESP)** — Diestro (Revés 2M) | *El Mosquito (Velocidad + Derecha Cruzada)* (`ID 47`, `P_M_FRR_LG.sdo`, `photo_L/47.dds` vía PhotoCraft, Página 2/4)
+- [x] **20. Carlos Moyá (ESP)** — Diestro (Revés 2M) | *Derecha Invertida Demoledora* (`ID 48`, `P_M_MOY_LG.sdo`, `photo_L/48.dds` vía PhotoCraft, Página 2/4)
+- [x] **21. David Ferrer (ESP)** — Diestro (Revés 2M) | *Muro Físico / Restador Incansable* (`ID 49`, `P_M_FER_LG.sdo`, `photo_L/49.dds` vía PhotoCraft, Página 2/4)
+- [x] **22. David Nalbandian (ARG)** — Diestro (Revés 2M) | *Ángulos Imposibles / Revés Cruzado* (`ID 50`, `P_M_NAL_LG.sdo`, `photo_L/50.dds` vía PhotoCraft, Página 2/4)
+- [x] **23. Guillermo Coria (ARG)** — Diestro (Revés 2M) | *El Mago (Dejadas + Velocidad en Tierra)* (`ID 67`, `P_M_COR_LG.sdo` y `photo_L/67.dds` recortado; verificado en `test_roster_matrix` con `0` asserts/`2` saques)
+- [x] **24. Jo-Wilfried Tsonga (FRA)** — Diestro (Revés 2M) | *Tenis Espectáculo (Saque + Derecha + Red)* (`ID 46`, `P_M_TSO_LG.sdo`, `photo_L/46.dds` vía PhotoCraft, Página 2/4)
+- [x] **25. Gaël Monfils (FRA)** — Diestro (Revés 2M) | *Showman Acrobático (Fast Runner)* (Nativo VT4 `ID 6`, desbloqueado en Página 2/4 `g_roster_page_legends`)
+- [x] **26. Richard Gasquet (FRA)** — Diestro (Revés 1M) | *Revés a Una Mano Artístico* (`ID 68`, `P_M_GAS_LG.sdo` y `photo_L/68.dds` en Página 2/4; verificado en `test_roster_matrix` con `0` asserts/`2` saques)
+- [x] **27. Tommy Haas (GER)** — Diestro (Revés 1M) | *Clásico Completo* (Nativo VT4 `ID 10`, desbloqueado en Página 2/4 `g_roster_page_legends`)
+- [x] **28. Fernando González (CHI)** — Diestro (Revés 1M) | *Mano de Piedra (Strong Forehand)* (Nativo VT4 `ID 7`, desbloqueado en Página 2/4 `g_roster_page_legends`)
+- [x] **29. Kei Nishikori (JPN)** — Diestro (Revés 2M) | *Golpeo Pronto sobre la Línea* (`ID 69`, `P_M_NIS_LG.sdo` y `photo_L/69.dds` en Página 2/4; verificado en `test_roster_matrix` con `0` asserts/`1` saque)
+- [x] **30. Robin Söderling / Tomas Berdych** — Diestro (Revés 2M) | *Cañonero Plano* (`IDs 70/71`, `P_M_SOD_LG.sdo` y `P_M_BER_LG.sdo` + `photo_L/70..71.dds` en Página 2/4; verificados en `test_roster_matrix` con `0` asserts/`2` saques)
 
 ### IV. Leyendas de los 90s (Pistas Rápidas vs. Tierra Batida)
-- [x] **31. Pete Sampras (USA)** — Diestro (Revés 1M) | *Saque y Volea Definitivo + Smash en Salto* (`ID 28`, foto real `photo_L/28.dds`, modelo `P_M_SAM_LG.sdo` y Página 2)
-- [x] **32. Andre Agassi (USA)** — Diestro (Revés 2M) | *El Mejor Restador / Ataque de Fondo* (`ID 29`, foto real `photo_L/29.dds`, modelo `P_M_AGA_LG.sdo` y Página 2)
-- [x] **33. Jim Courier (USA)** — Diestro (Revés 2M) | *Fuerza Bruta desde el Fondo* (Stats Prime y Página 2 `g_roster_page_legends`)
-- [x] **34. Boris Becker (GER)** — Diestro (Revés 1M) | *"Boom Boom" (Saque + Volea en Plancha)* (Stats Prime y Página 2 `g_roster_page_legends`)
-- [x] **35. Stefan Edberg (SWE)** — Diestro (Revés 1M) | *Saque Kick y Volea Elegante* (Stats Prime y Página 2 `g_roster_page_legends`)
-- [x] **36. Goran Ivanišević (CRO)** — Zurdo (Revés 2M) | *Rey del Ace (Saque Zurdo Inalcanzable)* (`ID 54`, `P_M_IVN_LG.sdo`, `photo_L/54.dds` vía PhotoCraft, Página 3)
-- [ ] **37. Michael Chang (USA)** — Diestro (Revés 2M) | *Velocidad Extrema y Espíritu de Lucha*
-- [ ] **38. Marcelo "Chino" Ríos (CHI)** — Zurdo (Revés 2M) | *Talento Puro / Ángulos y Dejadas*
-- [ ] **39. Thomas Muster (AUT)** — Zurdo (Revés 1M) | *La Bestia de la Tierra Batida*
-- [x] **40. Sergi Bruguera / Alex Corretja / Patrick Rafter** — Leyendas de Grand Slam 90s (*Patrick Rafter*: stats Prime en `fwDataDB_Player` + Página 2 `g_roster_page_legends`; pendientes Bruguera / Corretja)
+- [x] **31. Pete Sampras (USA)** — Diestro (Revés 1M) | *Saque y Volea Definitivo + Smash en Salto* (`ID 28`, foto real `photo_L/28.dds`, modelo `P_M_SAM_LG.sdo` y Página 3/4)
+- [x] **32. Andre Agassi (USA)** — Diestro (Revés 2M) | *El Mejor Restador / Ataque de Fondo* (`ID 29`, skin doble `'91` / `'06` con `[F]`, `P_M_AGA_LG.sdo` y `P_M_AG2_LG.sdo`, Página 3/4)
+- [x] **33. Jim Courier (USA)** — Diestro (Revés 2M) | *Fuerza Bruta desde el Fondo* (Nativo VT4 en Página 3/4 `g_roster_page_legends2`)
+- [x] **34. Boris Becker (GER)** — Diestro (Revés 1M) | *"Boom Boom" (Saque + Volea en Plancha)* (Nativo VT4 en Página 3/4 `g_roster_page_legends2`)
+- [x] **35. Stefan Edberg (SWE)** — Diestro (Revés 1M) | *Saque Kick y Volea Elegante* (Nativo VT4 en Página 3/4 `g_roster_page_legends2`)
+- [x] **36. Goran Ivanišević (CRO)** — Zurdo (Revés 2M) | *Rey del Ace (Saque Zurdo Inalcanzable)* (`ID 54`, `P_M_IVN_LG.sdo`, `photo_L/54.dds` vía PhotoCraft, Página 3/4)
+- [x] **37. Michael Chang (USA)** — Diestro (Revés 2M) | *Velocidad Extrema y Espíritu de Lucha* (`ID 72`, `P_M_CHN_LG.sdo` y `photo_L/72.dds` recortado en Página 4/4; verificado en `test_roster_matrix` con `0` asserts/`2` saques)
+- [x] **38. Marcelo "Chino" Ríos (CHI)** — Zurdo (Revés 2M) | *Talento Puro / Ángulos y Dejadas* (`ID 73`, `P_M_RIO_LG.sdo`, `photo_L/73.dds`, Página 4/4, verificado en `test_roster_matrix` con `0` asserts/`2` saques)
+- [x] **39. Thomas Muster (AUT)** — Zurdo (Revés 1M) | *La Bestia de la Tierra Batida* (`ID 74`, `P_M_MUS_LG.sdo` y `photo_L/74.dds` en Página 4/4; verificado en `test_roster_matrix` con `0` asserts/`2` saques)
+- [x] **40. Sergi Bruguera / Álex Corretja / Patrick Rafter** — Leyendas de Grand Slam 90s (*Patrick Rafter* nativo en Página 3/4; *Sergi Bruguera* `ID 75` y *Álex Corretja* `ID 76` en Página 4/4 verificados en `test_roster_matrix` con `0` asserts/`1-2` saques)
 
 ### V. Los Pioneros (Años 70 y 80) + Jefes SEGA
-- [x] **41. Björn Borg (SWE)** — Diestro (Revés 2M) | *El Hombre de Hielo (Resistencia infinita + Topspin)* (`ID 30`, foto real `photo_L/30.dds`, modelo `P_M_BOR_LG.sdo` y Página 2)
-- [x] **42. John McEnroe (USA)** — Zurdo (Revés 1M) | *Toque Mágico en la Red + Saque de Espaldas* (`ID 31`, foto real `photo_L/31.dds`, modelo `P_M_MCE_LG.sdo` y Página 2)
-- [x] **43. Ivan Lendl (CZE/USA)** — Diestro (Revés 1M) | *Padre del Tenis Moderno de Potencia* (`ID 51`, `P_M_LEN_LG.sdo`, `photo_L/51.dds` recorte PhotoCraft B&W 1982, Página 3)
-- [x] **44. Jimmy Connors (USA)** — Zurdo (Revés 2M) | *Golpeo Plano Rasante y Agresividad Total* (`ID 52`, `P_M_CON_LG.sdo`, `photo_L/52.dds` recorte PhotoCraft B&W 1978, Página 3)
-- [ ] **45. Mats Wilander (SWE)** — Diestro (Revés 2M) | *Táctico de Acero*
-- [x] **46. Guillermo Vilas (ARG)** — Zurdo (Revés 1M) | *El Gran Willy / Topspin Eterno* (`ID 53`, `P_M_VIL_LG.sdo`, `photo_L/53.dds` vía PhotoCraft, Página 3)
-- [ ] **47. Rod Laver (AUS)** — Zurdo (Revés 1M) | *The Rocket (El único doble Grand Slam)*
+- [x] **41. Björn Borg (SWE)** — Diestro (Revés 2M) | *El Hombre de Hielo (Resistencia infinita + Topspin)* (`ID 30`, foto real `photo_L/30.dds`, modelo `P_M_BOR_LG.sdo` y Página 4/4)
+- [x] **42. John McEnroe (USA)** — Zurdo (Revés 1M) | *Toque Mágico en la Red + Saque de Espaldas* (`ID 31`, hueco gris limpiado en `photo_L/31.dds`, modelo `P_M_MCE_LG.sdo` y Página 4/4)
+- [x] **43. Ivan Lendl (CZE/USA)** — Diestro (Revés 1M) | *Padre del Tenis Moderno de Potencia* (`ID 51`, `P_M_LEN_LG.sdo`, `photo_L/51.dds` B&W limpio, Página 4/4)
+- [x] **44. Jimmy Connors (USA)** — Zurdo (Revés 2M) | *Golpeo Plano Rasante y Agresividad Total* (`ID 52`, `P_M_CON_LG.sdo`, `photo_L/52.dds` B&W limpio, Página 4/4)
+- [x] **45. Mats Wilander (SWE)** — Diestro (Revés 2M) | *Táctico de Acero* (`ID 77`, `P_M_WLD_LG.sdo` y `photo_L/77.dds` en Página 4/4; verificado en `test_roster_matrix` con `0` asserts/`2` saques)
+- [x] **46. Guillermo Vilas (ARG)** — Zurdo (Revés 1M) | *El Gran Willy / Topspin Eterno* (`ID 53`, `P_M_VIL_LG.sdo`, `photo_L/53.dds` vía PhotoCraft, Página 4/4)
+- [x] **47. Rod Laver (AUS)** — Zurdo (Revés 1M) | *The Rocket (El único doble Grand Slam)* (`ID 78`, `P_M_LAV_LG.sdo`, `photo_L/78.dds`, Página 4/4, verificado en `test_roster_matrix` y en partido EE-1/EE-3)
 - [x] **48. King & Duke (SEGA Bosses)** — Jefes finales míticos de *Virtua Tennis* (Desbloqueados de serie vía parche `FUN_005dfe90`)
 
 ### VI. Leyendas WTA (Las Grandes Reinas de la Historia)
-- [x] **49. Serena Williams (USA)** — *Potencia y Saque Total* (`ID 33`, foto real `photo_L/33.dds`, modelo `P_W_SER_NG.sdo` y Página 2)
-- [x] **50. Steffi Graf (GER)** — *Golden Slam (Derecha Invertida + Revés Cortado Letal)* (`ID 32`, foto real `photo_L/32.dds`, modelo `P_W_GRA_LG.sdo` y Página 2)
-- [x] **51. Martina Navratilova (USA)** — *Zurda de Saque y Volea Implacable* (`ID 37`, foto real `photo_L/37.dds`, modelo `P_W_NAV_LG.sdo` y Página 2)
-- [x] **52. Chris Evert (USA)** — *Precisión Milimétrica de Fondo* (`ID 55`, `P_W_EVE_LG.sdo`, `photo_L/55.dds` recorte PhotoCraft B&W, Página 3)
-- [x] **53. Monica Seles (YUG/USA)** — *Doble Golpe a Dos Manos Ultra-Agresivo* (`ID 56`, `P_W_SEL_LG.sdo`, `photo_L/56.dds` vía PhotoCraft, Página 3)
-- [ ] **54. Arantxa Sánchez Vicario (ESP)** — *Defensa Imposible en Tierra Batida*
-- [ ] **55. Conchita Martínez (ESP)** — *Maestra del Efecto y Variedad*
-- [x] **56. Garbiñe Muguruza (ESP)** — *Golpeo Plano y Agresivo* (`ID 58`, `P_W_MUG_NG.sdo`, `photo_L/58.dds` vía PhotoCraft, Página 3)
-- [ ] **57. Venus Williams (USA)** — *Gran Sacadora y Envergadura*
-- [ ] **58. Maria Sharapova (RUS)** — *Cañonera sin Cuartel*
-- [x] **59. Justine Henin (BEL)** — *El Mejor Revés a Una Mano Femenino* (`ID 57`, `P_W_HEN_LG.sdo`, `photo_L/57.dds` vía PhotoCraft, Página 3)
-- [ ] **60. Kim Clijsters (BEL)** — *Elasticidad y Potencia*
-- [ ] **61. Caroline Wozniacki / Ana Ivanovic / Svetlana Kuznetsova / Laura Robson** *(Laura Robson desbloqueada en Página 2 `g_roster_page_legends`; pendientes Wozniacki/Ivanovic/Kuznetsova)*
-- [x] **62. Iga Świątek (POL)** — *Topspin y Dominio Absoluto en Tierra* (`ID 34`, foto real `photo_L/34.dds`, modelo `P_W_SWI_NG.sdo` y Página 2)
-- [x] **63. Aryna Sabalenka (BLR)** — *Potencia Bruta Actual* (`ID 35`, foto real `photo_L/35.dds`, modelo `P_W_SAB_NG.sdo` y Página 2)
-- [ ] **64. Paula Badosa / Simona Halep** — *Circuito Moderno WTA*
+- [x] **49. Serena Williams (USA)** — *Potencia y Saque Total* (`ID 33`, foto real `photo_L/33.dds`, modelo `P_W_SER_NG.sdo` y Página 2/4)
+- [x] **50. Steffi Graf (GER)** — *Golden Slam (Derecha Invertida + Revés Cortado Letal)* (`ID 32`, foto real `photo_L/32.dds`, modelo `P_W_GRA_LG.sdo` y Página 3/4)
+- [x] **51. Martina Navratilova (USA)** — *Zurda de Saque y Volea Implacable* (`ID 37`, foto real `photo_L/37.dds`, modelo `P_W_NAV_LG.sdo` y Página 4/4)
+- [x] **52. Chris Evert (USA)** — *Precisión Milimétrica de Fondo* (`ID 55`, `P_W_EVE_LG.sdo`, `photo_L/55.dds` recorte PhotoCraft B&W, Página 4/4)
+- [x] **53. Monica Seles (YUG/USA)** — *Doble Golpe a Dos Manos Ultra-Agresivo* (`ID 56`, `P_W_SEL_LG.sdo`, `photo_L/56.dds` vía PhotoCraft, Página 3/4)
+- [x] **54. Arantxa Sánchez Vicario (ESP)** — *Defensa Imposible en Tierra Batida* (`ID 79`, `P_W_ASV_LG.sdo`, `photo_L/79.dds`, Página 4/4, verificado en `test_roster_matrix` con `0` asserts/`2` saques)
+- [x] **55. Conchita Martínez (ESP)** — *Maestra del Efecto y Variedad* (`ID 80`, `P_W_CMT_LG.sdo` y `photo_L/80.dds` en Página 3/4; verificado en `test_roster_matrix` con `0` asserts/`2` saques; también verificada `83` Billie Jean King en Página 4/4 y Wimbledon)
+- [x] **56. Garbiñe Muguruza (ESP)** — *Golpeo Plano y Agresivo* (`ID 58`, `P_W_MUG_NG.sdo`, `photo_L/58.dds` vía PhotoCraft, Página 1/4)
+- [x] **57. Venus Williams (USA)** — *Gran Sacadora y Envergadura* (Nativa VT4 `ID 18`, desbloqueada en Página 3/4 `g_roster_page_legends2`)
+- [x] **58. Maria Sharapova (RUS)** — *Cañonera sin Cuartel* (Nativa VT4 `ID 17`, desbloqueada en Página 2/4 `g_roster_page_legends`)
+- [x] **59. Justine Henin (BEL)** — *El Mejor Revés a Una Mano Femenino* (`ID 57`, `P_W_HEN_LG.sdo`, `photo_L/57.dds` vía PhotoCraft, Página 3/4)
+- [x] **60. Kim Clijsters (BEL)** — *Elasticidad y Potencia* (`ID 81`, `P_W_CLI_LG.sdo` y `photo_L/81.dds` en Página 3/4; verificada en `test_roster_matrix` con `0` asserts/`1` saque)
+- [x] **61. Caroline Wozniacki / Ana Ivanovic / Svetlana Kuznetsova / Laura Robson** *(Nativas VT4 desbloqueadas y jugables: `Wozniacki` `ID 22` en Página 3/4; `Kuznetsova` `ID 19`, `Ivanovic` `ID 20` y `Robson` `ID 23` en Página 4/4)*
+- [x] **62. Iga Świątek (POL)** — *Topspin y Dominio Absoluto en Tierra* (`ID 34`, foto real `photo_L/34.dds`, modelo `P_W_SWI_NG.sdo` y Página 1/4)
+- [x] **63. Aryna Sabalenka (BLR)** — *Potencia Bruta Actual* (`ID 35`, foto real `photo_L/35.dds`, modelo `P_W_SAB_NG.sdo` sobre `P_W_KUZ_IT`, Página 1/4)
+- [x] **64. Paula Badosa / Simona Halep** — *Circuito Moderno WTA* (`IDs 65/66`, `P_W_BAD_NG.sdo` y `P_W_HAL_NG.sdo` + `photo_L/65..66.dds` en Página 1/4; verificadas en `test_roster_matrix` con `0` asserts/`2` saques)
 
 ---
 
 ## 🤪 Fase 3: Cinco Easter Eggs Legendarios (Modo Extra "Multiverso Arcade")
-- [ ] **EE-1: 🔥 Modo McEnroe Desatado ("¡YOU CANNOT BE SERIOUS!")** — Botón de protesta al juez de silla en bolas cercanas a la línea con minijuego de intimidación arbitral y lanzamiento de raqueta.
+- [x] **EE-1: 🔥 Modo McEnroe Desatado ("¡YOU CANNOT BE SERIOUS!")** — Botón de protesta `[C]` al juez de silla en `LiveMatch` con QTE de 2.5 s (`[Z]` / `[ESPACIO]`, zona verde 65-95% -> `+15% FURIA` o `WARNING ARBITRAL`) en `src/xlive/multiverse_modes.h`, verificado en vivo (`06_match_ee1_mcenroe_qte.png`, `fase3=1`).
 - [x] **EE-2: 🥖 La Batalla de las Superficies Extrema (50% Barro / 50% Hielo)** — Mitad `-Z` Hielo (`BoundXZ=0.20, BoundY=0.38`, `peak_y=3.33`) y mitad `+Z` Barro (`BoundXZ=1.55, BoundY=1.22`, `peak_y=24.73`) verificadas en trayectoria real vía `MultiverseMode=1/3` (`hk_BallSimulateTrajectory` `0x00478bf3`).
-- [ ] **EE-3: 🪵 Modo Raqueta de Madera vs. Sartén de Cocina (Homenaje a Roddick)** — Selector de arma/handicap (raqueta de los 70, sartén metálica, paraguas, baguette gigante) con efectos de sonido e impacto propios.
-- [x] **EE-4: ⚡ Super Golpes DBZ / Mario Power Tennis** — Velocidad de bola `1.55x` y gravedad `k^2` (`0.43`) verificadas en trayectoria real (`bounce_f=23` vs `34`, `v0z=-10.78` vs `-6.70`, `peak_y=11.05`) vía `MultiverseMode=2/3` (`hk_BallSimulateTrajectory` + `hk_BallLaunch_480561`); golpes temáticos extra pendientes.
-- [x] **EE-5: 🤖 Jefes Secretos Jugables (King, Duke, T. Tenniel `VTM`, V. Virnie `VTF` en Página 2 `g_roster_page_legends`; futuros skins Juez de Silla motorizado, Recogepelotas Turbo & Matt)** — Jefes y personajes secretos (`King`, `Duke`, `ID 24 T. Tenniel`, `ID 25 V. Virnie`) jugables directamente en Exhibición.
+- [x] **EE-3: 🪵 Modo Raqueta de Madera vs. Sartén de Cocina vs. Baguette Gigante** — Selector de arma (`0=Normal`, `1=Raqueta Madera 70s`, `2=Sartén Metálica (Roddick)`, `3=Baguette Gigante`) configurable vía `WeaponMode` en `OPCIONES -> GRÁFICOS HD Y LEGENDS` (fila 11) y tecla `[R]` en `CharaSelect`; inyecta mallas 3D (`game/archive/ee3/ee3_meshes.bin`) y 21 DDS con parche LZSS en RAM (`ee_parse_and_patch_sdo`), verificado en partido con Rod Laver (Sartén) y Ben Shelton (Baguette) sin crashes ni excepciones (`ps=0 ex=0 exc=0`).
+- [x] **EE-4: ⚡ Super Golpes DBZ / Mario Power Tennis** — Velocidad de bola `1.55x` y gravedad `k^2` (`0.43`) verificadas en trayectoria real (`bounce_f=23` vs `34`, `v0z=-10.78` vs `-6.70`, `peak_y=11.05`) vía `MultiverseMode=2/3` (`hk_BallSimulateTrajectory` + `hk_BallLaunch_480561`) más estela/halo aditivo (`D3DBLEND_ONE`) en `src/xlive/multiverse_modes.h`.
+- [x] **EE-5: 🤖 Jefes Secretos Jugables (King, Duke, T. Tenniel `VTM`, V. Virnie `VTF`)** — Jefes y personajes secretos (`King`, `Duke`, `ID 24 T. Tenniel`, `ID 25 V. Virnie`) jugables directamente en Exhibición (`g_roster_page_legends3` / Páginas de Leyendas).
 
 ---
 
 ## 🛠️ Fase 4: Funcionalidades Extra (Quality of Life & Motor)
-- [x] **EXTRA-1: Desbloqueo 100% Instantáneo** — Leyendas y jefes secretos (`Becker`, `Edberg`, `Courier`, `Rafter`, `King`, `Duke`, `T. Tenniel` ID 24, `V. Virnie` ID 25) jugables vía Página 2 (`g_roster_page_legends`) y todos los estadios desbloqueados (`Lock = -1` en `fwDataDB_Stage.txt`; equipamiento del catálogo SPT pendiente).
+- [x] **EXTRA-1: Desbloqueo 100% Instantáneo** — Leyendas y jefes secretos (`Becker`, `Edberg`, `Courier`, `Rafter`, `King`, `Duke`, `T. Tenniel` ID 24, `V. Virnie` ID 25) jugables vía Página 2/3/4, todos los estadios desbloqueados (`Lock = -1` en `fwDataDB_Stage.txt`) y catálogo SPT/tienda/estilos desbloqueado al 100 % parcheando los 7 getters `UnlockManager` (`0x00463b80`, `0x004638c0`, `0x00463a40`, `0x00463510`, `0x00463230`, `0x00463390`, `0x004640a0` en `src/xlive/xlive.c`, compilado OK; verificación directa de pantalla tienda pendiente).
 - [x] **EXTRA-2: Fijador de Cámara TV Clásica (VT2 Style)** — Configurable en `vt4_settings.ini` (`ClassicTVCamera`) y en el HUD de Ajustes: fija `CamType = TV` (`0x0054ca10`) y desactiva los zooms/cortes de `ShotCamera` (`0x00558890`).
-- [x] **EXTRA-3: Grand Slams Oficiales & Pista Azul de Madrid** — Generador reproducible `tools/make_madrid_blue_clay.py` que transforma `Spa2FS`/`Spa2FD` (`UV_surface`, `IL_surface` y marcas en líneas `B_AU_line*`) en **Tierra Azul de Madrid** (`BoundY=0.88, BoundXZ=0.78` en `fwDataDB_Stage.txt`) y localiza `TR_COMMON.sto` (`SPA`/`ENG`) para Australian Open, Roland Garros, Wimbledon, US Open y Mutua Madrid Open.
+- [x] **EXTRA-3: Grand Slams Oficiales & Pista Azul de Madrid** — Generadores reproducibles `tools/make_madrid_blue_clay.py` (Tierra Azul de Madrid en `Spa2FS`/`Spa2FD`) y `tools/build_grand_slam_stages.py` (8 `.sdo` Individuales+Dobles para **Australian Open `Aus1`**, **Roland Garros `Fra1`**, **Wimbledon `Eng1`** y **US Open `Usa1`** + extracción de `Usa1NS_locator.zml`/`Usa1ND_locator.zml`), ajuste de rebote/velocidad por superficie en `fwDataDB_Stage.txt` y localización `TR_COMMON.sto` (`SPA`/`ENG`), verificados los 4 Grand Slams en vivo.
 - [x] **EXTRA-4: Selector de Velocidad de Física ("Modo VT2 Arcade Turbo" vs "Simulación")** — Configurable en `vt4_settings.ini` (`MatchSpeedMode`) y en el HUD de Ajustes (`Normal 1.00x`, `VT2 Arcade Turbo 1.20x`, `VT2 Hyper Arcade 1.35x`, `Simulación Pro 0.90x`) escalando el paso de simulación durante el juego en vivo (`0x00482aa1` + `0x0043037b`).
 - [x] **EXTRA-5: Partidos a 5 Sets Reales de 6 Juegos + Tie-Break / Super Tie-Break** — Desbloqueados vía `REGLAS EXHIBICION` en `OPCIONES -> GRAFICOS HD Y LEGENDS` (`1/3/5 Sets x 6 Juegos + Tie-Break / Ventaja`, hook `hk_SetMatchRules` `0x0045f480`) y eliminado el Assert NULL de `ExhibitionAdvancedSetting` (`0x004351e1`).
 - [x] **EXTRA-6: Parche 4K & Nitidez PostFX** — Resolución configurable en `vt4_settings.ini` y eliminación/reducción de *DOF blur* y *bloom/glare* (`CleanPostFX=0/1/2` en `OPCIONES -> GRAFICOS HD Y LEGENDS`, hook `hk_RenderPostEffects` `0x004a9460`), verificado en comparativa visual y `test_options_ui.py`.
+
+---
+
+## 📱 Fase 5: Exportación y Portabilidad a Android (Mejores Prácticas)
+Objetivo: garantizar que *Virtua Tennis 4: Legends & Next-Gen Edition* sea **exportable de forma limpia, reproducible y optimizada a Android**, aplicando las mejores prácticas vigentes del ecosistema (a contrastar y actualizar mediante investigación online antes de ejecutar cada hito).
+
+- [ ] **ANDROID-1: Investigación online de mejores prácticas vigentes (Prerrequisito)**
+  - Investigar en internet el estado más actualizado de capas de ejecución Windows x86/D3D9 en Android: **Winlator (Bionic / Cmod)**, **GameNative**, **Box64 (WoW64)** vs **FEXCore**, **DXVK** (D3D9 → Vulkan) con drivers **Turnip** (Adreno) y **Vortek/VirGL** (Mali/otros), y backends de audio (**ALSA-Reflector** vs PulseAudio) para `XAudio2_7.dll`.
+  - Revisar las restricciones actuales de **Android 14/15/16** (*Scoped Storage*, bloqueos de `DocumentsUI` en `/Android/obb` y `/Android/data`, penalización de rendimiento de **FUSE** con miles de archivos sueltos, y uso de almacenamiento privado de la app / `getExternalFilesDir()`).
+  - Evaluar el mejor método vigente de distribución tipo app: exportación de **acceso directo APK standalone** desde Winlator Bionic/Cmod vs **APK contenedor + OBB/paquete de datos** (particionado `main` + `patch` o archivo comprimido desempaquetado al primer arranque).
+- [ ] **ANDROID-2: Preparación de compatibilidad en `xlive.dll` y el motor para Wine / Box64 / DXVK**
+  - Verificar dependencias y *DLL overrides* limpios (`xlive=n`, `d3dx9_43=n`, `xaudio2_7=n`, runtime MSVC90 `msvcr90/p90/m90.dll`) y comprobar que no haya rutas absolutas de Windows ni accesos al Registro.
+  - Auditar el cargador de archivos sueltos (`game/archive/`) frente a sensibilidad a mayúsculas/minúsculas (case-sensitivity en Linux/Android) y minimizar la sobrecarga de E/S en FUSE (valorar empaquetado limpio o índice de archivos).
+  - Validar hooks D3D9 (`SetViewport`, `CreateRenderTarget`, MSAA, PostFX) y el manejador VEH bajo **DXVK** (evitando depender de recuperación de excepciones en el flujo normal) y añadir un perfil de rendimiento móvil en `vt4_settings.ini` (`1280x720`, `AntiAliasing=0`, `VSync=1`, anisotrópico moderado, opción de sombras reducidas) + `dxvk.conf` con caché de shaders en ruta escribible.
+- [ ] **ANDROID-3: Controles y UX móvil**
+  - Garantizar compatibilidad plug-and-play con mandos Bluetooth/USB-C en modo **XInput** (Xbox, DualSense, Razer Kishi, Backbone, etc.) y definir un perfil ergonómico de controles táctiles en pantalla (D-Pad/Stick + Topspin/Slice/Lob/Drop + Pausa/F2/Protesta `[C]`/Arma `[R]`) para Winlator/contenedor.
+- [ ] **ANDROID-4: Pipeline automatizado de exportación (`tools/export_android_bundle.py`)**
+  - Crear un script reproducible que genere un paquete limpio y autocontenido (`dist/android/`) excluyendo basura de desarrollo (`*.pdb`, `*.lib`, `*.png` de depuración, instaladores `*.msi` de GFWL, logs) e incluyendo únicamente los binarios necesarios, `game/archive/`, `save/` portátil, preset `vt4_settings.ini` móvil, `dxvk.conf` y guía de instalación (`README_ANDROID.md`).
+  - Documentar y, si procede, automatizar la generación del **acceso directo APK** o empaquetado **APK + OBB/datos** (respetando la regla de no redistribuir archivos originales de SEGA en repositorios públicos: el mod se distribuye como parche/overlay limpio sobre la copia legal del usuario).
+- [ ] **ANDROID-5: Pruebas en dispositivo real y ajuste térmico/FPS**
+  - Validar arranque, 60 FPS estables sin *thermal throttling* ni *micro-stuttering* de shaders, audio sin cortes, guardado local y modos clave (Exhibición con 4 páginas de roster, Madrid Blue Clay, Multiverse EE-1..EE-4 y HUD de Opciones) en Android (priorizando Snapdragon/Adreno con Turnip y documentando compatibilidad en Mali).
 
 ---
 
@@ -126,13 +147,39 @@ Este documento es nuestra hoja de ruta viva. Iremos marcando con `[x]` cada elem
 - **Modelos y retratos (`tools/build_page3_roster.py`)**: 21 modelos `.sdo` + `.zml` (`P_M_WAW_NG`..`P_W_MUG_NG`), 21 fuentes CC/PD + `assets/portraits_page3_src/manifest.json` y recortes PhotoCraft MCP en `photo_L/38..58.dds` (`262,272` B BGRA 256x256; `51` Lendl, `52` Connors y `55` Evert en B&W limpios a la espera de reseteo de cuota de `gemini-3.1-flash-image`).
 - **Matriz jugable (`test_roster_matrix.py --ids 38..58 --mv 3`)**: **21/21** (`38` Wawrinka, `39` Medvedev, `40` Zverev, `41` Tsitsipas, `42` Thiem, `43` Kyrgios, `44` Hewitt, `45` Safin, `46` Tsonga, `47` Ferrero, `48` Moyá, `49` Ferrer, `50` Nalbandian, `51` Lendl, `52` Connors, `53` Vilas, `54` Ivanišević, `55` Evert, `56` Seles, `57` Henin, `58` Muguruza) cargan, muestran su retrato/bandera en `Página 3/3`, juegan y sacan en partido con `PlayStyle=0`, `ExbAdv=0` y `Exceptions=0`.
 
-### Estado verificado: Nombres en Partido, Épocas, Miniaturas y Skins (`TR_COMMON` + `photo_eye` + Agassi/Sabalenka)
-- **Fix completo de nombres en partido (`0x00668fa0`, `hk_StoLookup`)**: Reemplazo directo del selector `hk_SetFrawTableText` por hook único en `0x00668fa0` (verificando `TR_COMMON.sto` con `table 0, row 0 == "Roger Federer"`). Cubre todas las tablas de nombre (`0` completo, `1` Apellido Nombre, `2` tarjeta, `3` nombre pila, `4` banner `I. Apellido`, `5` mayúsculas marcador `I.APELLIDO`, `6` código COI `ESP`/`BLR`/`SUI`, más `7/8/10/11/13`) para los **33 IDs nuevos (`26..58`)**, corrigiendo nombres NPC de relleno como *"Dries Nothomb"* en **Sabalenka (`35`)**.
-- **Agrupación de las 3 páginas por épocas (`src/xlive/xlive.c`, `tools/tests/vt4_test_lib.py`)**:
-  - `Página 1/3`: *Actual & Next-Gen (2010-2026)* (Big 3, Alcaraz, Sinner, Medvedev, Zverev, Tsitsipas, Thiem, Wawrinka, Murray, Del Potro, Kyrgios, Monfils, Świątek, Sabalenka, Serena, Sharapova, Muguruza, Wozniacki, Venus).
-  - `Página 2/3`: *Era Dorada (1990s - 2000s)* (Sampras, Agassi, Courier, Edberg, Becker, Rafter, Ivanišević, Kuerten, Hewitt, Safin, Ferrero, Moyá, Ferrer, Nalbandian, Tsonga, Roddick, González, Haas, Seles, Henin, Graf).
-  - `Página 3/3`: *Pioneros 70s-80s & Clásicos VT4* (Borg, McEnroe, Lendl, Connors, Vilas, Navratilova, Evert, Kuznetsova, Ivanovic, Chakvetadze, Robson, Kohlschreiber, Seppi, King, Duke, Tenniel, Virnie + destacados).
-- **Miniaturas de cuadrícula y UI (`tools/update_custom_assets.py`, `render_roster_pagination_hud`)**: Generadas las 59 bandas de ojos (`game/archive/HIGH/Frontend/VR/photo_eye/0..58.dds`, BGRA 256×64), miniaturas `photo_S/26..58.dds` (128×64 DXT5), corrección del borde izquierdo de `photo_L/38.dds` (Wawrinka) y renderizado UTF-8 (`TextOutW`) sobre los 21 recuadros de cada página.
-- **Skins alternativas de Agassi (`[F]`) y mejora de modelos (`update_custom_assets.py`)**:
-  - Selector `[F]` en `CharaSelect` (tecla `F` o clic en la barra inferior) alternando en tiempo real entre `P_M_AGA_LG.sdo` (**Agassi '91**: melena rubia + cinta + conjunto Challenge Court sobre malla `P_M_NAD_IT`) y `P_M_AG2_LG.sdo` (**Agassi '06**: cabeza calva real sin malla de pelo + perilla + conjunto negro/blanco sobre malla `P_M_DJV_IT`), plus `P_W_SAB_NG.sdo` (vestido rojo + coleta alta sobre `P_W_SHA_SN`).
-  - Verificado con `test_options_ui.py` (válido), capturas visuales en partida (`01`–`08`) y `test_roster_matrix.py --ids 26,27,34,35,29,38,51 --cpu 0 --mv 3` (**7/7** `ok=True`, `PlayStyle=0`, `ExbAdv=0`, `Exc=0`, `served>=1`).
+### Estado verificado de Página 4 (`IDs 59..81`, 82 jugadores en 4 páginas)
+- **Motor (`src/xlive/xlive.c`) y modelos (`tools/build_all_sdo_models.py`)**: `NUM_ROSTER_PAGES = 4`, `MAX_ROSTER_PLAYERS = 82` (`IDs 0..81`: 26 base VT4 + 56 personalizados en `g_extra_players`), construidos los **57 modelos `.sdo` + `.zml`** (huesos `14/14` por modelo), 57 carpetas UV en `assets/face_uv_workspace/` y **69 DDS** (`photo_L`, `photo_eye`, `photo_S` para `59..81`).
+- **Muestreo jugable en vivo (`test_roster_matrix.py --ids 59,63,73,78,79 --mv 3`)**: **5/5** (`59` Ben Shelton, `63` Coco Gauff, `73` Marcelo Ríos, `78` Rod Laver, `79` Arantxa Sánchez Vicario) cargan, juegan y sacan (`ok=True`, `ps=0`, `ex=0`, `exc=0`, `served=2`). Resto de nuevos IDs `59..81` (`60` Rublev, `61` Ruud, `62` Fritz, `64` Rybakina, `65` Badosa, `66` Halep, `67` Coria, `68` Gasquet, `69` Nishikori, `70` Söderling, `71` Berdych, `72` Chang, `74` Muster, `75` Bruguera, `76` Corretja, `77` Wilander, `80` Conchita Martínez, `81` Clijsters) integrados en DB, UI y `.sdo`/DDS a la espera de barrido individual en pista.
+
+### Estado verificado: Nombres en Partido, Épocas, Miniaturas, Skins y Fase 3 (`TR_COMMON` + `photo_eye` + `EE-1/3/4`)
+- **Fix completo de nombres en partido (`0x00668fa0`, `hk_StoLookup`)**: Reemplazo directo del selector `hk_SetFrawTableText` por hook único en `0x00668fa0` (verificando `TR_COMMON.sto` con `table 0, row 0 == "Roger Federer"`). Cubre todas las tablas de nombre (`0..13`, COI y apellidos/iniciales) para todos los IDs personalizados.
+- **Agrupación de las 4 páginas por épocas (`src/xlive/xlive.c`)**:
+  - `Página 1/4`: *Era Actual & Next-Gen (2015-2026)* (Big 3, Alcaraz, Sinner, Medvedev, Zverev, Tsitsipas, Thiem, Wawrinka, Murray, Del Potro, Kyrgios, Shelton `59`, Rublev `60`, Ruud `61`, Fritz `62`, Świątek, Sabalenka, Gauff `63`, Rybakina `64`, Muguruza, Badosa `65`, Halep `66`).
+  - `Página 2/4`: *Era Dorada (2000s - 2010s)* (`Monfils`, `Gasquet 68`, `Nishikori 69`, `González`, `Haas`, `Söderling 70`, `Berdych 71`, `Serena`, `Sharapova`, `Hewitt`, `Safin`, `Kuerten`, `Ferrero`, `Moyá`, `Ferrer`, `Nalbandian`, `Coria 67`, `Tsonga`, `Roddick`, etc.).
+  - `Página 3/4`: *Leyendas 90s & WTA Clásica* (`Sampras`, `Agassi`, `Courier`, `Becker`, `Edberg`, `Rafter`, `Ivanišević`, `Conchita 80`, `Venus`, `Wozniacki`, `Clijsters 81`, `Graf`, `Seles`, `Henin`, etc.).
+  - `Página 4/4`: *Pioneros 60s-80s & Clásicos VT4* (`Borg`, `McEnroe`, `Lendl`, `Connors`, `Vilas`, `Chang 72`, `Ríos 73`, `Muster 74`, `Bruguera 75`, `Corretja 76`, `Wilander 77`, `Laver 78`, `Navratilova`, `Evert`, `Sánchez Vicario 79`, `Kuznetsova`, `Ivanovic`, `Chakvetadze`, `Robson`, `Kohlschreiber`, `Seppi`, `King`, `Duke`, `T. Tenniel`, `V. Virnie`).
+- **Miniaturas de cuadrícula, `[F]` Agassi y `[R]` Arma EE-3 (`src/xlive/xlive.c`, `src/xlive/multiverse_modes.h`)**:
+  - Generadas las 82 bandas de ojos (`photo_eye/0..81.dds`), miniaturas `photo_S` y retratos `photo_L` para todas las páginas.
+  - Selector `[F]` en `CharaSelect` alternando entre `Agassi '91` (`P_M_AGA_LG.sdo`) y `Agassi '06` (`P_M_AG2_LG.sdo`), más tecla `[R]` y opción fila 11 `ARMA ARCADE (EE-3)` en `OPCIONES -> GRÁFICOS HD Y LEGENDS` (`NUM_SETTINGS_ITEMS = 13`).
+  - Botón **`GRÁFICOS HD Y LEGENDS`** en el menú raíz `OPCIONES` integrado con estilo nativo (`opt_btn_unsel.png` / `opt_btn_sel.png`).
+  - **EE-1 / EE-2 / EE-3 / EE-4 verificados en vivo**: `verify_full_release.py` + `test_options_ui.py` OK, y `verify_ee2_umpire_agassi91.py` (`ps=0 ex=0 exc=0 fase3=1`) confirmó visualmente en `02_match_ee2_split_court.png` la pista dividida **50% Hielo (`-Z`) / 50% Barro (`+Z`)** en RAM (`ee_patch_stage_ee2_surface`), el audio **WAV** (`ee1_protest`, `pan`, `ee1_lose`), y el retrato reparado de `Agassi '91` (`29_91` en `01_cs_agassi91_fixed.png`). Compilado posteriormente en `xlive.dll` el escape `100%%` de `EXTRA-1` y el filtro amplio `u_ump_b_` para el skin Meme del **Juez de Silla** (`umpire_meme.dds`, pendiente de captura visual final en silla).
+
+### Pendiente: Caras UV 3D (`assets/face_uv_workspace/`) y Retratos `photo_L` / `photo_eye` (`assets/portraits_photocraft_workspace/`)
+- **Taller de Retratos 2D llave en mano (`assets/portraits_photocraft_workspace/`)**:
+  - Preparado por `tools/prepare_portraits_workspace.py` con referencias oficiales de SEGA (`00_referencias_oficiales_sega/`), las 57 fotos originales completas (`01_originales_sin_recortar/`), el estado actual + hoja `AUDITORIA_57_ACTUALES.png` (`02_estado_actual_en_juego/`), guía completa `README_INSTRUCCIONES_PHOTOCRAFT.md` y carpetas de entrega `03_entregar_editados_aqui/` para importar con `python -u tools/import_edited_portraits.py`.
+- **Caras UV de modelos `.sdo` (`assets/face_uv_workspace/`)**:
+  - Estructura completa de 57 jugadores generada con `tools/prepare_face_uv_workspace.py`, más empaquetado automático vía `tools/pack_custom_faces.py`. Estado actual: `35_SAB` con prototipo proyectado; resto pendiente tras completar la tanda de retratos 2D y mejorar ref débiles (`67_COR`, `72_CHN`, `73_RIO`, `74_MUS`, `75_BRU`, `77_WLD`, `80_CMT`).
+- **Retratos `photo_L` corregidos en último pase**: `29_91` Agassi '91 (cara real de Agassi + mangas y cordaje limpios), `43` Kyrgios, `44` Hewitt, `45` Safin, `47` Ferrero, `49` Ferrer y `51` Lendl (reconstruidos en `scratch/fixed_portraits_v3_audit.png` y empaquetados en DDS).
+- **Prioridades dejadas en `assets/portraits_photocraft_workspace/` para editar en la otra conversación (PhotoCraft + IA)**:
+  - **Grupo 1 (Rehacer / Colorear B&W)**: `26` Alcaraz, `29_91` Agassi '91 (si se desea acabado de estudio homogéneo), y los 6 en B&W (`51` Lendl, `52` Connors, `55` Evert, `74` Muster, `75` Bruguera, `77` Wilander).
+  - **Grupo 2 (Mejorar foto joven)**: `46` Tsonga, `67` Coria, `72` Chang, `73` Ríos, `80` Conchita Martínez.
+
+### Estado verificado (2026-11-25): Grand Slams, Retratos 2D, HUD TV Moderno, Stats & Físicas y QA Total (`84` jugadores)
+- **Roster completo `84` tenistas (`0..83`, incluye `82` M. Andreeva y `83` B.J. King)**: Verificado al 100% en pista; el barrido `test_roster_matrix.py --ids 60,61,62,64,65,66,67,68,69,70,71,72,74,75,76,77,80,81,82,83 --cpu 0 --mv 3` completó **20/20** (`ok=True`, `ps=0`, `ex=0`, `exc=0`, `served>=1`). Voice packs ampliados a `VP_MAX_ROSTER_IDS=84` en `src/xlive/voice_packs.h`.
+- **Estadios de Grand Slam en vivo (`tools/build_grand_slam_stages.py`)**: Generados e inyectados los 8 `.sdo` (S+D) de `Aus1` (Australian Open), `Fra1` (Roland Garros), `Eng1` (Wimbledon) y `Usa1` (US Open + `Usa1NS/D_locator.zml`), verificados los 4 en `VT4.exe` con `ps=0 ex=0 exc=0`.
+- **Retratos 2D (`tools/fix_remaining_portraits_2026.py`)**: Recortados y empaquetados (`photo_L`, `photo_eye`, `photo_S`) los 7 retratos pendientes (`43`, `52`, `58`, `67`, `72`, `82`, `83`), logrando **59/59** `photo_L` con esquinas superiores transparentes.
+- **HUD TV Moderno (`[F7]`), Estadísticas Individuales (`26..83`) y Físicas/Superficies (`src/xlive/broadcast_hud.h`, `src/xlive/player_stats.h`, `src/xlive/xlive.c`, `game/archive/Config/Fraw/fwDataDB/fwDataDB_Stage.txt`)**:
+  - **HUD Broadcast TV** en esquina superior izquierda (`BroadcastHUD`, conmutable con `[F7]` y fila de Opciones): muestra torneo/superficie, emparejamiento, velocidad en vivo (`km/h` calibrado con el radar nativo) y contador de `RALLY`.
+  - **Stats individuales** (`player_stats.h`) aplicados en tiempo real para todos los jugadores personalizados `26..83` vía `PlayStyle::LoadInner` + `ServeMax`.
+  - **Rebote/velocidad por superficie** diferenciados en `fwDataDB_Stage.txt` (`Fra1` arcilla `0.95/0.70`, `Eng1` hierba `0.58/0.90`, `Aus1` `0.84/0.83`, `Usa1` `0.86/0.84`, `Spa2` `0.86/0.80`) y modo opcional `ProPhysics` (`vt4_settings.ini`) en la simulación de trayectoria de bola.
+
