@@ -41,7 +41,7 @@ ROSTER_CODES = [
     "NAL","LEN","CON","VIL","IVN","EVE","SEL","HEN","MUG","SHE",
     "RUB","RUU","FRI","GAU","RYB","BAD","HAL","COR","GAS","NIS",
     "SOD","BER","CHN","RIO","MUS","BRU","CRT","WLD","LAV","ASV",
-    "CMT","CLI",
+    "CMT","CLI","AND","BJK",
 ]
 VALID_PLAYER_DIRS = {f"{i:02d}_{code}" for i, code in enumerate(ROSTER_CODES)}
 VALID_CODES = set(ROSTER_CODES)

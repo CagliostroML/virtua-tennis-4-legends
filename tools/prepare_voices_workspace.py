@@ -13,7 +13,7 @@ WS_ROOT = os.path.join(REPO_ROOT, "assets", "voices_workspace")
 
 EVENT_DIRS = ("grunt", "serve", "point_win", "point_lose", "protest", "match_win")
 
-# Iconic voice/quote players with exact VT4 roster IDs (00..81) and rivalry subfolders
+# Iconic voice/quote players with exact VT4 roster IDs (00..83) and rivalry subfolders
 ICONIC_PLAYERS = [
     ("39_MED", "Daniil Medvedev", ["vs_41_TSI", "vs_40_ZVE", "vs_01_NAD"],
      "«Small cat!», «Man, you better shut your f*** up!», «Look at me when I talk to you!», «Bullshit Russian»"),
@@ -25,8 +25,12 @@ ICONIC_PLAYERS = [
      "«¡Vamos!», «¡Sí, sí, sí!», «¡Cabeza, corazón y cojones!», grunts intensos de derecha"),
     ("27_SIN", "Jannik Sinner", ["vs_26_ALC"],
      "«Forza!», «Dai!», celebraciones contenidas y grunts secos de saque/revés"),
-    ("35_SAB", "Aryna Sabalenka", ["vs_34_SWI"],
+    ("35_SAB", "Aryna Sabalenka", ["vs_34_SWI", "vs_82_AND"],
      "Grunts potentes característicos, «Come on!», «Let's go!»"),
+    ("82_AND", "Mirra Andreeva", ["vs_35_SAB", "vs_34_SWI"],
+     "«C'mon!», celebraciones rápidas y grunts secos Next-Gen WTA"),
+    ("83_BJK", "Billie Jean King", [],
+     "«Come on!», espíritu competitivo clásico de Wimbledon y US Open"),
     ("65_BAD", "Paula Badosa", [],
      "«¡Vamos!», «¡Venga!», grunts competitivos en peloteo"),
     ("33_SER", "Serena Williams", [],
@@ -59,7 +63,7 @@ def build_readme() -> str:
 
     return f"""# 🎙️ Virtua Tennis 4 — Taller de Voces, Grunts y Frases Míticas por Tenista
 
-Esta carpeta te permite añadir **grunts reales, celebraciones, protestas al juez de silla y frases míticas de rivalidad** para cualquiera de los **82 tenistas del juego** (`00_FED`..`81_CLI`).
+Esta carpeta te permite añadir **grunts reales, celebraciones, protestas al juez de silla y frases míticas de rivalidad** para cualquiera de los **84 tenistas del juego** (`00_FED`..`83_BJK`).
 
 El motor en C (`src/xlive/voice_packs.h`) **precarga en RAM** únicamente los clips de los 2 tenistas del partido actual (0 lecturas de disco durante el juego, 0 tirones, compatible con PC y Android/Winlator). Si un tenista o evento no tiene clips propios, **suena automáticamente la voz original de SEGA**.
 
@@ -86,13 +90,13 @@ Dentro de cada carpeta de tenista (ej. `assets/voices_workspace/39_MED/`), depos
 
 ---
 
-## 🌟 Carpetas pre-creadas (16 tenistas icónicos)
+## 🌟 Carpetas pre-creadas ({len(ICONIC_PLAYERS)} tenistas icónicos)
 
 | Carpeta | Tenista | Rivalidades pre-creadas | Ideas de frases / sonidos icónicos |
 |---|---|---|---|
 {table}
 
-*(¿Quieres añadir a cualquier otro tenista de los 82 del roster, como `34_SWI`, `32_GRA`, `38_WAW`, `73_RIO`? Solo crea su carpeta `<ID>_<CODE>` con las mismas subcarpetas de evento y ejecuta el importador).*
+*(¿Quieres añadir a cualquier otro tenista de los 84 del roster, como `34_SWI`, `32_GRA`, `38_WAW`, `73_RIO`? Solo crea su carpeta `<ID>_<CODE>` con las mismas subcarpetas de evento y ejecuta el importador).*
 
 ---
 

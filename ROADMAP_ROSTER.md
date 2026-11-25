@@ -65,15 +65,15 @@ Este documento es nuestra hoja de ruta viva. Iremos marcando con `[x]` cada elem
 - [x] **36. Goran Ivanišević (CRO)** — Zurdo (Revés 2M) | *Rey del Ace (Saque Zurdo Inalcanzable)* (`ID 54`, `P_M_IVN_LG.sdo`, `photo_L/54.dds` vía PhotoCraft, Página 3/4)
 - [x] **37. Michael Chang (USA)** — Diestro (Revés 2M) | *Velocidad Extrema y Espíritu de Lucha* (`ID 72`, `P_M_CHN_LG.sdo` y `photo_L/72.dds` recortado en Página 4/4; verificado en `test_roster_matrix` con `0` asserts/`2` saques)
 - [x] **38. Marcelo "Chino" Ríos (CHI)** — Zurdo (Revés 2M) | *Talento Puro / Ángulos y Dejadas* (`ID 73`, `P_M_RIO_LG.sdo`, `photo_L/73.dds`, Página 4/4, verificado en `test_roster_matrix` con `0` asserts/`2` saques)
-- [x] **39. Thomas Muster (AUT)** — Zurdo (Revés 1M) | *La Bestia de la Tierra Batida* (`ID 74`, `P_M_MUS_LG.sdo` y `photo_L/74.dds` en Página 4/4; verificado en `test_roster_matrix` con `0` asserts/`2` saques)
-- [x] **40. Sergi Bruguera / Álex Corretja / Patrick Rafter** — Leyendas de Grand Slam 90s (*Patrick Rafter* nativo en Página 3/4; *Sergi Bruguera* `ID 75` y *Álex Corretja* `ID 76` en Página 4/4 verificados en `test_roster_matrix` con `0` asserts/`1-2` saques)
+- [x] **39. Thomas Muster (AUT)** — Zurdo (Revés 1M) | *La Bestia de la Tierra Batida* (`ID 74`, `P_M_MUS_LG.sdo` y `photo_L/74.dds` a color en Página 4/4; verificado en `test_roster_matrix` con `0` asserts/`2` saques)
+- [x] **40. Sergi Bruguera / Álex Corretja / Patrick Rafter** — Leyendas de Grand Slam 90s (*Patrick Rafter* nativo en Página 3/4; *Sergi Bruguera* `ID 75` a color y *Álex Corretja* `ID 76` en Página 4/4 verificados en `test_roster_matrix` con `0` asserts/`1-2` saques)
 
 ### V. Los Pioneros (Años 70 y 80) + Jefes SEGA
 - [x] **41. Björn Borg (SWE)** — Diestro (Revés 2M) | *El Hombre de Hielo (Resistencia infinita + Topspin)* (`ID 30`, foto real `photo_L/30.dds`, modelo `P_M_BOR_LG.sdo` y Página 4/4)
 - [x] **42. John McEnroe (USA)** — Zurdo (Revés 1M) | *Toque Mágico en la Red + Saque de Espaldas* (`ID 31`, hueco gris limpiado en `photo_L/31.dds`, modelo `P_M_MCE_LG.sdo` y Página 4/4)
-- [x] **43. Ivan Lendl (CZE/USA)** — Diestro (Revés 1M) | *Padre del Tenis Moderno de Potencia* (`ID 51`, `P_M_LEN_LG.sdo`, `photo_L/51.dds` B&W limpio, Página 4/4)
-- [x] **44. Jimmy Connors (USA)** — Zurdo (Revés 2M) | *Golpeo Plano Rasante y Agresividad Total* (`ID 52`, `P_M_CON_LG.sdo`, `photo_L/52.dds` B&W limpio, Página 4/4)
-- [x] **45. Mats Wilander (SWE)** — Diestro (Revés 2M) | *Táctico de Acero* (`ID 77`, `P_M_WLD_LG.sdo` y `photo_L/77.dds` en Página 4/4; verificado en `test_roster_matrix` con `0` asserts/`2` saques)
+- [x] **43. Ivan Lendl (CZE/USA)** — Diestro (Revés 1M) | *Padre del Tenis Moderno de Potencia* (`ID 51`, `P_M_LEN_LG.sdo`, `photo_L/51.dds` a color limpio, Página 4/4)
+- [x] **44. Jimmy Connors (USA)** — Zurdo (Revés 2M) | *Golpeo Plano Rasante y Agresividad Total* (`ID 52`, `P_M_CON_LG.sdo`, `photo_L/52.dds` a color limpio, Página 4/4)
+- [x] **45. Mats Wilander (SWE)** — Diestro (Revés 2M) | *Táctico de Acero* (`ID 77`, `P_M_WLD_LG.sdo` y `photo_L/77.dds` a color en Página 4/4; verificado en `test_roster_matrix` con `0` asserts/`2` saques)
 - [x] **46. Guillermo Vilas (ARG)** — Zurdo (Revés 1M) | *El Gran Willy / Topspin Eterno* (`ID 53`, `P_M_VIL_LG.sdo`, `photo_L/53.dds` vía PhotoCraft, Página 4/4)
 - [x] **47. Rod Laver (AUS)** — Zurdo (Revés 1M) | *The Rocket (El único doble Grand Slam)* (`ID 78`, `P_M_LAV_LG.sdo`, `photo_L/78.dds`, Página 4/4, verificado en `test_roster_matrix` y en partido EE-1/EE-3)
 - [x] **48. King & Duke (SEGA Bosses)** — Jefes finales míticos de *Virtua Tennis* (Desbloqueados de serie vía parche `FUN_005dfe90`)
@@ -82,7 +82,7 @@ Este documento es nuestra hoja de ruta viva. Iremos marcando con `[x]` cada elem
 - [x] **49. Serena Williams (USA)** — *Potencia y Saque Total* (`ID 33`, foto real `photo_L/33.dds`, modelo `P_W_SER_NG.sdo` y Página 2/4)
 - [x] **50. Steffi Graf (GER)** — *Golden Slam (Derecha Invertida + Revés Cortado Letal)* (`ID 32`, foto real `photo_L/32.dds`, modelo `P_W_GRA_LG.sdo` y Página 3/4)
 - [x] **51. Martina Navratilova (USA)** — *Zurda de Saque y Volea Implacable* (`ID 37`, foto real `photo_L/37.dds`, modelo `P_W_NAV_LG.sdo` y Página 4/4)
-- [x] **52. Chris Evert (USA)** — *Precisión Milimétrica de Fondo* (`ID 55`, `P_W_EVE_LG.sdo`, `photo_L/55.dds` recorte PhotoCraft B&W, Página 4/4)
+- [x] **52. Chris Evert (USA)** — *Precisión Milimétrica de Fondo* (`ID 55`, `P_W_EVE_LG.sdo`, `photo_L/55.dds` a color con cinta Ellesse, Página 4/4)
 - [x] **53. Monica Seles (YUG/USA)** — *Doble Golpe a Dos Manos Ultra-Agresivo* (`ID 56`, `P_W_SEL_LG.sdo`, `photo_L/56.dds` vía PhotoCraft, Página 3/4)
 - [x] **54. Arantxa Sánchez Vicario (ESP)** — *Defensa Imposible en Tierra Batida* (`ID 79`, `P_W_ASV_LG.sdo`, `photo_L/79.dds`, Página 4/4, verificado en `test_roster_matrix` con `0` asserts/`2` saques)
 - [x] **55. Conchita Martínez (ESP)** — *Maestra del Efecto y Variedad* (`ID 80`, `P_W_CMT_LG.sdo` y `photo_L/80.dds` en Página 3/4; verificado en `test_roster_matrix` con `0` asserts/`2` saques; también verificada `83` Billie Jean King en Página 4/4 y Wimbledon)
@@ -120,19 +120,14 @@ Este documento es nuestra hoja de ruta viva. Iremos marcando con `[x]` cada elem
 ## 📱 Fase 5: Exportación y Portabilidad a Android (Mejores Prácticas)
 Objetivo: garantizar que *Virtua Tennis 4: Legends & Next-Gen Edition* sea **exportable de forma limpia, reproducible y optimizada a Android**, aplicando las mejores prácticas vigentes del ecosistema (a contrastar y actualizar mediante investigación online antes de ejecutar cada hito).
 
-- [ ] **ANDROID-1: Investigación online de mejores prácticas vigentes (Prerrequisito)**
-  - Investigar en internet el estado más actualizado de capas de ejecución Windows x86/D3D9 en Android: **Winlator (Bionic / Cmod)**, **GameNative**, **Box64 (WoW64)** vs **FEXCore**, **DXVK** (D3D9 → Vulkan) con drivers **Turnip** (Adreno) y **Vortek/VirGL** (Mali/otros), y backends de audio (**ALSA-Reflector** vs PulseAudio) para `XAudio2_7.dll`.
-  - Revisar las restricciones actuales de **Android 14/15/16** (*Scoped Storage*, bloqueos de `DocumentsUI` en `/Android/obb` y `/Android/data`, penalización de rendimiento de **FUSE** con miles de archivos sueltos, y uso de almacenamiento privado de la app / `getExternalFilesDir()`).
-  - Evaluar el mejor método vigente de distribución tipo app: exportación de **acceso directo APK standalone** desde Winlator Bionic/Cmod vs **APK contenedor + OBB/paquete de datos** (particionado `main` + `patch` o archivo comprimido desempaquetado al primer arranque).
-- [ ] **ANDROID-2: Preparación de compatibilidad en `xlive.dll` y el motor para Wine / Box64 / DXVK**
-  - Verificar dependencias y *DLL overrides* limpios (`xlive=n`, `d3dx9_43=n`, `xaudio2_7=n`, runtime MSVC90 `msvcr90/p90/m90.dll`) y comprobar que no haya rutas absolutas de Windows ni accesos al Registro.
-  - Auditar el cargador de archivos sueltos (`game/archive/`) frente a sensibilidad a mayúsculas/minúsculas (case-sensitivity en Linux/Android) y minimizar la sobrecarga de E/S en FUSE (valorar empaquetado limpio o índice de archivos).
-  - Validar hooks D3D9 (`SetViewport`, `CreateRenderTarget`, MSAA, PostFX) y el manejador VEH bajo **DXVK** (evitando depender de recuperación de excepciones en el flujo normal) y añadir un perfil de rendimiento móvil en `vt4_settings.ini` (`1280x720`, `AntiAliasing=0`, `VSync=1`, anisotrópico moderado, opción de sombras reducidas) + `dxvk.conf` con caché de shaders en ruta escribible.
-- [ ] **ANDROID-3: Controles y UX móvil**
-  - Garantizar compatibilidad plug-and-play con mandos Bluetooth/USB-C en modo **XInput** (Xbox, DualSense, Razer Kishi, Backbone, etc.) y definir un perfil ergonómico de controles táctiles en pantalla (D-Pad/Stick + Topspin/Slice/Lob/Drop + Pausa/F2/Protesta `[C]`/Arma `[R]`) para Winlator/contenedor.
-- [ ] **ANDROID-4: Pipeline automatizado de exportación (`tools/export_android_bundle.py`)**
-  - Crear un script reproducible que genere un paquete limpio y autocontenido (`dist/android/`) excluyendo basura de desarrollo (`*.pdb`, `*.lib`, `*.png` de depuración, instaladores `*.msi` de GFWL, logs) e incluyendo únicamente los binarios necesarios, `game/archive/`, `save/` portátil, preset `vt4_settings.ini` móvil, `dxvk.conf` y guía de instalación (`README_ANDROID.md`).
-  - Documentar y, si procede, automatizar la generación del **acceso directo APK** o empaquetado **APK + OBB/datos** (respetando la regla de no redistribuir archivos originales de SEGA en repositorios públicos: el mod se distribuye como parche/overlay limpio sobre la copia legal del usuario).
+- [x] **ANDROID-1: Investigación online de mejores prácticas vigentes (Prerrequisito)**
+  - Documentadas prácticas Winlator Bionic/Cmod, GameHub, DXVK + Turnip/Vortek, FUSE & Scoped Storage en `ANDROID_SETUP_GUIDE.md`.
+- [x] **ANDROID-2: Preparación de compatibilidad en `xlive.dll` y el motor para Wine / Box64 / DXVK**
+  - Perfil móvil `PerfProfile=2` (sombras 512x512, bloom 256x128, caché I/O en RAM 0 syscalls), `d3dx9_43.dll` auto-incluido, `dxvk.conf` y auditoría automática case-sensitive de `game/archive/` (`0` mismatches).
+- [x] **ANDROID-3: Controles y UX móvil**
+  - Soporte plug-and-play XInput + **Display de Mando Xbox Táctil Interactivo** (`src/xlive/touch_gamepad.h`) con stick analógico virtual, botones `A/B/X/Y`, `LB/RB` y `START`, configurable en `OPCIONES -> GRÁFICOS HD Y LEGENDS` (`TouchXboxHUD=0|1|2`, Auto en Android/Wine) o tecla `[F6]`.
+- [x] **ANDROID-4: Pipeline automatizado de exportación (`tools/export_android_bundle.py`)**
+  - Script reproducible que compila el lanzador nativo Win32 **`PLAY_VT4_LEGENDS.exe`** (`src/launcher/play_vt4_legends.c`, ejecución síncrona con `WINEDLLOVERRIDES` para 1 toque en GameHub/Winlator), genera `LAUNCH_ANDROID.bat` síncrono y exporta el paquete autónomo en `dist/android/VT4_Legends_Android/` (`0` fallos case-sensitive, `--patch-only` y `--verify-only` incluidos), sin basura de compilación/depuración ni subida de binarios SEGA a GitHub.
 - [ ] **ANDROID-5: Pruebas en dispositivo real y ajuste térmico/FPS**
   - Validar arranque, 60 FPS estables sin *thermal throttling* ni *micro-stuttering* de shaders, audio sin cortes, guardado local y modos clave (Exhibición con 4 páginas de roster, Madrid Blue Clay, Multiverse EE-1..EE-4 y HUD de Opciones) en Android (priorizando Snapdragon/Adreno con Turnip y documentando compatibilidad en Mali).
 
@@ -174,10 +169,32 @@ Objetivo: garantizar que *Virtua Tennis 4: Legends & Next-Gen Edition* sea **exp
   - **Grupo 1 (Rehacer / Colorear B&W)**: `26` Alcaraz, `29_91` Agassi '91 (si se desea acabado de estudio homogéneo), y los 6 en B&W (`51` Lendl, `52` Connors, `55` Evert, `74` Muster, `75` Bruguera, `77` Wilander).
   - **Grupo 2 (Mejorar foto joven)**: `46` Tsonga, `67` Coria, `72` Chang, `73` Ríos, `80` Conchita Martínez.
 
-### Estado verificado (2026-11-25): Grand Slams, Retratos 2D, HUD TV Moderno, Stats & Físicas y QA Total (`84` jugadores)
-- **Roster completo `84` tenistas (`0..83`, incluye `82` M. Andreeva y `83` B.J. King)**: Verificado al 100% en pista; el barrido `test_roster_matrix.py --ids 60,61,62,64,65,66,67,68,69,70,71,72,74,75,76,77,80,81,82,83 --cpu 0 --mv 3` completó **20/20** (`ok=True`, `ps=0`, `ex=0`, `exc=0`, `served>=1`). Voice packs ampliados a `VP_MAX_ROSTER_IDS=84` en `src/xlive/voice_packs.h`.
-- **Estadios de Grand Slam en vivo (`tools/build_grand_slam_stages.py`)**: Generados e inyectados los 8 `.sdo` (S+D) de `Aus1` (Australian Open), `Fra1` (Roland Garros), `Eng1` (Wimbledon) y `Usa1` (US Open + `Usa1NS/D_locator.zml`), verificados los 4 en `VT4.exe` con `ps=0 ex=0 exc=0`.
-- **Retratos 2D (`tools/fix_remaining_portraits_2026.py`)**: Recortados y empaquetados (`photo_L`, `photo_eye`, `photo_S`) los 7 retratos pendientes (`43`, `52`, `58`, `67`, `72`, `82`, `83`), logrando **59/59** `photo_L` con esquinas superiores transparentes.
+### Estado verificado (2026-11-25): Grand Slams, Retratos 2D, Marcadores TV Oficiales, Online P2P Nativo, Android & Controles
+- **Roster completo `84` tenistas (`0..83`, incluye `82` M. Andreeva y `83` B.J. King)**: Verificado al 100% en pista; el barrido `test_roster_matrix.py --ids 60,61,62,64,65,66,67,68,69,70,71,72,74,75,76,77,80,81,82,83 --cpu 0 --mv 3` completó **20/20** (`ok=True`, `ps=0`, `ex=0`, `exc=0`, `served>=1`). Voice packs ampliados a `VP_MAX_ROSTER_IDS=84` (`tools/import_voice_packs.py`, `src/xlive/voice_packs.h`).
+- **Estadios de Grand Slam en vivo (`tools/build_grand_slam_stages.py`)**: Generados e inyectados los 8 `.sdo` (S+D) de `Aus1` (Australian Open), `Fra1` (Roland Garros), `Eng1` (Wimbledon) y `Usa1` (US Open + `Usa1NS/D_locator.zml`, eliminada la moqueta fantasma `"O...S"` tanto en RGB como en Alpha especular), verificados los 4 en `VT4.exe` con `ps=0 ex=0 exc=0`.
+- **Marcadores TV Oficiales en Vivo (`tools/build_official_scoreboards.py` + `src/xlive/broadcast_hud.h`)**: Temas modulares `ao`, `rg`, `wim`, `uso`, `mad`, `tour` + atlas de 27 banderas IOC + lectura directa de RAM (`Match*` `+0x04 -> TennisStatus*`, sets, juegos, puntos/ventajas, saque, reloj, Break/Set/Match Point, radar `km/h` y rally), verificados en vivo en Wimbledon, US Open y Roland-Garros.
+- **Fix pantalla de carga (`0x0043CAC9` + `hk_StoLookup`)**: Interceptado `hk_Loading_SetPlayerPhoto` antes de `0x006693E9` para restaurar el ID real antes del módulo `26` (corregidos casos como `82` Andreeva -> `Del Potro` y `43` Kyrgios -> `Sharapova`), más mapeo completo de tablas bio (`9` revés, `10` nacimiento, `11..14`).
+- **Fix resto con teclado (`sample_p1_override_input`)**: Detecta estado del jugador (`Player + 0x248`) para admitir pulsación anticipada/mantenida y buffer de 20 ticks en estados de resto/peloteo `4..9`, manteniendo limpio el timing del saque en estados `2..3`.
+- **Display Interactivo Xbox para Android (`src/xlive/touch_gamepad.h`)**: Controles táctiles translúcidos estilo Recomp (`TouchXboxHUD=0|1|2` en `OPCIONES -> GRÁFICOS HD Y LEGENDS` o tecla `[F6]`) con auto-detección de Android/Wine y soporte táctil + ratón.
+- **Menú `EN LÍNEA` nativo VT4 + Auto-Descubrimiento LAN (`tools/build_netplay_ui_assets.py` + `src/xlive/netplay.h`)**: Pantalla completa nacarada/púrpura fiel a VT4 con escaneo LAN UDP (`NP_PKT_DISCOVER` / `NP_PKT_OFFER`) y HUD movido a la esquina superior derecha para no chocar con el marcador TV.
+- **Retratos 2D (`84/84` a color — cierre `v1.0-RC1`)**:
+  - `tools/fix_remaining_portraits_2026.py`: recortados y empaquetados (`photo_L`, `photo_eye`, `photo_S`) los 7 retratos (`43`, `52`, `58`, `67`, `72`, `82`, `83`).
+  - `tools/pack_colorized_bw_portraits.py`: recuperados a todo color y empaquetados los últimos 6 retratos (`51` Lendl, `52` Connors, `55` Evert, `74` Muster, `75` Bruguera, `77` Wilander), verificados visualmente en `scratch/bw_colorized_audit.png` (`262,272` B BGRA, esquinas transparentes y `photo_eye` centrado).
+- **Lanzador Nativo Android (`src/launcher/play_vt4_legends.c` + `tools/export_android_bundle.py`)**:
+  - Integrada compilación directa de `PLAY_VT4_LEGENDS.exe` + `LAUNCH_ANDROID.bat` síncrono + guía de 1 toque para GameHub y Winlator CMod/Frost; bundle reexportado (`3.62 GB`, `490` archivos, `0` fallos case-sensitive) y verificado en Windows con smoke-test síncrono (`0` procesos/logs residuales). **Hito `v1.0-RC1` cerrado y listo para dispositivo Android (`ANDROID-5`).**
+
+---
+
+## 🎨 Para más tarde: Skins Características `[F]` y Voces
+
+Workspace con muestras descriptivas y listas de archivos generadas por `tools/prepare_future_assets_workspaces.py`:
+- **Skins alt `[F]` (`assets/skins_alt_workspace/` — 14 carpetas)**:
+  - **Carlos Alcaraz (`26_ALC_USOpen2026`)**: US Open 2026 Nike Knicks sin mangas morado azulado / naranja / negro + pantalón negro (`P_M_AL2_NG.sdo`).
+  - **Jannik Sinner (`27_SIN_RomaNegro`)**: Roma / Internazionali d'Italia **negro entero** (`P_M_SI2_NG.sdo`).
+  - **Federer (`00` Wimbledon 2007 blanca/dorada)**, **Nadal (`01` RG 2008 sin mangas verde lima + piratas)**, **Djokovic (`02` AO 2019 Lacoste azul marino/blanco)**, **Sampras (`28` US Open '95 blanco)**, **Borg (`30` Wimbledon '80 Fila rayas)**, **McEnroe (`31` Wimbledon '81 Tacchini)**, **Graf (`32` Adidas '95)**, **Serena (`33` US Open 2018 tutú negro)**, **Swiatek (`34` RG 2024 On Running degradado rosa/tierra)**, **Sabalenka (`35` US Open 2024 fucsia)**, **Kyrgios (`43` Wimbledon 2022 blanco + gorra/zapatillas rojas)**, **Andreeva (`82` Tour 2026 azul celeste/blanco)**.
+  - *Archivos necesarios por carpeta*: `ref_kit_front.png`, `body_diffuse_1024.png` (1024x1024 RGBA), `body_spec_mask.png` *(opc.)*, `shoes_bands_512.png` *(opc.)*, `photo_L_alt.png` (256x256), `photo_S_alt.png` (128x128), `photo_eye_alt.png` (256x64).
+- **6 Retratos B&N (`assets/bw_portraits_pending/`)**: **COMPLETADOS (`84/84` a color en `v1.0-RC1`)** — `51_LEN`, `52_CON`, `55_EVE`, `74_MUS`, `75_BRU`, `77_WLD` empaquetados por `tools/pack_colorized_bw_portraits.py` (ver `assets/bw_portraits_pending/LEEME_6_RETRATOS_BN.txt`).
+- **Packs de voces (`assets/voices_workspace/`)**: 18 carpetas icónicas (incluyendo `82_AND` y `83_BJK`) con notas de muestra en cada evento (`grunt/`, `serve/`, `point_win/`, `point_lose/`, `protest/`, `match_win/`, `vs_*/`).
 - **HUD TV Moderno (`[F7]`), Estadísticas Individuales (`26..83`) y Físicas/Superficies (`src/xlive/broadcast_hud.h`, `src/xlive/player_stats.h`, `src/xlive/xlive.c`, `game/archive/Config/Fraw/fwDataDB/fwDataDB_Stage.txt`)**:
   - **HUD Broadcast TV** en esquina superior izquierda (`BroadcastHUD`, conmutable con `[F7]` y fila de Opciones): muestra torneo/superficie, emparejamiento, velocidad en vivo (`km/h` calibrado con el radar nativo) y contador de `RALLY`.
   - **Stats individuales** (`player_stats.h`) aplicados en tiempo real para todos los jugadores personalizados `26..83` vía `PlayStyle::LoadInner` + `ServeMax`.

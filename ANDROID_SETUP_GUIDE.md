@@ -4,12 +4,48 @@ Guía práctica para ejecutar **Virtua Tennis 4: Legends & Next-Gen Edition** co
 
 ---
 
+## 0. Exportador Automático Llave en Mano (`tools/export_android_bundle.py`)
+
+Puedes generar directamente un paquete limpio y autónomo listo para copiar a tu móvil Android en **`dist/android/VT4_Legends_Android/`** (o solo la actualización ligera del mod con `--patch-only`):
+
+```powershell
+# Exportación completa lista para copiar a Android (~3.5 GB, compila PLAY_VT4_LEGENDS.exe, incluye d3dx9_43.dll, dxvk.conf, vt4_settings.ini móvil y auditoría case-sensitive)
+py -u tools/export_android_bundle.py
+
+# Solo actualización de archivos del mod (sin copiar VT4.exe / resource*.bin)
+py -u tools/export_android_bundle.py --patch-only
+```
+
+El exportador limpia archivos de depuración (`.pdb`, `.png` temporales, instaladores `.msi`), compila el lanzador nativo Win32 **`PLAY_VT4_LEGENDS.exe`**, incluye `d3dx9_43.dll` (x86), `LAUNCH_ANDROID.bat` (síncrono), `dxvk.conf`, `LEEME_ANDROID.txt`, carpeta `save/` portátil y configura automáticamente **`TouchXboxHUD=1`** (Auto: activa en pantalla el display interactivo de mando Xbox al detectar Android/Wine).
+
+---
+
+## 0.5. Arranque en 1 Toque en Pantalla de Inicio (`PLAY_VT4_LEGENDS.exe`)
+
+El paquete exportado incluye **`PLAY_VT4_LEGENDS.exe`** (compilado desde `src/launcher/play_vt4_legends.c`), un lanzador nativo Win32 (~195 KB) que fija automáticamente `WINEDLLOVERRIDES=xlive,d3dx9_43,msvcr90,msvcp90,msvcm90=n,b` y ejecuta `VT4.exe` de forma **síncrona** (`WaitForSingleObject`), evitando que GameHub o Winlator cierren la sesión antes de tiempo.
+
+### En GameHub (GameFusion)
+1. Copia `VT4_Legends_Android/` a una ruta corta de tu memoria interna (p. ej. `/storage/emulated/0/Games/VT4_Legends_Android/`).
+2. Pulsa **Import PC Game** (o **Add Game**) y selecciona **`PLAY_VT4_LEGENDS.exe`** (no hace falta configurar manualmente `WINEDLLOVERRIDES`).
+3. Ajusta el perfil a **1280x720**, **Turnip** (Adreno) o **Vortek** (Mali), **DXVK 2.3+/2.4+ Async** y **PulseAudio**.
+4. Lanza el juego con **1 toque** desde tu biblioteca de GameHub (puedes fijar el acceso directo en el launcher de Android si tu versión lo permite).
+
+### En Winlator CMod / Frost
+1. Dentro del contenedor de Winlator, abre el explorador de archivos y navega a `VT4_Legends_Android/`.
+2. Haz clic derecho (o pulsación larga / dos dedos) sobre **`PLAY_VT4_LEGENDS.exe`** -> **Create Shortcut**.
+3. Cierra el contenedor, ve a la pestaña **Shortcuts** de Winlator, pulsa **`⋮`** en el acceso directo creado -> **Add to Home Screen**.
+4. Tendrás un icono directo de **1 toque** en la pantalla de inicio de Android que arranca directamente *Virtua Tennis 4: Legends & Next-Gen Edition* con `xlive.dll` y los 84 tenistas activos.
+
+*(Si prefieres ejecutar mediante batch, `LAUNCH_ANDROID.bat` también llama a `VT4.exe` de forma síncrona con los mismos overrides.)*
+
+---
+
 ## 1. Requisitos recomendados
 
 - **CPU/GPU ideal**: Snapdragon 8 Gen 1 / 8 Gen 2 / 8 Gen 3 / 8s Gen 3 / 7+ Gen 2 / 870 (GPU **Adreno** con driver **Turnip**).
 - **Gama media / Mali / Dimensity / Exynos**: Funciona bien bajando resolución a `1280x720` y activando `PerfProfile=2` en `vt4_settings.ini` (ver sección 3).
 - **RAM**: Mínimo 6 GB (recomendado 8 GB+).
-- **Almacenamiento**: ~5.5 GB libres (copia la carpeta `game/` completa a la memoria interna del dispositivo, **nunca** desde tarjeta SD lenta ni carpetas con rutas muy largas).
+- **Almacenamiento**: ~4 GB libres (copia la carpeta exportada `VT4_Legends_Android/` a una ruta corta de la memoria interna, **nunca** desde tarjeta SD lenta ni carpetas con rutas muy largas).
 
 ---
 
@@ -22,9 +58,10 @@ Guía práctica para ejecutar **Virtua Tennis 4: Legends & Next-Gen Edition** co
 - **Box64 Preset**: **Performance** (o `Intermediate` si notas cualquier inestabilidad en menús).
 - **Audio Driver**: **PulseAudio** (latencia baja).
 - **Windows Components / DLL Overrides**:
-  - `xlive` -> **Native (Windows)** *(imprescindible para que cargue nuestro `game/xlive.dll` con los 82 tenistas, pistas y optimizaciones)*.
+  - `xlive` -> **Native (Windows)** *(imprescindible para que cargue nuestro `xlive.dll` con los **84 tenistas**, Grand Slams, Marcadores TV, Netplay LAN y controles táctiles)*.
+  - `d3dx9_43` -> **Native (Windows)** *(ya incluida en el paquete exportado para fuentes y sprites D3D9)*.
   - `xaudio2_7` -> **Native (Windows)** *(garantiza el sonido nativo sin cortes; evita el fallback lento de Wine)*.
-  - `winmm` -> **Builtin, Native** *(para reproducir packs de voces personalizadas de `game/archive/voices/` sin stutter)*.
+  - `winmm` -> **Builtin, Native** *(para reproducir packs de voces personalizadas de `archive/voices/` sin stutter)*.
 
 ### B. Mali / Dimensity / Exynos / Tensor
 - **Resolución**: `1280x720` (o `960x540` en gama baja).
@@ -78,16 +115,19 @@ MultiverseMode=0
 
 ---
 
-## 4. Mapeo de Mando (Bluetooth / USB-C / Backbone / GameSir / Táctil)
+## 4. Mapeo de Mando (Bluetooth / USB-C / Backbone / Display Xbox Táctil)
 
-- En Winlator / GameHub activa **XInput** (emulación de mando Xbox 360).
-- Controles estándar de VT4 en mando:
+- **Display Interactivo de Mando Xbox en Pantalla (`TouchXboxHUD`)**:
+  - En **`OPCIONES -> GRÁFICOS HD Y LEGENDS`** (fila `MANDO XBOX TACTIL (ANDROID)`) o en `vt4_settings.ini`:
+    - `TouchXboxHUD=1` *(Auto — activado por defecto en el paquete Android)*: detecta Android/Wine automáticamente y dibuja el mando Xbox translúcido interactivo (Stick izquierdo, `A/B/X/Y` con leyenda de golpes, `LB/RB` para cambiar las 4 páginas del roster de **84 tenistas**, y `START`).
+    - `TouchXboxHUD=2`: siempre visible (puedes probarlo en PC pulsando **`F6`** en cualquier momento).
+- En Winlator / GameHub también puedes conectar un mando físico Bluetooth/USB-C (**XInput**) en paralelo; ambos funcionan al instante.
   - **Stick izquierdo / Cruceta**: Mover tenista y apuntar golpe/saque.
   - **A**: Golpe plano / Topspin (y confirmar menús).
-  - **B**: Globo (Lob).
-  - **X**: Cortado / Dejada (Slice / Drop shot).
-  - **Y**: Súper golpe (cuando la barra de estilo está llena).
-  - **LB / RB (`Q` / `E` en teclado)**: Cambiar página del selector de los 82 tenistas (`Tour` / `Legends 1` / `Legends 2` / `Legends 3`).
+  - **B**: Globo (Lob) / Atrás en menús.
+  - **X**: Cortado (Slice).
+  - **Y**: Dejada / Súper golpe.
+  - **LB / RB (`Q` / `E` en teclado)**: Cambiar página del selector de los **84 tenistas** (`Tour` / `Era Dorada` / `Leyendas 90s` / `Pioneros`).
   - **Start**: Pausa / saltar repeticiones.
 
 ---
@@ -96,7 +136,7 @@ MultiverseMode=0
 
 | Síntoma | Causa más probable | Solución |
 |---|---|---|
-| El juego arranca sin los 82 tenistas (solo 26 originales) | Wine no cargó `game/xlive.dll` | Añade override `xlive=n` (`WINEDLLOVERRIDES="xlive=n,b"`) en variables de entorno del contenedor |
+| El juego arranca sin los 84 tenistas (solo 26 originales) | Wine no cargó `xlive.dll` | Lanza desde **`PLAY_VT4_LEGENDS.exe`** (fija los overrides automáticamente) o añade `WINEDLLOVERRIDES="xlive,d3dx9_43,msvcr90,msvcp90,msvcm90=n,b"` en variables de entorno del contenedor |
 | Sin sonido o sonido entrecortado | `xaudio2_7` builtin en Wine | Activa `xaudio2_7=n` (Native) y usa `PulseAudio` en el contenedor |
 | Tirones al cargar partidos | FUSE lento en `/sdcard/Download` | Mueve `game/` a una ruta corta dentro del almacenamiento interno y mantén `PerfProfile=2` |
 | Pantalla negra al iniciar partido | Driver incompatible con MSAA | Pon `AntiAliasing=0` y `CleanPostFX=1` en `vt4_settings.ini` |

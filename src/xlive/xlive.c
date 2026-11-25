@@ -108,6 +108,7 @@ static uint32_t g_cfg_multiverse_mode = 0; // 0=Off, 1=EE-2 Batalla Hielo/Barro,
 static uint32_t g_cfg_weapon_mode = 0; // 0=Normal, 1=Raqueta Madera 70s, 2=Sarten Metalica, 3=Baguette Gigante
 static uint32_t g_cfg_broadcast_hud = 1; // 0=Off, 1=Modern Broadcast TV HUD [F7]
 static uint32_t g_cfg_pro_physics = 0; // 0=Estandar VT4, 1=Simulacion Pro (Bola Realista)
+static uint32_t g_cfg_touch_hud = 0; // 0=Off, 1=Auto (Android/Wine), 2=Always Visible [F6]
 static uint32_t g_cfg_debug_log = 0; // 0=Off (normal), 1=Enable diagnostic hook logs ([DIAG-*])
 
 static int g_is_fullscreen = 0;
@@ -130,6 +131,7 @@ static void netplay_get_local_ip(char *out, size_t cap);
 static void netplay_get_config(uint32_t *mode, char *ip_out, size_t ip_cap, uint16_t *port, uint32_t *delay);
 static int  netplay_reconfigure_live(uint32_t mode, const char *peer_ip, uint16_t port, uint32_t delay_frames, const char *ini_path);
 static void netplay_get_status_spanish(char *buf, size_t cap, uint32_t *out_argb);
+static int  netplay_lan_discover(uint16_t port, char *out_ip, size_t ip_cap, uint16_t *out_port, uint32_t *out_delay, uint32_t timeout_ms);
 
 static int g_vp_p1_id = -1;
 static int g_vp_p2_id = -1;
@@ -181,7 +183,9 @@ static void load_vt4_settings(void) {
                        "; HUD TV Retransmision (Tecla F7 en partido): 1 = Activo, 0 = Desactivado\n"
                        "BroadcastHUD=1\n"
                        "; Fisicas Pro de Bola: 0 = Estandar VT4, 1 = Simulacion Pro (menos flotante)\n"
-                       "ProPhysics=0\n\n"
+                       "ProPhysics=0\n"
+                       "; Mando Xbox Tactil en Pantalla (Tecla F6): 0 = Off, 1 = Auto (Android/Wine), 2 = Siempre Visible\n"
+                       "TouchXboxHUD=0\n\n"
                        "[Performance]\n"
                        "; Perfil de rendimiento: 0 = Ultra PC (Default), 1 = Esports (Baja Latencia), 2 = Android/Winlator Low-Spec\n"
                        "PerfProfile=0\n"
@@ -220,6 +224,8 @@ static void load_vt4_settings(void) {
     if (g_cfg_weapon_mode > 3) g_cfg_weapon_mode = 0;
     g_cfg_broadcast_hud = GetPrivateProfileIntA("Gameplay", "BroadcastHUD", 1, ini_path) ? 1 : 0;
     g_cfg_pro_physics = GetPrivateProfileIntA("Gameplay", "ProPhysics", 0, ini_path) ? 1 : 0;
+    g_cfg_touch_hud = GetPrivateProfileIntA("Gameplay", "TouchXboxHUD", 0, ini_path);
+    if (g_cfg_touch_hud > 2) g_cfg_touch_hud = 0;
     g_cfg_debug_log = GetPrivateProfileIntA("Debug", "DebugLog", 0, ini_path) ? 1 : 0;
 
     if (g_cfg_width <= 0) g_cfg_width = 1920;
@@ -240,7 +246,7 @@ static void load_vt4_settings(void) {
 // Phase 1B: Settings Menu, Options Integration & Direct3D 9 RenderTarget Scaling
 // ============================================================================
 
-#define NUM_SETTINGS_ITEMS 15
+#define NUM_SETTINGS_ITEMS 16
 
 typedef struct {
     uint32_t w, h;
@@ -356,6 +362,13 @@ static const char *s_prophys_choices[] = {
     "Simulacion Pro (Bola Realista)"
 };
 
+static const char *s_touchhud_choices[] = {
+    "Desactivado (Oculto)",
+    "Auto (Android / Wine)",
+    "Siempre Visible (Tactil / Demo)"
+};
+#define NUM_TOUCHHUD_CHOICES (sizeof(s_touchhud_choices) / sizeof(s_touchhud_choices[0]))
+
 static int s_idx_res = 0;
 static int s_idx_win = 0;
 static int s_idx_msaa = 2; // 4x default
@@ -370,6 +383,7 @@ static int s_idx_multiverse = 0;
 static int s_idx_weapon = 0;
 static int s_idx_bhud = 1;
 static int s_idx_prophys = 0;
+static int s_idx_touchhud = 0;
 
 static int g_menu_visible = 0;
 static int g_menu_selection = 0;
@@ -431,6 +445,7 @@ static void sync_menu_indices_from_cfg(void) {
     s_idx_weapon = (g_cfg_weapon_mode < (uint32_t)NUM_WEAPON_CHOICES) ? (int)g_cfg_weapon_mode : 0;
     s_idx_bhud = g_cfg_broadcast_hud ? 1 : 0;
     s_idx_prophys = g_cfg_pro_physics ? 1 : 0;
+    s_idx_touchhud = (g_cfg_touch_hud < (uint32_t)NUM_TOUCHHUD_CHOICES) ? (int)g_cfg_touch_hud : 0;
 }
 
 static void update_config_txt(void) {
@@ -550,6 +565,8 @@ static void save_vt4_settings(void) {
     WritePrivateProfileStringA("Gameplay", "BroadcastHUD", val, ini_path);
     snprintf(val, sizeof(val), "%u", g_cfg_pro_physics);
     WritePrivateProfileStringA("Gameplay", "ProPhysics", val, ini_path);
+    snprintf(val, sizeof(val), "%u", g_cfg_touch_hud);
+    WritePrivateProfileStringA("Gameplay", "TouchXboxHUD", val, ini_path);
 
     log_msg("[VT4-Mod] Settings saved to %s", ini_path);
 }
@@ -574,6 +591,7 @@ static void apply_and_save_menu_settings(void *dev) {
     g_cfg_weapon_mode = (uint32_t)s_idx_weapon;
     g_cfg_broadcast_hud = s_idx_bhud ? 1u : 0u;
     g_cfg_pro_physics = s_idx_prophys ? 1u : 0u;
+    g_cfg_touch_hud = (uint32_t)s_idx_touchhud;
 
     save_vt4_settings();
     apply_exhibition_rule_preset();
@@ -677,6 +695,7 @@ static int handle_settings_menu_input(int vk, void *dev) {
                 case 11: s_idx_weapon = (s_idx_weapon - 1 + (int)NUM_WEAPON_CHOICES) % (int)NUM_WEAPON_CHOICES; break;
                 case 12: s_idx_bhud = !s_idx_bhud; break;
                 case 13: s_idx_prophys = !s_idx_prophys; break;
+                case 14: s_idx_touchhud = (s_idx_touchhud - 1 + (int)NUM_TOUCHHUD_CHOICES) % (int)NUM_TOUCHHUD_CHOICES; break;
             }
             play_vt4_menu_se(4);
             log_msg("[VT4-Mod] Menu Value Left: item %d changed", g_menu_selection);
@@ -699,6 +718,7 @@ static int handle_settings_menu_input(int vk, void *dev) {
                 case 11: s_idx_weapon = (s_idx_weapon + 1) % (int)NUM_WEAPON_CHOICES; break;
                 case 12: s_idx_bhud = !s_idx_bhud; break;
                 case 13: s_idx_prophys = !s_idx_prophys; break;
+                case 14: s_idx_touchhud = (s_idx_touchhud + 1) % (int)NUM_TOUCHHUD_CHOICES; break;
             }
             play_vt4_menu_se(4);
             log_msg("[VT4-Mod] Menu Value Right: item %d changed", g_menu_selection);
@@ -817,6 +837,13 @@ static D3DXCreateTextureFromFileA_t g_d3dx_createtex = NULL;
 static void *g_pCrestTex = NULL;
 static void *g_pOptBtnUnselTex = NULL;
 static void *g_pOptBtnSelTex = NULL;
+static void *g_pNpBgTex = NULL;
+static void *g_pNpRowUnselTex = NULL;
+static void *g_pNpRowSelTex = NULL;
+static void *g_pNpBtnUnselTex = NULL;
+static void *g_pNpBtnSelTex = NULL;
+static void *g_pNpCardTex = NULL;
+static int   g_np_tex_attempted = 0;
 
 static void __attribute__((noinline)) init_menu_fonts(void *dev) {
     if (!dev) dev = g_d3d_device;
@@ -850,6 +877,22 @@ static void __attribute__((noinline)) init_menu_fonts(void *dev) {
         char btn_path[MAX_PATH];
         snprintf(btn_path, sizeof(btn_path), "%s\\archive\\opt_btn_sel.png", g_game_dir);
         if (FAILED(g_d3dx_createtex(dev, btn_path, &g_pOptBtnSelTex))) g_pOptBtnSelTex = NULL;
+    }
+    if (g_d3dx_createtex && !g_np_tex_attempted && g_game_dir[0]) {
+        g_np_tex_attempted = 1;
+        char p[MAX_PATH];
+        snprintf(p, sizeof(p), "%s\\archive\\hud\\netplay\\netplay_bg.png", g_game_dir);
+        if (FAILED(g_d3dx_createtex(dev, p, &g_pNpBgTex))) g_pNpBgTex = NULL;
+        snprintf(p, sizeof(p), "%s\\archive\\hud\\netplay\\netplay_row_unsel.png", g_game_dir);
+        if (FAILED(g_d3dx_createtex(dev, p, &g_pNpRowUnselTex))) g_pNpRowUnselTex = NULL;
+        snprintf(p, sizeof(p), "%s\\archive\\hud\\netplay\\netplay_row_sel.png", g_game_dir);
+        if (FAILED(g_d3dx_createtex(dev, p, &g_pNpRowSelTex))) g_pNpRowSelTex = NULL;
+        snprintf(p, sizeof(p), "%s\\archive\\hud\\netplay\\netplay_btn_unsel.png", g_game_dir);
+        if (FAILED(g_d3dx_createtex(dev, p, &g_pNpBtnUnselTex))) g_pNpBtnUnselTex = NULL;
+        snprintf(p, sizeof(p), "%s\\archive\\hud\\netplay\\netplay_btn_sel.png", g_game_dir);
+        if (FAILED(g_d3dx_createtex(dev, p, &g_pNpBtnSelTex))) g_pNpBtnSelTex = NULL;
+        snprintf(p, sizeof(p), "%s\\archive\\hud\\netplay\\netplay_card.png", g_game_dir);
+        if (FAILED(g_d3dx_createtex(dev, p, &g_pNpCardTex))) g_pNpCardTex = NULL;
     }
     if (g_d3dx_createsprite && !g_pSprite) {
         HRESULT hr_sp = g_d3dx_createsprite(dev, &g_pSprite);
@@ -1014,8 +1057,8 @@ static void render_settings_hud(void *dev) {
 
     float col_x1 = native_style ? (120.0f * sx) : (((float)g_cfg_width - 540.0f) * 0.5f);
     float col_x2 = native_style ? (575.0f * sx) : (col_x1 + 540.0f);
-    float row_start_y = native_style ? (92.0f * sy) : (((float)g_cfg_height - 580.0f) * 0.5f + 44.0f);
-    float row_pitch = 37.5f * sy;
+    float row_start_y = native_style ? (86.0f * sy) : (((float)g_cfg_height - 600.0f) * 0.5f + 42.0f);
+    float row_pitch = 34.5f * sy;
 
     if (!native_style) {
         draw_screen_quad(dev, col_x1 - 18.0f * sx, row_start_y - 54.0f * sy,
@@ -1039,6 +1082,7 @@ static void render_settings_hud(void *dev) {
         "ARMA ARCADE (EE-3)",
         "HUD TV RETRANSMISION [F7]",
         "FISICAS PRO DE BOLA",
+        "MANDO XBOX TACTIL (ANDROID)",
         "GUARDAR Y APLICAR CAMBIOS"
     };
 
@@ -1054,9 +1098,10 @@ static void render_settings_hud(void *dev) {
         "Ajusta el ritmo Arcade VT2 (1.20x/1.35x) o Pro",
         "Partidos Exhibicion: 1/3/5 Sets de 6 Juegos y Tie-Break",
         "Easter Eggs: Batalla Hielo/Barro (EE-2) y Super Golpes 300% (EE-4)",
-        "Arma 3D en mano: Raqueta Madera 70s, Sarten Metalica o Baguette Gigante",
-        "Overlay TV moderno en partido: Torneo, radar km/h y contador de rally ([F7])",
+        "Arma 3D en mano: Raqueta Madera 70s, Sarten Metalica o Baguette",
+        "Overlay TV moderno en partido: Torneo, radar km/h y rally ([F7])",
         "Ajusta la gravedad y velocidad de bola para peloteos menos flotantes",
+        "Mando Xbox tactil interactivo en pantalla para Android/Wine ([F6])",
         "Guarda vt4_settings.ini y aplica los ajustes ahora"
     };
 
@@ -1065,7 +1110,7 @@ static void render_settings_hud(void *dev) {
         int is_sel = (i == g_menu_selection);
         if (i == NUM_SETTINGS_ITEMS - 1) {
             float by1 = y0 + 2.0f * sy;
-            float by2 = y0 + 30.0f * sy;
+            float by2 = y0 + 28.0f * sy;
             DWORD bg = is_sel ? 0xF2129850 : 0xEA2B5A40;
             DWORD bd = is_sel ? 0xFF40FF98 : 0xFF559070;
             draw_screen_quad(dev, col_x1, by1, col_x2, by2, bg);
@@ -1073,17 +1118,17 @@ static void render_settings_hud(void *dev) {
             draw_screen_quad(dev, col_x1, by2 - 1.5f * sy, col_x2, by2, bd);
         } else {
             float top_y1 = y0;
-            float top_y2 = y0 + 16.5f * sy;
+            float top_y2 = y0 + 15.0f * sy;
             float bot_y1 = top_y2;
-            float bot_y2 = y0 + 34.5f * sy;
+            float bot_y2 = y0 + 31.5f * sy;
             DWORD top_bg = is_sel ? 0xF28416DE : 0xFFF5F6F9;
             DWORD bot_bg = is_sel ? 0xF53B0660 : 0xFF5E6068;
             DWORD div_ln = is_sel ? 0xFFD098FF : 0xFF989AA2;
             draw_screen_quad(dev, col_x1, top_y1, col_x2, top_y2, top_bg);
             draw_screen_quad(dev, col_x1, bot_y1, col_x2, bot_y2, bot_bg);
             draw_screen_quad(dev, col_x1, top_y1, col_x2, top_y1 + 1.0f, div_ln);
-            draw_screen_quad(dev, col_x1 + 14.0f * sx, top_y1 + 5.0f * sy,
-                             col_x1 + 22.0f * sx, top_y1 + 11.5f * sy,
+            draw_screen_quad(dev, col_x1 + 14.0f * sx, top_y1 + 4.5f * sy,
+                             col_x1 + 22.0f * sx, top_y1 + 10.5f * sy,
                              is_sel ? 0xFFFFFFFF : 0xFF7A7C84);
         }
     }
@@ -1098,9 +1143,9 @@ static void render_settings_hud(void *dev) {
 
         RECT r;
         r.left = (LONG)(col_x1 + 24.0f * sx);
-        r.top = (LONG)(row_start_y - 38.0f * sy);
+        r.top = (LONG)(row_start_y - 36.0f * sy);
         r.right = (LONG)(col_x2 + 20.0f * sx);
-        r.bottom = (LONG)(row_start_y - 6.0f * sy);
+        r.bottom = (LONG)(row_start_y - 4.0f * sy);
         draw_font_text(g_pFontTitle, "GRAFICOS HD Y LEGENDS", &r, 0xFF5C5E66, 0);
 
         char val_buf[128];
@@ -1111,7 +1156,7 @@ static void render_settings_hud(void *dev) {
                 r.left = (LONG)(col_x1 + 10.0f * sx);
                 r.top = (LONG)(y0 + 2.0f * sy);
                 r.right = (LONG)(col_x2 - 10.0f * sx);
-                r.bottom = (LONG)(y0 + 30.0f * sy);
+                r.bottom = (LONG)(y0 + 28.0f * sy);
                 draw_font_text(g_pFontTitle, item_labels[i], &r, 0xFFFFFFFF, 1);
             } else {
                 DWORD lbl_col = is_sel ? 0xFFFFFFFF : 0xFF60626C;
@@ -1120,7 +1165,7 @@ static void render_settings_hud(void *dev) {
                 r.left = (LONG)(col_x1 + 30.0f * sx);
                 r.top = (LONG)y0;
                 r.right = (LONG)(col_x2 - 12.0f * sx);
-                r.bottom = (LONG)(y0 + 16.5f * sy);
+                r.bottom = (LONG)(y0 + 15.0f * sy);
                 draw_font_text(g_pFont, item_labels[i], &r, lbl_col, 0);
 
                 switch (i) {
@@ -1138,11 +1183,12 @@ static void render_settings_hud(void *dev) {
                     case 11: snprintf(val_buf, sizeof(val_buf), "< %s >", s_weapon_choices[s_idx_weapon]); break;
                     case 12: snprintf(val_buf, sizeof(val_buf), "< %s >", s_bhud_choices[s_idx_bhud]); break;
                     case 13: snprintf(val_buf, sizeof(val_buf), "< %s >", s_prophys_choices[s_idx_prophys]); break;
+                    case 14: snprintf(val_buf, sizeof(val_buf), "< %s >", s_touchhud_choices[s_idx_touchhud]); break;
                 }
                 r.left = (LONG)(col_x1 + 12.0f * sx);
-                r.top = (LONG)(y0 + 16.5f * sy);
+                r.top = (LONG)(y0 + 15.0f * sy);
                 r.right = (LONG)(col_x2 - 12.0f * sx);
-                r.bottom = (LONG)(y0 + 34.5f * sy);
+                r.bottom = (LONG)(y0 + 31.5f * sy);
                 draw_font_text(g_pFont, val_buf, &r, val_col, 1);
             }
         }
@@ -1193,6 +1239,8 @@ static void render_settings_hud(void *dev) {
     end_overlay_state(dev);
     ensure_d3d9_device_hooks(dev);
 }
+
+#include "touch_gamepad.h"
 
 static uint8_t g_keys_down[256] = {0};
 static uint32_t g_btn_hold[256] = {0};
@@ -1306,13 +1354,17 @@ static int xinput_get_p1(float *out_ax, float *out_ay, WORD *out_btns) {
             }
         }
     }
-    if (out_ax) *out_ax = s_xi_ax;
-    if (out_ay) *out_ay = s_xi_ay;
-    if (out_btns) *out_btns = s_xi_btns;
-    return s_xi_ok;
+    float t_ax = 0.0f, t_ay = 0.0f;
+    WORD  t_btns = 0;
+    int   t_ok = touch_gamepad_get_p1(&t_ax, &t_ay, &t_btns);
+
+    if (out_ax) *out_ax = (t_ok && (fabsf(t_ax) > 0.05f || fabsf(t_ay) > 0.05f)) ? t_ax : s_xi_ax;
+    if (out_ay) *out_ay = (t_ok && (fabsf(t_ax) > 0.05f || fabsf(t_ay) > 0.05f)) ? t_ay : s_xi_ay;
+    if (out_btns) *out_btns = (WORD)(s_xi_btns | t_btns);
+    return (s_xi_ok || t_ok) ? 1 : 0;
 }
 
-#define NUM_NETPLAY_ITEMS 6
+#define NUM_NETPLAY_ITEMS 7
 static int      s_np_sel = 0;
 static uint32_t s_np_mode = 0;
 static char     s_np_ip[64] = "127.0.0.1";
@@ -1321,7 +1373,7 @@ static uint32_t s_np_delay = 3;
 static char     s_np_local_ip[64] = "127.0.0.1";
 static char     s_np_feedback[128] = "";
 static int      s_np_feedback_timer = 0;
-static uint32_t s_np_feedback_col = 0xFF80FFB8;
+static uint32_t s_np_feedback_col = 0xFF14783C;
 
 static void netplay_ui_sync_from_live(void) {
     uint16_t p16 = 7777;
@@ -1350,7 +1402,7 @@ static void close_netplay_menu(void) {
 static int handle_netplay_menu_input(int vk) {
     if (!g_netplay_menu_visible) return 0;
 
-    if (s_np_sel == 1) {
+    if (s_np_sel == 2) {
         char ch = 0;
         if (vk >= '0' && vk <= '9') ch = (char)vk;
         else if (vk >= VK_NUMPAD0 && vk <= VK_NUMPAD9) ch = (char)('0' + (vk - VK_NUMPAD0));
@@ -1377,7 +1429,7 @@ static int handle_netplay_menu_input(int vk) {
             play_vt4_menu_se(4);
             return 1;
         }
-    } else if (s_np_sel == 2) {
+    } else if (s_np_sel == 3) {
         int digit = -1;
         if (vk >= '0' && vk <= '9') digit = vk - '0';
         else if (vk >= VK_NUMPAD0 && vk <= VK_NUMPAD9) digit = vk - VK_NUMPAD0;
@@ -1409,30 +1461,53 @@ static int handle_netplay_menu_input(int vk) {
         case VK_LEFT:
         case 'A':
             if (s_np_sel == 0) s_np_mode = (s_np_mode + 2u) % 3u;
-            else if (s_np_sel == 2) s_np_port = (s_np_port > 1024u) ? (s_np_port - 1u) : 65535u;
-            else if (s_np_sel == 3) s_np_delay = (s_np_delay > 1u) ? (s_np_delay - 1u) : 12u;
+            else if (s_np_sel == 3) s_np_port = (s_np_port > 1024u) ? (s_np_port - 1u) : 65535u;
+            else if (s_np_sel == 4) s_np_delay = (s_np_delay > 1u) ? (s_np_delay - 1u) : 12u;
             play_vt4_menu_se(4);
             return 1;
         case VK_RIGHT:
         case 'D':
             if (s_np_sel == 0) s_np_mode = (s_np_mode + 1u) % 3u;
-            else if (s_np_sel == 2) s_np_port = (s_np_port < 65535u) ? (s_np_port + 1u) : 1024u;
-            else if (s_np_sel == 3) s_np_delay = (s_np_delay < 12u) ? (s_np_delay + 1u) : 1u;
+            else if (s_np_sel == 3) s_np_port = (s_np_port < 65535u) ? (s_np_port + 1u) : 1024u;
+            else if (s_np_sel == 4) s_np_delay = (s_np_delay < 12u) ? (s_np_delay + 1u) : 1u;
             play_vt4_menu_se(4);
             return 1;
         case VK_RETURN:
         case VK_SPACE: {
             char ini_path[MAX_PATH];
             netplay_ui_build_ini_path(ini_path, sizeof(ini_path));
-            if (s_np_sel == 5) {
+            if (s_np_sel == 1) {
+                char found_ip[64] = {0};
+                uint16_t found_port = (uint16_t)(s_np_port ? s_np_port : 7777u);
+                uint32_t found_delay = s_np_delay;
+                if (netplay_lan_discover(found_port, found_ip, sizeof(found_ip), &found_port, &found_delay, 320u)) {
+                    strncpy(s_np_ip, found_ip, sizeof(s_np_ip) - 1);
+                    s_np_ip[sizeof(s_np_ip) - 1] = '\0';
+                    s_np_mode = 2u;
+                    s_np_port = (uint32_t)found_port;
+                    s_np_delay = found_delay;
+                    snprintf(s_np_feedback, sizeof(s_np_feedback),
+                             "SALA LAN ENCONTRADA: %s:%u (PULSA APLICAR)", s_np_ip, s_np_port);
+                    s_np_feedback_col = 0xFF14783C;
+                    play_vt4_menu_se(5);
+                } else {
+                    snprintf(s_np_feedback, sizeof(s_np_feedback),
+                             "SIN SALAS LAN EN :%u - CREA HOST EN EL OTRO EQUIPO", (unsigned)found_port);
+                    s_np_feedback_col = 0xFFB06808;
+                    play_vt4_menu_se(4);
+                }
+                s_np_feedback_timer = 260;
+                return 1;
+            }
+            if (s_np_sel == 6) {
                 s_np_mode = 0;
                 netplay_reconfigure_live(0, s_np_ip, (uint16_t)(s_np_port ? s_np_port : 7777u), s_np_delay, ini_path);
                 play_vt4_menu_se(6);
                 close_netplay_menu();
                 return 1;
             }
-            if (s_np_sel == 4 || s_np_sel < 4) {
-                if (s_np_mode == 0 && s_np_sel == 4) {
+            if (s_np_sel == 5 || s_np_sel < 5) {
+                if (s_np_mode == 0 && s_np_sel == 5) {
                     s_np_mode = 1; // Pressing CONECTAR while OFF defaults conveniently to HOST P1
                 }
                 if (s_np_port == 0 || s_np_port > 65535u) s_np_port = 7777u;
@@ -1446,10 +1521,10 @@ static int handle_netplay_menu_input(int vk) {
                     } else {
                         snprintf(s_np_feedback, sizeof(s_np_feedback), "BUSCANDO %s:%u - PULSA ESC Y ENTRA EN EXHIBICION", s_np_ip, s_np_port);
                     }
-                    s_np_feedback_col = 0xFF80FFB8;
+                    s_np_feedback_col = 0xFF14783C;
                 } else {
                     snprintf(s_np_feedback, sizeof(s_np_feedback), "ERROR AL ABRIR UDP :%u / IP '%s'", s_np_port, s_np_ip);
-                    s_np_feedback_col = 0xFFFF7070;
+                    s_np_feedback_col = 0xFFC02830;
                 }
                 s_np_feedback_timer = 240;
                 play_vt4_menu_se(5);
@@ -1805,9 +1880,52 @@ static int sto_is_federer_dob(const char *s) {
     return (strstr(s, "8/8/1981") != NULL || strstr(s, "1981/8/8") != NULL);
 }
 
+static int      g_loading_cur_char_id = -1;
+static uint32_t g_loading_cur_frame   = 0;
+
+static void __thiscall hk_Loading_SetPlayerPhoto(void *self, int slot, int char_id) {
+    if (char_id >= 0 && char_id < MAX_ROSTER_PLAYERS) {
+        g_loading_cur_char_id = char_id;
+        g_loading_cur_frame   = g_present_calls;
+    }
+    typedef void (__thiscall *SetPhotoFn_t)(void *, int, int);
+    ((SetPhotoFn_t)0x005E6510)(self, slot, char_id);
+}
+
 static const char *__fastcall hk_StoLookup(void *sto_obj, void *edx, int table_id, int row_id) {
     (void)edx;
     if (!g_real_sto_lookup) return "";
+    /* Pre-match loading/versus text template (caller 0x006693E9) receives char ids already reduced
+     * modulo 26 (82 -> 4 "Del Potro", 43 -> 17 "Sharapova"). Restore the real id using
+     * hk_Loading_SetPlayerPhoto (0x0043CAC9) which sets g_loading_cur_char_id right before 0x006693E9. */
+    if (sto_obj == g_tr_common_sto && row_id >= 0 && row_id < 26 &&
+        __builtin_return_address(0) == (void *)0x006693E9) {
+        int resolved = -1;
+        if (g_loading_cur_char_id >= 26 && g_loading_cur_char_id < MAX_ROSTER_PLAYERS &&
+            g_present_calls <= g_loading_cur_frame + 10u && (g_loading_cur_char_id % 26) == row_id) {
+            resolved = g_loading_cur_char_id;
+        } else if (g_vp_p1_id >= 0) {
+            static uint32_t s_lt_frame = 0;
+            static int s_lt_idx = -1, s_lt_last_row = -1;
+            if (g_present_calls > s_lt_frame + 3u) { s_lt_idx = -1; s_lt_last_row = -1; }
+            s_lt_frame = g_present_calls;
+            if (row_id != s_lt_last_row) { s_lt_idx++; s_lt_last_row = row_id; }
+            int pid = (s_lt_idx == 0) ? g_vp_p1_id : (s_lt_idx == 1 ? g_vp_p2_id : -1);
+            if (pid >= 26 && pid < MAX_ROSTER_PLAYERS && (pid % 26) == row_id) {
+                resolved = pid;
+            }
+        }
+        if (resolved >= 26) {
+            if (g_cfg_debug_log) {
+                static int s_lt_log = 0;
+                if (s_lt_log < 16) {
+                    s_lt_log++;
+                    log_msg("[VT4-Mod] [LOADFIX] loading text tbl=%d row %d -> real id %d", table_id, row_id, resolved);
+                }
+            }
+            row_id = resolved;
+        }
+    }
     if (sto_obj && sto_obj != g_tr_common_sto) {
         const char *probe = g_real_sto_lookup(sto_obj, 0, 0);
         if (probe && strcmp(probe, "Roger Federer") == 0) {
@@ -1834,7 +1952,7 @@ static const char *__fastcall hk_StoLookup(void *sto_obj, void *edx, int table_i
             }
         }
         if (row_id >= 26 && row_id < MAX_ROSTER_PLAYERS) {
-            if (g_sto_tbl_dob >= 0 && table_id == g_sto_tbl_dob) {
+            if ((g_sto_tbl_dob >= 0 && table_id == g_sto_tbl_dob) || table_id == 10) {
                 return g_custom_dob[row_id - 26];
             }
             if (row_id < 38) {
@@ -1847,13 +1965,13 @@ static const char *__fastcall hk_StoLookup(void *sto_obj, void *edx, int table_i
                     case 4: return g_custom_banner_names[idx];
                     case 5: return g_custom_short_upper[idx];
                     case 6: return g_custom_ioc_codes[idx];
-                    case 8:  return g_real_sto_lookup(sto_obj, 8, g_custom_lefty[idx] ? 1 : 0);
-                    case 10: return g_real_sto_lookup(sto_obj, 10, g_custom_bh2[idx] ? 2 : 0);
-                    case 7:
-                    case 11:
-                    case 13:
-                        return g_real_sto_lookup(sto_obj, table_id, (int)g_custom_bio_proxy[idx]);
-                    default: break;
+                    case 8: return g_real_sto_lookup(sto_obj, 8, g_custom_lefty[idx] ? 1 : 0);
+                    case 9: return g_real_sto_lookup(sto_obj, 9, g_custom_bh2[idx] ? 2 : 0);
+                    default:
+                        if (table_id >= 7) {
+                            return g_real_sto_lookup(sto_obj, table_id, (int)g_custom_bio_proxy[idx]);
+                        }
+                        break;
                 }
             } else {
                 const ExtraPlayerDef *ep = &g_extra_players[row_id - 38];
@@ -1865,13 +1983,13 @@ static const char *__fastcall hk_StoLookup(void *sto_obj, void *edx, int table_i
                     case 4: return ep->banner_name;
                     case 5: return ep->short_name;
                     case 6: return ep->ioc_code;
-                    case 8:  return g_real_sto_lookup(sto_obj, 8, ep->lefty ? 1 : 0);
-                    case 10: return g_real_sto_lookup(sto_obj, 10, ep->bh2 ? 2 : 0);
-                    case 7:
-                    case 11:
-                    case 13:
-                        return g_real_sto_lookup(sto_obj, table_id, (int)ep->bio_proxy);
-                    default: break;
+                    case 8: return g_real_sto_lookup(sto_obj, 8, ep->lefty ? 1 : 0);
+                    case 9: return g_real_sto_lookup(sto_obj, 9, ep->bh2 ? 2 : 0);
+                    default:
+                        if (table_id >= 7) {
+                            return g_real_sto_lookup(sto_obj, table_id, (int)ep->bio_proxy);
+                        }
+                        break;
                 }
             }
         }
@@ -3020,6 +3138,15 @@ static LRESULT CALLBACK hk_GameWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                 }
                 return 0;
             }
+            if (wParam == VK_F6) { // F6 toggle Interactive Xbox Touch HUD live
+                if (!(lParam & (1 << 30))) {
+                    g_cfg_touch_hud = g_cfg_touch_hud ? 0u : 2u;
+                    sync_menu_indices_from_cfg();
+                    save_vt4_settings();
+                    log_msg("[VT4-Mod] [TOUCHHUD] F6 toggled TouchXboxHUD=%u", g_cfg_touch_hud);
+                }
+                return 0;
+            }
             if (wParam == VK_TAB && g_option_mode_active) {
                 if (!(lParam & (1 << 30))) {
                     g_netplay_menu_visible = 0;
@@ -3075,9 +3202,24 @@ static LRESULT CALLBACK hk_GameWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
             break;
         }
         case WM_LBUTTONDOWN: {
+            if (touch_gamepad_on_wndmsg(hwnd, uMsg, wParam, lParam, g_cfg_touch_hud)) {
+                return 0;
+            }
             int mx = (short)LOWORD(lParam);
             int my = (short)HIWORD(lParam);
             if (check_roster_arrow_click(mx, my)) {
+                return 0;
+            }
+            break;
+        }
+        case WM_MOUSEMOVE:
+        case WM_LBUTTONUP:
+        case WM_CAPTURECHANGED:
+        case WM_POINTERUPDATE:
+        case WM_POINTERDOWN:
+        case WM_POINTERUP:
+        case WM_POINTERCAPTURECHANGED: {
+            if (touch_gamepad_on_wndmsg(hwnd, uMsg, wParam, lParam, g_cfg_touch_hud)) {
                 return 0;
             }
             break;
@@ -3338,7 +3480,8 @@ static void render_netplay_hud(void *dev) {
 
     float sx = (float)g_cfg_width / 1280.0f;
     float sy = (float)g_cfg_height / 720.0f;
-    float x1 = 16.0f * sx, y1 = 12.0f * sy, x2 = 540.0f * sx, y2 = 40.0f * sy;
+    /* Positioned top-right so it never overlaps the Official TV Scoreboard on the top-left */
+    float x1 = 768.0f * sx, y1 = 12.0f * sy, x2 = 1264.0f * sx, y2 = 40.0f * sy;
     draw_screen_quad(dev, x1, y1, x2, y2, 0xCC0A101C);
     draw_screen_quad(dev, x1, y2 - 2.0f * sy, x2, y2, txt_col);
 
@@ -3349,8 +3492,8 @@ static void render_netplay_hud(void *dev) {
         SpriteBegin_t sp_begin = (SpriteBegin_t)svtbl[8];
         SpriteEnd_t   sp_end   = (SpriteEnd_t)svtbl[11];
         if (sp_begin && sp_begin(g_pSprite, 0x10) >= 0) {
-            RECT r = { (LONG)(x1 + 10.0f * sx), (LONG)y1, (LONG)(x2 - 8.0f * sx), (LONG)y2 };
-            draw_font_text(g_pFont, hud_txt, &r, txt_col, 0);
+            RECT r = { (LONG)(x1 + 10.0f * sx), (LONG)y1, (LONG)(x2 - 10.0f * sx), (LONG)y2 };
+            draw_font_text(g_pFont, hud_txt, &r, txt_col, 2);
             if (sp_end) sp_end(g_pSprite);
         }
     }
@@ -3373,20 +3516,20 @@ static void render_netplay_menu(void *dev) {
     float sx = (float)g_cfg_width / 1280.0f;
     float sy = (float)g_cfg_height / 720.0f;
 
-    float px1 = 230.0f * sx, py1 = 95.0f * sy, px2 = 1050.0f * sx, py2 = 635.0f * sy;
-    draw_screen_quad(dev, 0.0f, 0.0f, (float)g_cfg_width, (float)g_cfg_height, 0x99080A14);
-    draw_screen_quad(dev, px1, py1, px2, py2, 0xF2121626);
-    draw_screen_quad(dev, px1, py1, px2, py1 + 4.0f * sy, 0xFFB020FF);
-    draw_screen_quad(dev, px1, py2 - 3.0f * sy, px2, py2, 0xFFB020FF);
-
-    // Status bar
-    char status_buf[160];
-    uint32_t st_col = 0xFFFFD54F;
-    netplay_get_status_spanish(status_buf, sizeof(status_buf), &st_col);
-    draw_screen_quad(dev, px1 + 24.0f * sx, py1 + 54.0f * sy, px2 - 24.0f * sx, py1 + 88.0f * sy, 0xCC1C2238);
+    /* Native VT4 full-screen pearl/silver/magenta theme (matches OPCIONES / EXHIBICION) */
+    if (g_pNpBgTex) {
+        draw_textured_quad(dev, g_pNpBgTex, 0.0f, 0.0f, (float)g_cfg_width, (float)g_cfg_height, 0xFFFFFFFF);
+    } else {
+        draw_screen_quad(dev, 0.0f, 0.0f, (float)g_cfg_width, (float)g_cfg_height, 0xFFEBEDF2);
+        draw_screen_quad(dev, 650.0f * sx, 0.0f, (float)g_cfg_width, (float)g_cfg_height, 0xFFE2E4EC);
+        draw_screen_quad(dev, 0.0f, 62.0f * sy, (float)g_cfg_width, 66.0f * sy, 0xFF8416DE);
+        draw_screen_quad(dev, 650.0f * sx, 62.0f * sy, 658.0f * sx, 656.0f * sy, 0xFF8416DE);
+        draw_screen_quad(dev, 0.0f, 656.0f * sy, (float)g_cfg_width, (float)g_cfg_height, 0xFFE0E2E8);
+    }
 
     const char *labels[NUM_NETPLAY_ITEMS] = {
         "MODO DE CONEXION",
+        "BUSCAR SALA EN RED LOCAL (LAN)",
         "IP DEL RIVAL (ESCRIBIR)",
         "PUERTO UDP (PC <-> ANDROID)",
         "DELAY DE RED (FRAMES)",
@@ -3394,25 +3537,62 @@ static void render_netplay_menu(void *dev) {
         "DESCONECTAR Y VOLVER"
     };
 
-    float row_y0 = py1 + 132.0f * sy;
-    float row_pitch = 56.0f * sy;
+    float col_x1 = 66.0f * sx, col_x2 = 626.0f * sx;
+    float row_y0 = 104.0f * sy;
+    float row_pitch = 62.0f * sy;
+
     for (int i = 0; i < NUM_NETPLAY_ITEMS; i++) {
         float ry1 = row_y0 + (float)i * row_pitch;
-        float ry2 = ry1 + 46.0f * sy;
+        float ry2 = ry1 + (i >= 5 ? 48.0f : 54.0f) * sy;
         int sel = (i == s_np_sel);
-        DWORD bg;
-        if (i == 4) bg = sel ? 0xF2149850 : 0xCC1B4632;
-        else if (i == 5) bg = sel ? 0xF2982848 : 0xCC3E1E2C;
-        else bg = sel ? 0xF27C1CE0 : 0xCC1C2134;
-        draw_screen_quad(dev, px1 + 28.0f * sx, ry1, px2 - 28.0f * sx, ry2, bg);
-        if (sel) {
-            draw_screen_quad(dev, px1 + 28.0f * sx, ry1, px1 + 34.0f * sx, ry2, 0xFFFFFFFF);
+        void *tex = (i >= 5) ? (sel ? g_pNpBtnSelTex : g_pNpBtnUnselTex)
+                             : (sel ? g_pNpRowSelTex : g_pNpRowUnselTex);
+        if (tex) {
+            DWORD tint = (i == 6 && sel) ? 0xFFFFD0D8 : 0xFFFFFFFF;
+            draw_textured_quad(dev, tex, col_x1, ry1, col_x2, ry2, tint);
+        } else {
+            DWORD bg = (i == 5) ? (sel ? 0xFF149850 : 0xFFE2E6EE)
+                     : (i == 6) ? (sel ? 0xFFC02848 : 0xFFE2E6EE)
+                                : (sel ? 0xFF8416DE : 0xFFF5F6FA);
+            draw_screen_quad(dev, col_x1, ry1, col_x2, ry2, bg);
+            draw_screen_quad(dev, col_x1, ry1, col_x2, ry1 + 1.5f * sy, sel ? 0xFFD898FF : 0xFFA2A6B2);
         }
+    }
+
+    /* Right column: Legends Crest + Info Card */
+    if (g_pCrestTex) {
+        float cx = 964.0f * sx, cy = 148.0f * sy, rad = 70.0f * sy;
+        draw_textured_quad(dev, g_pCrestTex, cx - rad, cy - rad, cx + rad, cy + rad, 0xF5FFFFFF);
+    }
+
+    float card_x1 = 696.0f * sx, card_y1 = 224.0f * sy, card_x2 = 1230.0f * sx, card_y2 = 624.0f * sy;
+    if (g_pNpCardTex) {
+        draw_textured_quad(dev, g_pNpCardTex, card_x1, card_y1, card_x2, card_y2, 0xFFFFFFFF);
+    } else {
+        draw_screen_quad(dev, card_x1, card_y1, card_x2, card_y2, 0xFFF4F6FB);
+        draw_screen_quad(dev, card_x1, card_y1, card_x2, card_y1 + 42.0f * sy, 0xFF8416DE);
+    }
+
+    char status_buf[160];
+    uint32_t st_col = 0xFF184C8C;
+    netplay_get_status_spanish(status_buf, sizeof(status_buf), &st_col);
+    /* Darken bright green/yellow slightly so it has high legibility on pearl card background */
+    if (g_np.state == NP_STATE_READY_MENU || g_np.state == NP_STATE_BARRIER || g_np.state == NP_STATE_PLAYING) {
+        st_col = 0xFF0E7A3E;
+    } else if (g_np.state == NP_STATE_HANDSHAKE) {
+        st_col = 0xFF9C5E00;
+    } else if (g_np.state == NP_STATE_OFF || g_np.mode == NP_MODE_OFF) {
+        st_col = 0xFF424654;
+    } else {
+        st_col = 0xFFB82028;
     }
 
     if (s_np_feedback_timer > 0) {
         s_np_feedback_timer--;
-        draw_screen_quad(dev, px1 + 28.0f * sx, py2 - 102.0f * sy, px2 - 28.0f * sx, py2 - 66.0f * sy, 0xE0142420);
+        draw_screen_quad(dev, card_x1 + 16.0f * sx, card_y2 - 58.0f * sy,
+                         card_x2 - 16.0f * sx, card_y2 - 16.0f * sy, 0xFFE6F4EC);
+        draw_screen_quad(dev, card_x1 + 16.0f * sx, card_y2 - 58.0f * sy,
+                         card_x2 - 16.0f * sx, card_y2 - 56.0f * sy, s_np_feedback_col);
     }
 
     if (g_pFont && g_pFontTitle && g_pSprite) {
@@ -3423,19 +3603,12 @@ static void render_netplay_menu(void *dev) {
         SpriteEnd_t   sp_end   = (SpriteEnd_t)svtbl[11];
         if (sp_begin && sp_begin(g_pSprite, 0x10) >= 0) {
             RECT r;
-            r.left = (LONG)(px1 + 24.0f * sx); r.top = (LONG)(py1 + 12.0f * sy);
-            r.right = (LONG)(px2 - 24.0f * sx); r.bottom = (LONG)(py1 + 48.0f * sy);
-            draw_font_text(g_pFontTitle, "EN LINEA - NETPLAY P2P (PC <-> ANDROID / LAN)", &r, 0xFFFFFFFF, 1);
+            r.left = (LONG)(66.0f * sx); r.top = (LONG)(14.0f * sy);
+            r.right = (LONG)(640.0f * sx); r.bottom = (LONG)(56.0f * sy);
+            draw_font_text(g_pFontTitle, "EN LINEA - NETPLAY P2P (PC <-> ANDROID / LAN)", &r, 0xFF3E404C, 0);
 
-            r.left = (LONG)(px1 + 36.0f * sx); r.top = (LONG)(py1 + 54.0f * sy);
-            r.right = (LONG)(px2 - 36.0f * sx); r.bottom = (LONG)(py1 + 88.0f * sy);
-            draw_font_text(g_pFont, status_buf, &r, st_col, 1);
-
-            char info_buf[160];
-            snprintf(info_buf, sizeof(info_buf), "Tu IP local (para compartir si eres Host): %s : %u",
-                     s_np_local_ip, s_np_port);
-            r.top = (LONG)(py1 + 92.0f * sy); r.bottom = (LONG)(py1 + 122.0f * sy);
-            draw_font_text(g_pFont, info_buf, &r, 0xFF9AC8FF, 1);
+            r.left = (LONG)(680.0f * sx); r.right = (LONG)(1230.0f * sx);
+            draw_font_text(g_pFont, "Lockstep UDP 60Hz | 0 Desync", &r, 0xFF7028B8, 2);
 
             static const char *s_mode_names[3] = {
                 "DESACTIVADO (OFF)",
@@ -3445,44 +3618,71 @@ static void render_netplay_menu(void *dev) {
             char val[96];
             for (int i = 0; i < NUM_NETPLAY_ITEMS; i++) {
                 float ry1 = row_y0 + (float)i * row_pitch;
-                float ry2 = ry1 + 46.0f * sy;
+                float ry2 = ry1 + (i >= 5 ? 48.0f : 54.0f) * sy;
                 int sel = (i == s_np_sel);
-                if (i >= 4) {
-                    r.left = (LONG)(px1 + 28.0f * sx); r.top = (LONG)ry1;
-                    r.right = (LONG)(px2 - 28.0f * sx); r.bottom = (LONG)ry2;
-                    draw_font_text(g_pFontTitle, labels[i], &r, 0xFFFFFFFF, 1);
+                if (i >= 5) {
+                    r.left = (LONG)(col_x1 + 16.0f * sx); r.top = (LONG)ry1;
+                    r.right = (LONG)(col_x2 - 16.0f * sx); r.bottom = (LONG)ry2;
+                    draw_font_text(g_pFontTitle, labels[i], &r, sel ? 0xFFFFFFFF : 0xFF363844, 1);
                 } else {
-                    r.left = (LONG)(px1 + 48.0f * sx); r.top = (LONG)ry1;
-                    r.right = (LONG)(px1 + 420.0f * sx); r.bottom = (LONG)ry2;
-                    draw_font_text(g_pFont, labels[i], &r, sel ? 0xFFFFFFFF : 0xFFD0D4E0, 0);
+                    float mid_y = ry1 + 26.0f * sy;
+                    r.left = (LONG)(col_x1 + 26.0f * sx); r.top = (LONG)(ry1 + 2.0f * sy);
+                    r.right = (LONG)(col_x2 - 16.0f * sx); r.bottom = (LONG)mid_y;
+                    draw_font_text(g_pFont, labels[i], &r, sel ? 0xFFFFFFFF : 0xFF525462, 0);
 
                     if (i == 0) snprintf(val, sizeof(val), "< %s >", s_mode_names[s_np_mode % 3u]);
-                    else if (i == 1) snprintf(val, sizeof(val), "%s%s", s_np_ip, (sel && ((g_present_calls / 20u) & 1u)) ? "_" : "");
-                    else if (i == 2) snprintf(val, sizeof(val), "< %u >", s_np_port);
+                    else if (i == 1) snprintf(val, sizeof(val), "[ Pulsar Enter para buscar en WiFi / LAN ]");
+                    else if (i == 2) snprintf(val, sizeof(val), "%s%s", s_np_ip, (sel && ((g_present_calls / 20u) & 1u)) ? "_" : "");
+                    else if (i == 3) snprintf(val, sizeof(val), "< %u >", s_np_port);
                     else snprintf(val, sizeof(val), "< %u frames (~%ums) >", s_np_delay, s_np_delay * 16u);
 
-                    r.left = (LONG)(px1 + 420.0f * sx); r.top = (LONG)ry1;
-                    r.right = (LONG)(px2 - 48.0f * sx); r.bottom = (LONG)ry2;
-                    draw_font_text(g_pFont, val, &r, sel ? 0xFFFFE57F : 0xFFFFFFFF, 2);
+                    r.left = (LONG)(col_x1 + 16.0f * sx); r.top = (LONG)mid_y;
+                    r.right = (LONG)(col_x2 - 18.0f * sx); r.bottom = (LONG)ry2;
+                    draw_font_text(g_pFont, val, &r, sel ? 0xFFFFF0A8 : 0xFFEDF0F8, 1);
                 }
             }
 
+            /* Right-hand Info Card text */
+            r.left = (LONG)(card_x1 + 16.0f * sx); r.top = (LONG)(card_y1 + 12.0f * sy);
+            r.right = (LONG)(card_x2 - 16.0f * sx); r.bottom = (LONG)(card_y1 + 56.0f * sy);
+            draw_font_text(g_pFontTitle, "ESTADO DE LA SALA P2P", &r, 0xFFFFFFFF, 1);
+
+            r.left = (LONG)(card_x1 + 20.0f * sx); r.top = (LONG)(card_y1 + 66.0f * sy);
+            r.right = (LONG)(card_x2 - 20.0f * sx); r.bottom = (LONG)(card_y1 + 102.0f * sy);
+            draw_font_text(g_pFont, status_buf, &r, st_col, 1);
+
+            char info_buf[160];
+            snprintf(info_buf, sizeof(info_buf), "Tu IP local (para Host):  %s : %u", s_np_local_ip, s_np_port);
+            r.top = (LONG)(card_y1 + 104.0f * sy); r.bottom = (LONG)(card_y1 + 136.0f * sy);
+            draw_font_text(g_pFont, info_buf, &r, 0xFF2858A8, 1);
+
+            r.left = (LONG)(card_x1 + 24.0f * sx); r.right = (LONG)(card_x2 - 24.0f * sx);
+            r.top = (LONG)(card_y1 + 158.0f * sy); r.bottom = (LONG)(card_y1 + 188.0f * sy);
+            draw_font_text(g_pFont, "1. En Host: elige CREAR SALA y pulsa CONECTAR", &r, 0xFF3E4250, 0);
+            r.top = (LONG)(card_y1 + 194.0f * sy); r.bottom = (LONG)(card_y1 + 224.0f * sy);
+            draw_font_text(g_pFont, "2. En Rival (Android/PC): pulsa BUSCAR SALA LAN", &r, 0xFF3E4250, 0);
+            r.top = (LONG)(card_y1 + 230.0f * sy); r.bottom = (LONG)(card_y1 + 260.0f * sy);
+            draw_font_text(g_pFont, "   (o escribe la IP de Tailscale para internet)", &r, 0xFF646878, 0);
+            r.top = (LONG)(card_y1 + 266.0f * sy); r.bottom = (LONG)(card_y1 + 296.0f * sy);
+            draw_font_text(g_pFont, "3. Pulsa ESC y entra ambos en EXHIBICION", &r, 0xFF3E4250, 0);
+
             if (s_np_feedback_timer > 0) {
-                r.left = (LONG)(px1 + 28.0f * sx); r.top = (LONG)(py2 - 102.0f * sy);
-                r.right = (LONG)(px2 - 28.0f * sx); r.bottom = (LONG)(py2 - 66.0f * sy);
-                draw_font_text(g_pFontTitle, s_np_feedback, &r, s_np_feedback_col, 1);
+                r.left = (LONG)(card_x1 + 16.0f * sx); r.top = (LONG)(card_y2 - 58.0f * sy);
+                r.right = (LONG)(card_x2 - 16.0f * sx); r.bottom = (LONG)(card_y2 - 16.0f * sy);
+                draw_font_text(g_pFont, s_np_feedback, &r, s_np_feedback_col, 1);
             }
 
-            r.left = (LONG)(px1 + 24.0f * sx); r.top = (LONG)(py2 - 54.0f * sy);
-            r.right = (LONG)(px2 - 24.0f * sx); r.bottom = (LONG)(py2 - 14.0f * sy);
-            draw_font_text(g_pFont,
-                "Flechas: Mover / Cambiar | Teclado: Escribir IP y Puerto | Enter: Aplicar | ESC: Volver (luego entra en EXHIBICION)",
-                &r, 0xFFB8C0D8, 1);
+            r.left = (LONG)(60.0f * sx); r.top = (LONG)(662.0f * sy);
+            r.right = (LONG)(1220.0f * sx); r.bottom = (LONG)(710.0f * sy);
+            draw_font_text(g_pFontTitle,
+                "Elegir [Enter]     Cambiar [< / >]     Escribir IP [0-9 .]     Atras [ESC]",
+                &r, 0xFF40424A, 1);
 
             if (sp_end) sp_end(g_pSprite);
         }
     }
     end_overlay_state(dev);
+    ensure_d3d9_device_hooks(dev);
 }
 
 static HRESULT __stdcall hk_EndScene(void *dev) {
@@ -3501,11 +3701,28 @@ static HRESULT __stdcall hk_EndScene(void *dev) {
                                 g_menu_visible, g_netplay_menu_visible, g_ee1_fury_active,
                                 g_vp_p1_id, g_vp_p2_id,
                                 (float)g_cfg_width / 1280.0f, (float)g_cfg_height / 720.0f);
+        render_roster_pagination_hud(dev);
+        render_settings_hud(dev);
+        render_netplay_hud(dev);
+        render_netplay_menu(dev);
+        {
+            float v_ax = 0.0f, v_ay = 0.0f;
+            WORD  v_btns = 0;
+            xinput_get_p1(&v_ax, &v_ay, &v_btns);
+            if (is_key_down(VK_LEFT)  || is_key_down('A')) v_ax = -1.0f;
+            else if (is_key_down(VK_RIGHT) || is_key_down('D')) v_ax = 1.0f;
+            if (is_key_down(VK_UP)    || is_key_down('W')) v_ay = -1.0f;
+            else if (is_key_down(VK_DOWN)  || is_key_down('S')) v_ay = 1.0f;
+            if (is_key_down('Z') || is_key_down('J') || is_key_down(VK_RETURN)) v_btns |= 0x1000;
+            if (is_key_down('C') || is_key_down('K') || is_key_down(VK_ESCAPE)) v_btns |= 0x2000;
+            if (is_key_down('X') || is_key_down('L')) v_btns |= 0x4000;
+            if (is_key_down('V') || is_key_down('I')) v_btns |= 0x8000;
+            if (is_key_down('Q')) v_btns |= 0x0100;
+            if (is_key_down('E')) v_btns |= 0x0200;
+            render_touch_gamepad_hud(dev, g_cfg_touch_hud, g_cfg_width, g_cfg_height,
+                                     bhud_live, (g_chara_select_frames > 0), v_ax, v_ay, v_btns);
+        }
     }
-    render_roster_pagination_hud(dev);
-    render_settings_hud(dev);
-    render_netplay_hud(dev);
-    render_netplay_menu(dev);
     HRESULT hr = g_real_endscene ? g_real_endscene(dev) : 0;
     ensure_d3d9_device_hooks(dev);
     if (hr != 0) {
@@ -4973,16 +5190,25 @@ static void __thiscall hk_CommitInput_482e10(void *self, int slot, const uint8_t
     if (g_real_commit_input_482e10) g_real_commit_input_482e10(self, slot, pkt);
 }
 
+static int get_p1_player_state(void) {
+    void *p1 = np_get_player_by_slot(0);
+    if (!bhud_is_readable(p1, 0x250)) return -1;
+    return *(const int *)((const char *)p1 + 0x248);
+}
+
 static void sample_p1_override_input(uint8_t *out3) {
     if (!out3 || g_menu_visible || g_netplay_menu_visible) return;
     static uint32_t s_p1_tick = 0xFFFFFFFFu;
     static uint8_t  s_p1_prev_mask = 0;
     static uint8_t  s_p1_cur_mask = 0;
+    static uint8_t  s_buf_mask = 0;
+    static int      s_buf_ticks = 0;
 
     WORD xbtns = 0;
     xinput_get_p1(NULL, NULL, &xbtns);
 
     uint32_t cur_t = current_input_tick() + 1u;
+    uint8_t rising = 0;
     if (s_p1_tick != cur_t) {
         s_p1_tick = cur_t;
         s_p1_prev_mask = s_p1_cur_mask;
@@ -4992,14 +5218,35 @@ static void sample_p1_override_input(uint8_t *out3) {
         if (is_key_down('C') || is_key_down('K') || (xbtns & 0x2000))                           m |= 4u; // Lob     / B
         if (is_key_down('V') || is_key_down('I') || (xbtns & 0x8000))                           m |= 8u; // Dropshot/ Y
         s_p1_cur_mask = m;
+        rising = (uint8_t)(s_p1_cur_mask & ~s_p1_prev_mask);
+        if (rising) {
+            s_buf_mask = rising;
+            s_buf_ticks = 20;
+        } else if (s_buf_ticks > 0) {
+            s_buf_ticks--;
+            if (s_buf_ticks == 0) s_buf_mask = 0;
+        }
+    } else {
+        rising = (uint8_t)(s_p1_cur_mask & ~s_p1_prev_mask);
     }
 
-    uint8_t rising = (uint8_t)(s_p1_cur_mask & ~s_p1_prev_mask);
-    if (rising & 1u) out3[2] |= 0x01u;
-    if (rising & 2u) out3[2] |= 0x11u;
-    if (rising & 4u) out3[2] |= 0x02u;
-    if (rising & 8u) out3[2] |= 0x04u;
-    if (s_p1_cur_mask & 0x07u) out3[2] |= 0x08u;
+    int p1_state = get_p1_player_state();
+    uint8_t emit = rising;
+    if (p1_state == 2 || p1_state == 3 || p1_state == 10 || p1_state == 11) {
+        s_buf_ticks = 0;
+        s_buf_mask = 0;
+    } else if (p1_state >= 4 && p1_state <= 9) {
+        emit = (uint8_t)(rising | s_p1_cur_mask);
+        if (!emit && s_buf_ticks > 0) {
+            emit = s_buf_mask;
+        }
+    }
+
+    if (emit & 1u) out3[2] |= 0x01u;
+    if (emit & 2u) out3[2] |= 0x11u;
+    if (emit & 4u) out3[2] |= 0x02u;
+    if (emit & 8u) out3[2] |= 0x04u;
+    if (s_p1_cur_mask & 0x0Fu) out3[2] |= 0x08u;
 
     static int s_itest_init = 0;
     static int s_itest_on = 0;
@@ -5011,11 +5258,11 @@ static void sample_p1_override_input(uint8_t *out3) {
             s_itest_on = 1;
         }
     }
-    if (s_itest_on && s_itest_cnt < 40 && (out3[0] || out3[1] || (out3[2] & 0x1Fu))) {
+    if (s_itest_on && s_itest_cnt < 80 && (out3[0] || out3[1] || (out3[2] & 0x1Fu))) {
         s_itest_cnt++;
-        log_msg("[VT4-InputTest] tick=%u dx=%d dy=%d btns=0x%02x mask=0x%x->0x%x",
-                cur_t, (int)(int8_t)out3[0], (int)(int8_t)out3[1], (unsigned)out3[2],
-                (unsigned)s_p1_prev_mask, (unsigned)s_p1_cur_mask);
+        log_msg("[VT4-InputTest] tick=%u st=%d dx=%d dy=%d btns=0x%02x mask=0x%x->0x%x emit=0x%x buf=%d",
+                cur_t, p1_state, (int)(int8_t)out3[0], (int)(int8_t)out3[1], (unsigned)out3[2],
+                (unsigned)s_p1_prev_mask, (unsigned)s_p1_cur_mask, (unsigned)emit, s_buf_ticks);
     }
 }
 
@@ -5032,6 +5279,14 @@ static uint8_t *__thiscall hk_SamplePlayerInput_483190(void *self, uint8_t *out3
         }
         return out3;
     }
+    uint8_t *res = g_real_sample_input_483190 ? g_real_sample_input_483190(self, out3, slot, cam_rot) : out3;
+    if (slot == 0 && res) {
+        sample_p1_override_input(res);
+    }
+    return res;
+}
+
+static uint8_t *__thiscall np_sample_local_p1_483190(void *self, uint8_t *out3, int slot, uint8_t cam_rot) {
     uint8_t *res = g_real_sample_input_483190 ? g_real_sample_input_483190(self, out3, slot, cam_rot) : out3;
     if (slot == 0 && res) {
         sample_p1_override_input(res);
@@ -5073,6 +5328,7 @@ static void __thiscall hk_LiveMatchTracker_4803e0(void *self) {
         g_live_match_frame = g_present_calls;
         perf_bench_on_live_match_ready();
         ee_on_live_match_tick(self);
+        bhud_update_live_score(self, g_cfg_debug_log);
     }
     typedef void (__thiscall *Orig_t)(void *);
     ((Orig_t)0x004803e0)(self);
@@ -5089,7 +5345,7 @@ static void __cdecl hk_FrameStep_42fa90(int ticks, int flag) {
                          !g_netplay_menu_visible);
     if (in_live_match && netplay_is_enabled()) {
         g_match_speed_acc = 0.0f;
-        if (!netplay_pre_step(g_np_match_input_mgr, g_real_sample_input_483190)) {
+        if (!netplay_pre_step(g_np_match_input_mgr, np_sample_local_p1_483190)) {
             Sleep(1);
             return;
         }
@@ -6357,7 +6613,8 @@ static void apply_vt4_patches(void) {
 
     g_real_sto_lookup = (StoLookup_t)make_trampoline(0x00668fa0, 7);
     install_jmp(0x00668fa0, (void *)hk_StoLookup, 7);
-    log_msg("[VT4-Mod] Fase 2 + Page 3 + Page 4 Roster Expansion active: IDs 26..81 (%d players, %d pages, TR_COMMON full-table hook)",
+    patch_call(0x0043CAC9, (void *)hk_Loading_SetPlayerPhoto);
+    log_msg("[VT4-Mod] Fase 2 + Page 3 + Page 4 Roster Expansion active: IDs 26..83 (%d players, %d pages, TR_COMMON + Loading hook)",
             MAX_ROSTER_PLAYERS, NUM_ROSTER_PAGES);
 
     // 6. Fix Sega European Region ESRB infinite loop deadlock

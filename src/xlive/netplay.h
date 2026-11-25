@@ -74,11 +74,13 @@ enum {
 };
 
 enum {
-    NP_PKT_HELLO   = 1,
-    NP_PKT_WELCOME = 2,
-    NP_PKT_BARRIER = 3,
-    NP_PKT_INPUT   = 4,
-    NP_PKT_BYE     = 5
+    NP_PKT_HELLO    = 1,
+    NP_PKT_WELCOME  = 2,
+    NP_PKT_BARRIER  = 3,
+    NP_PKT_INPUT    = 4,
+    NP_PKT_BYE      = 5,
+    NP_PKT_DISCOVER = 6,
+    NP_PKT_OFFER    = 7
 };
 
 #pragma pack(push, 1)
@@ -599,6 +601,21 @@ static void np_ctx_handle_ctrl_pkt(NpContext *np, const NpCtrlPkt *pkt,
             np->state = NP_STATE_DISCONNECTED;
             break;
         }
+        case NP_PKT_DISCOVER: {
+            if (np->mode == NP_MODE_HOST) {
+                NpCtrlPkt offer;
+                memset(&offer, 0, sizeof(offer));
+                offer.magic = NP_MAGIC;
+                offer.ver   = NP_PROTO_VER;
+                offer.type  = NP_PKT_OFFER;
+                offer.flags = (uint16_t)np->delay_frames;
+                offer.arg0  = np->local_nonce;
+                offer.arg1  = (uint32_t)np->port;
+                offer.arg2  = (uint32_t)np->state;
+                np_ctx_send_to(np, &offer, (int)sizeof(offer), src);
+            }
+            break;
+        }
         default:
             break;
     }
@@ -654,6 +671,102 @@ static void np_ctx_pump_ctrl_tx(NpContext *np, uint32_t now_ms) {
         np_ctx_send_ctrl(np, NP_PKT_BARRIER, (uint16_t)np->delay_frames,
                          np->session_seed, (uint32_t)np->p1_char, (uint32_t)np->p2_char, 0);
     }
+}
+
+/*
+ * Non-blocking UDP LAN Broadcast + Loopback Auto-Discovery.
+ * Sends NP_PKT_DISCOVER on `port` to 255.255.255.255 and 127.0.0.1 and waits up to `timeout_ms`
+ * for an NP_PKT_OFFER from any active HOST P1 room. Returns 1 if found, 0 otherwise.
+ */
+static int netplay_lan_discover(uint16_t port, char *out_ip, size_t ip_cap,
+                                uint16_t *out_port, uint32_t *out_delay, uint32_t timeout_ms) {
+    if (port == 0) port = 7777u;
+    if (timeout_ms == 0 || timeout_ms > 2000u) timeout_ms = 320u;
+
+    WSADATA wsa;
+    if (!g_np.wsa_started) {
+        if (WSAStartup(MAKEWORD(2, 2), &wsa) == 0) {
+            g_np.wsa_started = 1;
+        } else {
+            return 0;
+        }
+    }
+
+    SOCKET s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (s == INVALID_SOCKET) return 0;
+
+    int bcast = 1;
+    setsockopt(s, SOL_SOCKET, SO_BROADCAST, (const char *)&bcast, sizeof(bcast));
+    u_long nb = 1;
+    ioctlsocket(s, FIONBIO, &nb);
+
+    struct sockaddr_in baddr;
+    memset(&baddr, 0, sizeof(baddr));
+    baddr.sin_family = AF_INET;
+    baddr.sin_port = htons(0);
+    baddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    bind(s, (const struct sockaddr *)&baddr, sizeof(baddr));
+
+    NpCtrlPkt req;
+    memset(&req, 0, sizeof(req));
+    req.magic = NP_MAGIC;
+    req.ver   = NP_PROTO_VER;
+    req.type  = NP_PKT_DISCOVER;
+
+    struct sockaddr_in dst_bcast, dst_lo;
+    memset(&dst_bcast, 0, sizeof(dst_bcast));
+    dst_bcast.sin_family = AF_INET;
+    dst_bcast.sin_port = htons(port);
+    dst_bcast.sin_addr.s_addr = htonl(INADDR_BROADCAST);
+
+    memset(&dst_lo, 0, sizeof(dst_lo));
+    dst_lo.sin_family = AF_INET;
+    dst_lo.sin_port = htons(port);
+    dst_lo.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+    sendto(s, (const char *)&req, (int)sizeof(req), 0, (const struct sockaddr *)&dst_bcast, sizeof(dst_bcast));
+    sendto(s, (const char *)&req, (int)sizeof(req), 0, (const struct sockaddr *)&dst_lo, sizeof(dst_lo));
+
+    DWORD t0 = GetTickCount();
+    int resent = 0;
+    int found = 0;
+    while ((DWORD)(GetTickCount() - t0) < timeout_ms) {
+        if (!resent && (DWORD)(GetTickCount() - t0) >= timeout_ms / 2u) {
+            resent = 1;
+            sendto(s, (const char *)&req, (int)sizeof(req), 0, (const struct sockaddr *)&dst_bcast, sizeof(dst_bcast));
+            sendto(s, (const char *)&req, (int)sizeof(req), 0, (const struct sockaddr *)&dst_lo, sizeof(dst_lo));
+        }
+        fd_set rfds;
+        FD_ZERO(&rfds);
+        FD_SET(s, &rfds);
+        struct timeval tv;
+        tv.tv_sec = 0;
+        tv.tv_usec = 20000;
+        int rc = select(0, &rfds, NULL, NULL, &tv);
+        if (rc > 0 && FD_ISSET(s, &rfds)) {
+            uint8_t buf[64];
+            struct sockaddr_in from;
+            int flen = (int)sizeof(from);
+            int n = recvfrom(s, (char *)buf, (int)sizeof(buf), 0, (struct sockaddr *)&from, &flen);
+            if (n >= (int)sizeof(NpCtrlPkt)) {
+                const NpCtrlPkt *hdr = (const NpCtrlPkt *)buf;
+                if (hdr->magic == NP_MAGIC && hdr->ver == NP_PROTO_VER && hdr->type == NP_PKT_OFFER) {
+                    if (out_ip && ip_cap > 0) {
+                        const char *ip_s = inet_ntoa(from.sin_addr);
+                        strncpy(out_ip, ip_s ? ip_s : "127.0.0.1", ip_cap - 1);
+                        out_ip[ip_cap - 1] = '\0';
+                    }
+                    if (out_port) *out_port = (hdr->arg1 > 0 && hdr->arg1 <= 65535u) ? (uint16_t)hdr->arg1 : port;
+                    if (out_delay) *out_delay = np_clamp_delay((uint32_t)hdr->flags);
+                    found = 1;
+                    break;
+                }
+            }
+        }
+    }
+
+    closesocket(s);
+    return found;
 }
 
 /* =========================================================================

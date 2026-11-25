@@ -12,34 +12,20 @@ Ya puedes jugar partidos online **PC ↔ PC**, **Android ↔ Android** o **PC �
 
 ---
 
-## 2. Opción A — Red Local / WiFi de Casa (30 segundos)
+## 2. Opción A — Red Local / WiFi de Casa en 15 segundos (Auto-Descubrimiento LAN)
+
+Ya no hace falta editar `vt4_settings.ini` a mano: desde el Menú Principal abre **`EN LÍNEA`** (pantalla nativa VT4):
 
 ### En el PC o Móvil Anfitrión (`HOST P1`)
-1. Averigua tu IP local:
-   - En Windows (`PowerShell` o `cmd`): ejecuta `ipconfig` y anota tu **Dirección IPv4** (por ejemplo `192.168.1.45`).
-2. Edita `game\vt4_settings.ini` y cambia la sección `[Netplay]`:
-   ```ini
-   [Netplay]
-   Mode=1
-   PeerIP=127.0.0.1
-   Port=7777
-   LocalPort=0
-   DelayFrames=3
-   ```
+1. Entra en **`EN LÍNEA`** y cambia **`MODO DE CONEXIÓN`** a **`CREAR SALA (HOST P1)`**.
+2. Pulsa **`CONECTAR / APLICAR NETPLAY`** (anota la IP local que aparece en la tarjeta derecha solo si la necesitas; en LAN el rival ni siquiera la necesita).
    *(Si tienes Firewall de Windows, permite tráfico **UDP puerto 7777** en redes privadas.)*
 
 ### En el PC o Android Invitado (`CLIENT P2` en Winlator / GameHub / Mobox)
-1. Edita `game\vt4_settings.ini` poniendo en `PeerIP` la IP del Anfitrión:
-   ```ini
-   [Netplay]
-   Mode=2
-   PeerIP=192.168.1.45
-   Port=7777
-   LocalPort=0
-   DelayFrames=3
-   ```
-2. Entra ambos en **Partido de Exhibición** eligiendo **los mismos 2 jugadores, la misma pista y las mismas reglas** (por ejemplo, `Carlos Alcaraz` vs `Jannik Sinner`).
-3. Al cargar la pista verás el indicador **`NETPLAY [HOST P1 / CLIENT P2] ...ms | D=3 | SYNC OK`** en la esquina superior izquierda. ¡Listo!
+1. Entra en **`EN LÍNEA`** y pulsa **`BUSCAR SALA EN RED LOCAL (LAN)`**. El juego detecta automáticamente la sala abierta por UDP broadcast/loopback y rellena la IP y el delay.
+2. Pulsa **`CONECTAR / APLICAR NETPLAY`** -> verás **`CONECTADO CON RIVAL`** en la tarjeta de estado.
+3. Pulsad **`ESC`** en ambos dispositivos y entrad en **Exhibición** eligiendo **los mismos 2 jugadores, la misma pista y las mismas reglas**.
+4. Al cargar la pista verás el indicador **`NETPLAY [HOST P1 / CLIENT P2] ...ms | D=3 | SYNC OK`** en la **esquina superior derecha** (despejando el marcador TV oficial de arriba a la izquierda). ¡Listo!
 
 ---
 
