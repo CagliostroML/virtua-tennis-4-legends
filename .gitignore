@@ -41,6 +41,8 @@ __pycache__/
 *.bmp
 *.jpg
 *.jpeg
+!docs/screenshots/*.png
+!docs/screenshots/*.jpg
 
 # OS metadata
 .DS_Store
