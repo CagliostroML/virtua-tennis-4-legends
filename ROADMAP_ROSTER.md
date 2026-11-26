@@ -159,15 +159,13 @@ Objetivo: garantizar que *Virtua Tennis 4: Legends & Next-Gen Edition* sea **exp
   - Botón **`GRÁFICOS HD Y LEGENDS`** en el menú raíz `OPCIONES` integrado con estilo nativo (`opt_btn_unsel.png` / `opt_btn_sel.png`).
   - **EE-1 / EE-2 / EE-3 / EE-4 verificados en vivo**: `verify_full_release.py` + `test_options_ui.py` OK, y `verify_ee2_umpire_agassi91.py` (`ps=0 ex=0 exc=0 fase3=1`) confirmó visualmente en `02_match_ee2_split_court.png` la pista dividida **50% Hielo (`-Z`) / 50% Barro (`+Z`)** en RAM (`ee_patch_stage_ee2_surface`), el audio **WAV** (`ee1_protest`, `pan`, `ee1_lose`), y el retrato reparado de `Agassi '91` (`29_91` en `01_cs_agassi91_fixed.png`). Compilado posteriormente en `xlive.dll` el escape `100%%` de `EXTRA-1` y el filtro amplio `u_ump_b_` para el skin Meme del **Juez de Silla** (`umpire_meme.dds`, pendiente de captura visual final en silla).
 
-### Pendiente: Caras UV 3D (`assets/face_uv_workspace/`) y Retratos `photo_L` / `photo_eye` (`assets/portraits_photocraft_workspace/`)
-- **Taller de Retratos 2D llave en mano (`assets/portraits_photocraft_workspace/`)**:
-  - Preparado por `tools/prepare_portraits_workspace.py` con referencias oficiales de SEGA (`00_referencias_oficiales_sega/`), las 57 fotos originales completas (`01_originales_sin_recortar/`), el estado actual + hoja `AUDITORIA_57_ACTUALES.png` (`02_estado_actual_en_juego/`), guía completa `README_INSTRUCCIONES_PHOTOCRAFT.md` y carpetas de entrega `03_entregar_editados_aqui/` para importar con `python -u tools/import_edited_portraits.py`.
-- **Caras UV de modelos `.sdo` (`assets/face_uv_workspace/`)**:
-  - Estructura completa de 57 jugadores generada con `tools/prepare_face_uv_workspace.py`, más empaquetado automático vía `tools/pack_custom_faces.py`. Estado actual: `35_SAB` con prototipo proyectado; resto pendiente tras completar la tanda de retratos 2D y mejorar ref débiles (`67_COR`, `72_CHN`, `73_RIO`, `74_MUS`, `75_BRU`, `77_WLD`, `80_CMT`).
-- **Retratos `photo_L` corregidos en último pase**: `29_91` Agassi '91 (cara real de Agassi + mangas y cordaje limpios), `43` Kyrgios, `44` Hewitt, `45` Safin, `47` Ferrero, `49` Ferrer y `51` Lendl (reconstruidos en `scratch/fixed_portraits_v3_audit.png` y empaquetados en DDS).
-- **Prioridades dejadas en `assets/portraits_photocraft_workspace/` para editar en la otra conversación (PhotoCraft + IA)**:
-  - **Grupo 1 (Rehacer / Colorear B&W)**: `26` Alcaraz, `29_91` Agassi '91 (si se desea acabado de estudio homogéneo), y los 6 en B&W (`51` Lendl, `52` Connors, `55` Evert, `74` Muster, `75` Bruguera, `77` Wilander).
-  - **Grupo 2 (Mejorar foto joven)**: `46` Tsonga, `67` Coria, `72` Chang, `73` Ríos, `80` Conchita Martínez.
+### Caras UV 3D (`59/59` modelos `.sdo`), Retratos 2D (`84/84` color) y Talleres de Referencia
+- **Modelos `.sdo` con caras UV 3D personalizadas (`59/59` completados en Fase 5)**:
+  - Mediante `tools/studio_face_factory.py`, `tools/local_identity_uv.py`, `tools/fix_swapped_faces_v3b.py` y `tools/import_edited_face_uvs.py`, todos los **59 modelos `.sdo` personalizados** (`IDs 26..83` + `Agassi '91`) cuentan con geometría facial 3DMM esculpida, identidad facial transferida al UV 1024x1024, ojos HD 4x-supersampled (`_upgrade_hd_eyes`), pelo volumétrico 3D y escalado físico de huesos empaquetados en `game/archive/HIGH/Player/Model/`.
+  - Los workspaces `assets/face_uv_workspace/` y `assets/face_uv_photocraft_workspace/` se conservan como base editable por si en futuras versiones (`v1.1+`) se desea retocar manualmente algún jugador concreto con PhotoCraft.
+- **Taller de Retratos 2D (`assets/portraits_photocraft_workspace/`)**:
+  - Preparado por `tools/prepare_portraits_workspace.py` con referencias oficiales de SEGA (`00_referencias_oficiales_sega/`), las 57 fotos originales completas (`01_originales_sin_recortar/`), el estado actual + hoja `AUDITORIA_57_ACTUALES.png` (`02_estado_actual_en_juego/`), guía completa `README_INSTRUCCIONES_PHOTOCRAFT.md` y carpetas de entrega `03_entregar_editados_aqui/` para importar con `py -u tools/import_edited_portraits.py`.
+- **Retratos `photo_L` corregidos en último pase**: `29_91` Agassi '91, `43` Kyrgios, `44` Hewitt, `45` Safin, `47` Ferrero, `49` Ferrer y los 6 retratos históricos pasados a color (`51` Lendl, `52` Connors, `55` Evert, `74` Muster, `75` Bruguera, `77` Wilander), completando **84/84** retratos a color.
 
 ### Estado verificado (2026-11-25): Grand Slams, Retratos 2D, Marcadores TV Oficiales, Online P2P Nativo, Android & Controles
 - **Roster completo `84` tenistas (`0..83`, incluye `82` M. Andreeva y `83` B.J. King)**: Verificado al 100% en pista; el barrido `test_roster_matrix.py --ids 60,61,62,64,65,66,67,68,69,70,71,72,74,75,76,77,80,81,82,83 --cpu 0 --mv 3` completó **20/20** (`ok=True`, `ps=0`, `ex=0`, `exc=0`, `served>=1`). Voice packs ampliados a `VP_MAX_ROSTER_IDS=84` (`tools/import_voice_packs.py`, `src/xlive/voice_packs.h`).
@@ -181,7 +179,10 @@ Objetivo: garantizar que *Virtua Tennis 4: Legends & Next-Gen Edition* sea **exp
   - `tools/fix_remaining_portraits_2026.py`: recortados y empaquetados (`photo_L`, `photo_eye`, `photo_S`) los 7 retratos (`43`, `52`, `58`, `67`, `72`, `82`, `83`).
   - `tools/pack_colorized_bw_portraits.py`: recuperados a todo color y empaquetados los últimos 6 retratos (`51` Lendl, `52` Connors, `55` Evert, `74` Muster, `75` Bruguera, `77` Wilander), verificados visualmente en `scratch/bw_colorized_audit.png` (`262,272` B BGRA, esquinas transparentes y `photo_eye` centrado).
 - **Lanzador Nativo Android (`src/launcher/play_vt4_legends.c` + `tools/export_android_bundle.py`)**:
-  - Integrada compilación directa de `PLAY_VT4_LEGENDS.exe` + `LAUNCH_ANDROID.bat` síncrono + guía de 1 toque para GameHub y Winlator CMod/Frost; bundle reexportado (`3.62 GB`, `490` archivos, `0` fallos case-sensitive) y verificado en Windows con smoke-test síncrono (`0` procesos/logs residuales). **Hito `v1.0-RC1` cerrado y listo para dispositivo Android (`ANDROID-5`).**
+  - Integrada compilación directa de `PLAY_VT4_LEGENDS.exe` + `LAUNCH_ANDROID.bat` síncrono + guía de 1 toque para GameHub y Winlator CMod/Frost; bundle reexportado (`3.62 GB`, `490` archivos, `0` fallos case-sensitive) y verificado en Windows con smoke-test síncrono (`0` procesos/logs residuales).
+- **Barrido QA de cierre y Release `v1.0` (2026-11-26)**:
+  - Verificado en vivo `scratch/verify_v1_final_qa.py` (6 retratos recién coloreados `74, 75, 51, 52, 77, 55` en `CharaSelect` + partido en vivo con `BroadcastHUD=1` + `EXTRA-1: Unlocked 100%` + audio nativo `XAudio2` activo, `ps=0 ex=0 exc=0`) y `tools/tests/test_options_ui.py` (`4` PNG válidos).
+  - Auditados **59/59** modelos `.sdo` personalizados con sus caras UV 3D + ojos HD, renovado `README.md` estilo decomp/recomp con galería en `docs/screenshots/`, redactado `RELEASE_NOTES_v1.0.md` y etiquetado **`v1.0`**.
 
 ---
 
