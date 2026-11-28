@@ -30,7 +30,7 @@ from import_edited_portraits import estimate_eye_y_256
 
 REF_DIR = os.path.join(REPO_ROOT, "assets", "face_uv_photocraft_workspace", "01_base_uv_y_referencias")
 MUSTER_SRC = (
-    r"C:\Users\acorr\.gemini\antigravity\brain\e8d9dc14-2b22-4a5e-957b-899a55154df7"
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scratch")
     r"\thomas_muster_portrait_v2_1795629572468.jpg"
 )
 FLAT_BG_BGR = (72, 64, 60)  # RGB (60, 64, 72) == #3C4048

@@ -221,7 +221,7 @@ Es la banda rectangular (`4:1`) que aparece en las **21 casillas de cada página
 
 ## 🔄 Cómo reimportarlos al juego en 1 comando cuando termines
 
-Cuando hayas colocado los PNG editados dentro de [`03_entregar_editados_aqui/`](./03_entregar_editados_aqui/), vuelve a esta conversación o ejecuta directamente desde `c:\\Users\\acorr\\Documents\\tenis`:
+Cuando hayas colocado los PNG editados dentro de [`03_entregar_editados_aqui/`](./03_entregar_editados_aqui/), vuelve a esta conversación o ejecuta directamente desde la raíz del repositorio:
 
 ```powershell
 python -u tools/import_edited_portraits.py

@@ -105,8 +105,25 @@ static inline void perf_pacer_wait(void) {
         return;
     }
 
-    /* Sleep coarsely while > spin_margin_ms remains (wider margin on Android/Low-Spec for thermals) */
-    double spin_margin_ms = (g_cfg_perf_profile == 2) ? 2.8 : 2.0;
+    /* On Android/Low-Spec (PerfProfile=2), never busy-spin in Box64: sleep cleanly and return */
+    if (g_cfg_perf_profile == 2) {
+        DWORD sleep_ms = (DWORD)((double)rem * g_perf_qpc_to_ms);
+        if (sleep_ms >= 1) {
+            Sleep(sleep_ms);
+        } else {
+            SwitchToThread();
+        }
+        QueryPerformanceCounter(&now);
+        if (now.QuadPart - g_perf_pacer_next_qpc > frame_ticks / 2) {
+            g_perf_pacer_next_qpc = now.QuadPart + frame_ticks;
+        } else {
+            g_perf_pacer_next_qpc += frame_ticks;
+        }
+        return;
+    }
+
+    /* Sleep coarsely while > spin_margin_ms remains (PC Ultra / Esports) */
+    double spin_margin_ms = 2.0;
     int64_t spin_margin_ticks = (int64_t)(spin_margin_ms / g_perf_qpc_to_ms);
     if (rem > spin_margin_ticks) {
         DWORD sleep_ms = (DWORD)((double)(rem - spin_margin_ticks) * g_perf_qpc_to_ms);
@@ -465,19 +482,19 @@ static void perf_load_config(const char *ini_path) {
 }
 
 static inline uint32_t perf_get_shadow_size(void) {
-    if (g_cfg_perf_profile == 2) return 512u;
+    if (g_cfg_perf_profile == 2) return 256u;
     if (g_cfg_perf_profile == 1) return 1024u;
     return 2048u;
 }
 
 static inline uint32_t perf_get_bloom_w(void) {
-    if (g_cfg_perf_profile == 2) return 256u;
+    if (g_cfg_perf_profile == 2) return 128u;
     if (g_cfg_perf_profile == 1) return 1024u;
     return (g_cfg_width >= 1920) ? 2048u : 1024u;
 }
 
 static inline uint32_t perf_get_bloom_h(void) {
-    if (g_cfg_perf_profile == 2) return 128u;
+    if (g_cfg_perf_profile == 2) return 64u;
     if (g_cfg_perf_profile == 1) return 512u;
     return (g_cfg_height >= 1080) ? 1024u : 512u;
 }

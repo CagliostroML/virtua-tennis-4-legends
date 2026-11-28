@@ -1,8 +1,8 @@
 import os
 import struct
 
-BIN0 = r"c:\Users\acorr\Documents\tenis\game\resource.bin"
-BIN1 = r"c:\Users\acorr\Documents\tenis\game\resource.1.bin"
+BIN0 = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'game', 'resource.bin')
+BIN1 = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'game', 'resource.1.bin')
 
 def lzss_decompress(comp_bytes):
     uncomp_size, comp_size = struct.unpack(">II", comp_bytes[:8])

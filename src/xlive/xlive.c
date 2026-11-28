@@ -11,14 +11,65 @@
 #include <math.h>
 
 static int g_signin_notified = 0;
-static wchar_t g_save_path[MAX_PATH] = L"c:\\Users\\acorr\\Documents\\tenis\\game\\save\\";
+static char g_game_dir[MAX_PATH] = { 0 };
+static wchar_t g_game_dir_w[MAX_PATH] = L".";
+static wchar_t g_save_path[MAX_PATH] = L".\\save\\";
+static wchar_t g_config_txt_path[MAX_PATH] = L".\\save\\Config.txt";
+static char g_log_path[MAX_PATH] = { 0 };
+static int g_paths_initialized = 0;
+static int g_has_custom_roster = 1;
+static uint32_t g_cfg_use_d3d9ex = 1;
+static uint32_t g_cfg_locale_lcid = 0x0c0a;
+static char g_cfg_locale_str[16] = "auto";
+static HMODULE g_hD3DX43 = NULL;
+static int g_d3dx43_attempted = 0;
 static FILE *g_log = NULL;
 static uint32_t g_present_calls = 0;
 static uint32_t g_logic_ticks = 0;
 
+static void init_portable_paths(void) {
+    if (g_paths_initialized) return;
+    g_paths_initialized = 1;
+
+    char dir_a[MAX_PATH] = { 0 };
+    DWORD n_a = GetModuleFileNameA(NULL, dir_a, MAX_PATH);
+    if (n_a > 0 && n_a < MAX_PATH) {
+        char *slash = strrchr(dir_a, '\\');
+        if (slash) *slash = '\0';
+    } else {
+        strcpy(dir_a, ".");
+    }
+    snprintf(g_game_dir, sizeof(g_game_dir), "%s", dir_a);
+    snprintf(g_log_path, sizeof(g_log_path), "%s\\xlive_mod.log", g_game_dir);
+
+    wchar_t dir_w[MAX_PATH] = { 0 };
+    DWORD n_w = GetModuleFileNameW(NULL, dir_w, MAX_PATH);
+    if (n_w > 0 && n_w < MAX_PATH) {
+        wchar_t *slash_w = wcsrchr(dir_w, L'\\');
+        if (slash_w) *slash_w = L'\0';
+    } else {
+        wcscpy(dir_w, L".");
+    }
+    _snwprintf(g_game_dir_w, MAX_PATH, L"%ls", dir_w);
+    g_game_dir_w[MAX_PATH - 1] = L'\0';
+
+    wchar_t save_dir_no_slash[MAX_PATH] = { 0 };
+    _snwprintf(save_dir_no_slash, MAX_PATH, L"%ls\\save", g_game_dir_w);
+    save_dir_no_slash[MAX_PATH - 1] = L'\0';
+    CreateDirectoryW(save_dir_no_slash, NULL);
+
+    _snwprintf(g_save_path, MAX_PATH, L"%ls\\save\\", g_game_dir_w);
+    g_save_path[MAX_PATH - 1] = L'\0';
+    _snwprintf(g_config_txt_path, MAX_PATH, L"%ls\\save\\Config.txt", g_game_dir_w);
+    g_config_txt_path[MAX_PATH - 1] = L'\0';
+}
+
 static void log_msg(const char *fmt, ...) {
-    if (!g_log) {
-        g_log = fopen("c:\\Users\\acorr\\Documents\\tenis\\game\\xlive_mod.log", "a");
+    if (!g_paths_initialized) {
+        init_portable_paths();
+    }
+    if (!g_log && g_log_path[0]) {
+        g_log = fopen(g_log_path, "a");
     }
     if (g_log) {
         va_list ap;
@@ -27,6 +78,40 @@ static void log_msg(const char *fmt, ...) {
         fprintf(g_log, "\n");
         fflush(g_log);
         va_end(ap);
+    }
+}
+
+static HMODULE get_d3dx9_43(void) {
+    if (!g_d3dx43_attempted) {
+        g_d3dx43_attempted = 1;
+        g_hD3DX43 = LoadLibraryA("d3dx9_43.dll");
+        if (g_hD3DX43) {
+            log_msg("[VT4-Mod] d3dx9_43.dll loaded (%p)", g_hD3DX43);
+        } else {
+            log_msg("[VT4-Mod] d3dx9_43.dll not found (err=%lu) - using GDI/D3D9 fallback",
+                    (unsigned long)GetLastError());
+        }
+    }
+    return g_hD3DX43;
+}
+
+static uint32_t resolve_vt4_locale(const char *loc) {
+    if (loc && loc[0]) {
+        if (_stricmp(loc, "es") == 0) return 0x0c0a;
+        if (_stricmp(loc, "en") == 0) return 0x0409;
+        if (_stricmp(loc, "fr") == 0) return 0x040c;
+        if (_stricmp(loc, "de") == 0) return 0x0407;
+        if (_stricmp(loc, "it") == 0) return 0x0410;
+        if (_stricmp(loc, "ja") == 0) return 0x0411;
+    }
+    LANGID lang = GetUserDefaultUILanguage();
+    switch (PRIMARYLANGID(lang)) {
+        case LANG_SPANISH:  return 0x0c0a;
+        case LANG_FRENCH:   return 0x040c;
+        case LANG_GERMAN:   return 0x0407;
+        case LANG_ITALIAN:  return 0x0410;
+        case LANG_JAPANESE: return 0x0411;
+        default:            return 0x0409;
     }
 }
 
@@ -117,8 +202,9 @@ static int g_sampler_dirty = 5;
 static void *g_cached_rt = NULL;
 static uint32_t g_cached_rt_w = 0;
 static uint32_t g_cached_rt_h = 0;
-static char g_game_dir[MAX_PATH] = { 0 };
 static void sync_menu_indices_from_cfg(void);
+static void touch_gamepad_reset_autohide(void);
+static uint32_t g_mod_menu_open_frame = 0;
 
 #include "perf_opt.h"
 #include "voice_packs.h"
@@ -138,13 +224,9 @@ static int g_vp_p2_id = -1;
 static uint32_t g_vp_load_frame = 0;
 
 static void load_vt4_settings(void) {
+    init_portable_paths();
     char ini_path[MAX_PATH];
-    GetModuleFileNameA(NULL, ini_path, sizeof(ini_path));
-    char *last_slash = strrchr(ini_path, '\\');
-    if (last_slash) *last_slash = '\0';
-    strncpy(g_game_dir, ini_path, sizeof(g_game_dir) - 1);
-    g_game_dir[sizeof(g_game_dir) - 1] = '\0';
-    strncat(ini_path, "\\vt4_settings.ini", sizeof(ini_path) - strlen(ini_path) - 1);
+    snprintf(ini_path, sizeof(ini_path), "%s\\vt4_settings.ini", g_game_dir);
 
     DWORD attr = GetFileAttributesA(ini_path);
     if (attr == INVALID_FILE_ATTRIBUTES) {
@@ -156,6 +238,8 @@ static void load_vt4_settings(void) {
                        "Height=1080\n"
                        "; Modo Ventana: 0 = Pantalla Completa sin bordes (Borderless), 1 = Modo Ventana\n"
                        "Windowed=0\n"
+                       "; Direct3D9Ex (reduce latencia y evita flicker en Alt-Tab; 0 = D3D9 estandar para GPUs antiguas/Winlator)\n"
+                       "UseD3D9Ex=1\n"
                        "; Suavizado de bordes Anti-Aliasing (MSAA): 0 = Desactivado, 2 = 2x, 4 = 4x, 8 = 8x\n"
                        "AntiAliasing=4\n"
                        "; Sincronizacion Vertical: 1 = Activado (60 FPS estables sin cortes), 0 = Desactivado\n"
@@ -170,7 +254,9 @@ static void load_vt4_settings(void) {
                        "NextGenFilmic=1\n\n"
                        "[Menu]\n"
                        "; Quitar el modo LIVE / Red (servidor GFWL inactivo) del menu principal\n"
-                       "RemoveLiveMode=1\n\n"
+                       "RemoveLiveMode=1\n"
+                       "; Idioma del juego: auto (SO), en, es, fr, de, it, ja\n"
+                       "Locale=auto\n\n"
                        "[Gameplay]\n"
                        "; Fijar Camara TV Clasica (estilo VT2, desactiva zooms de Super Golpe): 0 = Normal, 1 = Activo\n"
                        "ClassicTVCamera=0\n"
@@ -207,12 +293,15 @@ static void load_vt4_settings(void) {
     g_cfg_width = GetPrivateProfileIntA("Graphics", "Width", 1920, ini_path);
     g_cfg_height = GetPrivateProfileIntA("Graphics", "Height", 1080, ini_path);
     g_cfg_windowed = GetPrivateProfileIntA("Graphics", "Windowed", 0, ini_path);
+    g_cfg_use_d3d9ex = GetPrivateProfileIntA("Graphics", "UseD3D9Ex", 1, ini_path) ? 1 : 0;
     g_cfg_antialiasing = GetPrivateProfileIntA("Graphics", "AntiAliasing", 4, ini_path);
     g_cfg_vsync = GetPrivateProfileIntA("Graphics", "VSync", 1, ini_path);
     g_cfg_anisotropic = GetPrivateProfileIntA("Graphics", "AnisotropicFiltering", 16, ini_path);
     g_cfg_clean_postfx = GetPrivateProfileIntA("Graphics", "CleanPostFX", 1, ini_path);
     if (g_cfg_clean_postfx > 2) g_cfg_clean_postfx = 1;
     g_cfg_remove_live = GetPrivateProfileIntA("Menu", "RemoveLiveMode", 1, ini_path);
+    GetPrivateProfileStringA("Menu", "Locale", "auto", g_cfg_locale_str, sizeof(g_cfg_locale_str), ini_path);
+    g_cfg_locale_lcid = resolve_vt4_locale(g_cfg_locale_str);
     g_cfg_classic_tv_cam = GetPrivateProfileIntA("Gameplay", "ClassicTVCamera", 0, ini_path) ? 1 : 0;
     g_cfg_match_speed_mode = GetPrivateProfileIntA("Gameplay", "MatchSpeedMode", 0, ini_path);
     if (g_cfg_match_speed_mode > 4) g_cfg_match_speed_mode = 0;
@@ -228,8 +317,27 @@ static void load_vt4_settings(void) {
     if (g_cfg_touch_hud > 2) g_cfg_touch_hud = 0;
     g_cfg_debug_log = GetPrivateProfileIntA("Debug", "DebugLog", 0, ini_path) ? 1 : 0;
 
-    if (g_cfg_width <= 0) g_cfg_width = 1920;
-    if (g_cfg_height <= 0) g_cfg_height = 1080;
+    if (g_cfg_width == 0 || g_cfg_height == 0) {
+        uint32_t early_prof = GetPrivateProfileIntA("Performance", "PerfProfile", 0, ini_path);
+        char env_p[16] = {0};
+        if (GetEnvironmentVariableA("VT4_PERF_PROFILE", env_p, sizeof(env_p)) > 0) {
+            uint32_t ep = (uint32_t)atoi(env_p);
+            if (ep <= 2) early_prof = ep;
+        }
+        int sw = GetSystemMetrics(SM_CXSCREEN);
+        int sh = GetSystemMetrics(SM_CYSCREEN);
+        if (sw <= 0 || sh <= 0) { sw = 1280; sh = 720; }
+        uint32_t rw = (uint32_t)sw, rh = (uint32_t)sh;
+        if (early_prof == 2 && rh > 540u) {
+            rh = 540u;
+            rw = (uint32_t)((((uint64_t)sw * 540u) / (uint64_t)sh + 1u) & ~1u);
+            if (rw < 640u) rw = 640u;
+        }
+        g_cfg_width = rw;
+        g_cfg_height = rh;
+        log_msg("[VT4-Mod] Auto resolution: screen=%dx%d -> render=%ux%u (PerfProfile=%u)",
+                sw, sh, g_cfg_width, g_cfg_height, early_prof);
+    }
 
     log_msg("[VT4-Mod] Settings loaded: %ux%u (windowed=%u msaa=%u vsync=%u aniso=%u cleanfx=%u remove_live=%u tv_lock=%u speed=%u mv=%u weapon=%u)",
             g_cfg_width, g_cfg_height, g_cfg_windowed, g_cfg_antialiasing,
@@ -258,7 +366,14 @@ static const ResChoice s_res_choices[] = {
     { 2560, 1440, "2560x1440 (2K QHD 1440p)" },
     { 3440, 1440, "3440x1440 (21:9 Ultrawide)" },
     { 3840, 2160, "3840x2160 (4K UHD 2160p)" },
-    { 1280, 720,  "1280x720 (HD 720p)" }
+    { 1280, 720,  "1280x720 (HD 720p)" },
+    { 1280, 800,  "1280x800 (Steam Deck 16:10)" },
+    { 1024, 768,  "1024x768 (4:3 Arcade)" },
+    { 1280, 960,  "1280x960 (4:3 HD)" },
+    { 1600, 1200, "1600x1200 (4:3 UXGA)" },
+    { 960,  540,  "960x540 (Android Turbo 16:9)" },
+    { 854,  480,  "854x480 (Android Ligero 480p)" },
+    { 1024, 576,  "1024x576 (Android HD-Lite)" }
 };
 #define NUM_RES_CHOICES (sizeof(s_res_choices) / sizeof(s_res_choices[0]))
 
@@ -448,8 +563,56 @@ static void sync_menu_indices_from_cfg(void) {
     s_idx_touchhud = (g_cfg_touch_hud < (uint32_t)NUM_TOUCHHUD_CHOICES) ? (int)g_cfg_touch_hud : 0;
 }
 
+static void ensure_default_config_txt(void) {
+    init_portable_paths();
+    DWORD attr = GetFileAttributesW(g_config_txt_path);
+    if (attr != INVALID_FILE_ATTRIBUTES) return;
+
+    FILE *fout = _wfopen(g_config_txt_path, L"wb");
+    if (!fout) {
+        log_msg("[VT4-Mod] WARNING: Failed to create default Config.txt at %ls (err=%lu)",
+                g_config_txt_path, (unsigned long)GetLastError());
+        return;
+    }
+
+    static const wchar_t *const default_keymap =
+        L"90 88 67 86 100 102 103 105 83 32 0 255 0 255 2 38 40 37 39 ";
+    wchar_t out[4096];
+    int pos = 0;
+    out[pos++] = 0xFEFF;
+    pos += swprintf(&out[pos], 4096 - pos,
+        L"LegendsMod\r\n"
+        L"LegendsMod\r\n"
+        L"\r\n"
+        L"(#0)\r\n"
+        L"\r\n"
+        L"%u\r\n"
+        L"%u\r\n"
+        L"2\r\n"
+        L"0\r\n"
+        L"0\r\n"
+        L"%u\r\n"
+        L"1\r\n"
+        L"1\r\n"
+        L"00000001-0000-0000-0000-000000000000 00000001-0000-0000-0000-000000000000 0 0\r\n"
+        L"00000002-0000-0000-0000-000000000000 00000002-0000-0000-0000-000000000000 0 0\r\n"
+        L"00000000-0000-0000-0000-000000000000 00000000-0000-0000-0000-000000000000 0 0\r\n"
+        L"00000000-0000-0000-0000-000000000000 00000000-0000-0000-0000-000000000000 0 0\r\n"
+        L"1\r\n"
+        L"00000001-0000-0000-0000-000000000000\r\n",
+        g_cfg_width, g_cfg_height, g_cfg_antialiasing);
+    for (int i = 0; i < 16 && pos < 3950; i++) {
+        pos += swprintf(&out[pos], 4096 - pos, L"%ls\r\n", default_keymap);
+    }
+    fwrite(out, sizeof(wchar_t), (size_t)pos, fout);
+    fclose(fout);
+    log_msg("[VT4-Mod] Auto-created default portable Config.txt at %ls (%ux%u, AA=%u)",
+            g_config_txt_path, g_cfg_width, g_cfg_height, g_cfg_antialiasing);
+}
+
 static void update_config_txt(void) {
-    const wchar_t *config_path = L"c:\\Users\\acorr\\Documents\\tenis\\game\\save\\Config.txt";
+    ensure_default_config_txt();
+    const wchar_t *config_path = g_config_txt_path;
     FILE *f = _wfopen(config_path, L"rb");
     if (!f) return;
 
@@ -592,6 +755,7 @@ static void apply_and_save_menu_settings(void *dev) {
     g_cfg_broadcast_hud = s_idx_bhud ? 1u : 0u;
     g_cfg_pro_physics = s_idx_prophys ? 1u : 0u;
     g_cfg_touch_hud = (uint32_t)s_idx_touchhud;
+    touch_gamepad_reset_autohide();
 
     save_vt4_settings();
     apply_exhibition_rule_preset();
@@ -622,8 +786,8 @@ static void apply_and_save_menu_settings(void *dev) {
             AdjustWindowRect(&wr, style, FALSE);
             int win_w = wr.right - wr.left;
             int win_h = wr.bottom - wr.top;
-            int pos_x = (scr_w > win_w) ? (scr_w - win_w) / 2 : 50;
-            int pos_y = (scr_h > win_h) ? (scr_h - win_h) / 2 : 50;
+            int pos_x = (scr_w > win_w) ? (scr_w - win_w) / 2 : 0;
+            int pos_y = (scr_h > win_h) ? (scr_h - win_h) / 2 : 0;
             SetWindowLongA(g_game_hwnd, GWL_STYLE, style);
             SetWindowPos(g_game_hwnd, HWND_TOP, pos_x, pos_y, win_w, win_h, SWP_SHOWWINDOW | SWP_FRAMECHANGED);
             g_is_fullscreen = 0;
@@ -849,17 +1013,11 @@ static void __attribute__((noinline)) init_menu_fonts(void *dev) {
     if (!dev) dev = g_d3d_device;
     if (!dev || !*(void ***)dev) return;
     if (!g_d3dx_createfont || !g_d3dx_createsprite || !g_d3dx_createtex) {
-        HMODULE hD3DX = LoadLibraryA("d3dx9_43.dll");
+        HMODULE hD3DX = get_d3dx9_43();
         if (hD3DX) {
             g_d3dx_createfont = (D3DXCreateFontA_t)GetProcAddress(hD3DX, "D3DXCreateFontA");
             g_d3dx_createsprite = (D3DXCreateSprite_t)GetProcAddress(hD3DX, "D3DXCreateSprite");
             g_d3dx_createtex = (D3DXCreateTextureFromFileA_t)GetProcAddress(hD3DX, "D3DXCreateTextureFromFileA");
-        } else {
-            static int s_d3dx_miss = 0;
-            if (!s_d3dx_miss) {
-                s_d3dx_miss = 1;
-                log_msg("[VT4-Mod] init_menu_fonts: LoadLibraryA(d3dx9_43.dll) failed (%lu)", (unsigned long)GetLastError());
-            }
         }
     }
     if (g_d3dx_createtex && !g_pCrestTex && g_game_dir[0]) {
@@ -899,17 +1057,24 @@ static void __attribute__((noinline)) init_menu_fonts(void *dev) {
         log_msg("[VT4-Mod] Created D3DXSprite object: %p (hr=0x%08lx)", g_pSprite, (unsigned long)hr_sp);
     }
     if (g_d3dx_createfont) {
+        float fscale = (g_cfg_height > 0) ? ((float)g_cfg_height / 720.0f) : 1.0f;
+        int title_h = (int)(22.0f * fscale + 0.5f);
+        if (title_h < 13) title_h = 13;
+        if (title_h > 44) title_h = 44;
+        int body_h = (int)(18.0f * fscale + 0.5f);
+        if (body_h < 11) body_h = 11;
+        if (body_h > 36) body_h = 36;
         if (!g_pFontTitle) {
-            HRESULT hr_ft = g_d3dx_createfont(dev, 22, 0, FW_BOLD, 1, FALSE, DEFAULT_CHARSET,
+            HRESULT hr_ft = g_d3dx_createfont(dev, title_h, 0, FW_BOLD, 1, FALSE, DEFAULT_CHARSET,
                               OUT_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
                               DEFAULT_PITCH | FF_DONTCARE, "Arial", &g_pFontTitle);
-            log_msg("[VT4-Mod] Created D3DXFontTitle: %p (hr=0x%08lx)", g_pFontTitle, (unsigned long)hr_ft);
+            log_msg("[VT4-Mod] Created D3DXFontTitle(%dpx): %p (hr=0x%08lx)", title_h, g_pFontTitle, (unsigned long)hr_ft);
         }
         if (!g_pFont) {
-            HRESULT hr_f = g_d3dx_createfont(dev, 18, 0, FW_NORMAL, 1, FALSE, DEFAULT_CHARSET,
+            HRESULT hr_f = g_d3dx_createfont(dev, body_h, 0, FW_NORMAL, 1, FALSE, DEFAULT_CHARSET,
                               OUT_DEFAULT_PRECIS, ANTIALIASED_QUALITY,
                               DEFAULT_PITCH | FF_DONTCARE, "Arial", &g_pFont);
-            log_msg("[VT4-Mod] Created D3DXFont: %p (hr=0x%08lx)", g_pFont, (unsigned long)hr_f);
+            log_msg("[VT4-Mod] Created D3DXFont(%dpx): %p (hr=0x%08lx)", body_h, g_pFont, (unsigned long)hr_f);
         }
     }
 }
@@ -1050,7 +1215,8 @@ static void render_settings_hud(void *dev) {
         draw_screen_quad(dev, 0.0f, 656.0f * sy, (float)g_cfg_width, (float)g_cfg_height, 0xFFE0E2E8);
         draw_screen_quad(dev, 0.0f, 656.0f * sy, (float)g_cfg_width, 658.0f * sy, 0xFF9E9FA6);
         if (g_pCrestTex) {
-            float cx = 935.0f * sx, cy = 296.0f * sy, rad = 172.0f * sy;
+            float crest_s = (sx < sy) ? sx : sy;
+            float cx = 935.0f * sx, cy = 296.0f * sy, rad = 172.0f * crest_s;
             draw_textured_quad(dev, g_pCrestTex, cx - rad, cy - rad, cx + rad, cy + rad, 0xFFFFFFFF);
         }
     }
@@ -1087,7 +1253,7 @@ static void render_settings_hud(void *dev) {
     };
 
     const char *item_hints[NUM_SETTINGS_ITEMS] = {
-        "Resolucion interna 3D (HD, QHD, Ultrawide, 4K UHD)",
+        "Resolucion interna 3D (HD, Steam Deck 16:10, 4:3 Arcade, QHD, 4K)",
         "Ventana sin bordes o Pantalla Completa",
         "Suavizado 3D nativo de bordes (MSAA)",
         "Desactivar VSync libera latencia y framerate en Present",
@@ -1289,15 +1455,92 @@ typedef struct {
 } VT4_XINPUT_STATE;
 
 typedef DWORD (WINAPI *VT4_XInputGetState_t)(DWORD dwUserIndex, VT4_XINPUT_STATE *pState);
-static VT4_XInputGetState_t g_xinput_get_state = NULL;
+typedef UINT  (WINAPI *VT4_joyGetPosEx_t)(UINT uJoyID, void *pji);
+
+typedef struct {
+    DWORD dwSize;
+    DWORD dwFlags;
+    DWORD dwXpos;
+    DWORD dwYpos;
+    DWORD dwZpos;
+    DWORD dwRpos;
+    DWORD dwUpos;
+    DWORD dwVpos;
+    DWORD dwButtons;
+    DWORD dwButtonNumber;
+    DWORD dwPOV;
+    DWORD dwReserved1;
+    DWORD dwReserved2;
+} VT4_JOYINFOEX;
+
+static VT4_XInputGetState_t g_xinput_fns[3] = { NULL, NULL, NULL };
+static VT4_joyGetPosEx_t    g_joy_get_pos_ex = NULL;
 static int g_xinput_searched = 0;
 static int g_xinput_pad_tbl_inited = 0;
+static int g_winmm_pad_logged = 0;
+static int g_real_gamepad_active = 0;
+
+static void xinput_read_xi_state(const VT4_XINPUT_STATE *st, float *ax, float *ay, WORD *btns) {
+    WORD b = st->Gamepad.wButtons;
+    float x = 0.0f, y = 0.0f;
+    const SHORT dz = 7849;
+    if (st->Gamepad.sThumbLX > dz || st->Gamepad.sThumbLX < -dz) {
+        x = (float)st->Gamepad.sThumbLX / 32767.0f;
+    }
+    if (st->Gamepad.sThumbLY > dz || st->Gamepad.sThumbLY < -dz) {
+        // XInput +Y is Up; VT4 AnalogY -1.0 is Up
+        y = -(float)st->Gamepad.sThumbLY / 32767.0f;
+    }
+    if (b & 0x0004) x = -1.0f;
+    else if (b & 0x0008) x = 1.0f;
+    if (b & 0x0001) y = -1.0f;
+    else if (b & 0x0002) y = 1.0f;
+    *ax = x; *ay = y; *btns = b;
+}
+
+static void xinput_read_joy_state(const VT4_JOYINFOEX *ji, float *ax, float *ay, WORD *btns) {
+    float x = 0.0f, y = 0.0f;
+    WORD b = 0;
+    int dx = (int)ji->dwXpos - 32767;
+    int dy = (int)ji->dwYpos - 32767;
+    const int dz = 8000;
+    if (dx > dz || dx < -dz) {
+        x = (float)dx / 32767.0f;
+        if (x < -1.0f) x = -1.0f;
+        if (x >  1.0f) x =  1.0f;
+    }
+    if (dy > dz || dy < -dz) {
+        y = (float)dy / 32767.0f;
+        if (y < -1.0f) y = -1.0f;
+        if (y >  1.0f) y =  1.0f;
+    }
+    if (ji->dwPOV <= 35999u) {
+        DWORD pov = ji->dwPOV;
+        if (pov <= 4500u || pov >= 31500u)          { b |= 0x0001; y = -1.0f; }
+        if (pov >= 13500u && pov <= 22500u)         { b |= 0x0002; y =  1.0f; }
+        if (pov >= 22500u && pov <= 31500u)         { b |= 0x0004; x = -1.0f; }
+        if (pov >= 4500u && pov <= 13500u)          { b |= 0x0008; x =  1.0f; }
+    }
+    DWORD jb = ji->dwButtons;
+    if (jb & 0x01u) b |= 0x1000; /* A */
+    if (jb & 0x02u) b |= 0x2000; /* B */
+    if (jb & 0x04u) b |= 0x4000; /* X */
+    if (jb & 0x08u) b |= 0x8000; /* Y */
+    if (jb & 0x10u) b |= 0x0100; /* LB */
+    if (jb & 0x20u) b |= 0x0200; /* RB */
+    if (jb & 0x40u) b |= 0x0020; /* Back */
+    if (jb & 0x80u) b |= 0x0010; /* Start */
+    *ax = x; *ay = y; *btns = b;
+}
 
 static int xinput_get_p1(float *out_ax, float *out_ay, WORD *out_btns) {
     static uint32_t s_xi_tick = 0xFFFFFFFFu;
     static int      s_xi_ok = 0;
     static float    s_xi_ax = 0.0f, s_xi_ay = 0.0f;
     static WORD     s_xi_btns = 0;
+    static int      s_last_xi_dll = -1;
+    static DWORD    s_last_xi_user = 0;
+    static int      s_last_joy_id = -1;
 
     if (!g_xinput_searched) {
         g_xinput_searched = 1;
@@ -1306,11 +1549,18 @@ static int xinput_get_p1(float *out_ax, float *out_ay, WORD *out_btns) {
             HMODULE h = GetModuleHandleA(s_dlls[i]);
             if (!h) h = LoadLibraryA(s_dlls[i]);
             if (h) {
-                g_xinput_get_state = (VT4_XInputGetState_t)GetProcAddress(h, "XInputGetState");
-                if (g_xinput_get_state) {
+                g_xinput_fns[i] = (VT4_XInputGetState_t)GetProcAddress(h, "XInputGetState");
+                if (g_xinput_fns[i]) {
                     log_msg("[VT4-Mod] Dynamic XInput loaded: %s", s_dlls[i]);
-                    break;
                 }
+            }
+        }
+        HMODULE hWinmm = GetModuleHandleA("winmm.dll");
+        if (!hWinmm) hWinmm = LoadLibraryA("winmm.dll");
+        if (hWinmm) {
+            g_joy_get_pos_ex = (VT4_joyGetPosEx_t)GetProcAddress(hWinmm, "joyGetPosEx");
+            if (g_joy_get_pos_ex) {
+                log_msg("[VT4-Mod] Dynamic WinMM joyGetPosEx fallback ready");
             }
         }
     }
@@ -1322,36 +1572,66 @@ static int xinput_get_p1(float *out_ax, float *out_ay, WORD *out_btns) {
         s_xi_ax = 0.0f;
         s_xi_ay = 0.0f;
         s_xi_btns = 0;
-        if (g_xinput_get_state) {
-            VT4_XINPUT_STATE st;
-            memset(&st, 0, sizeof(st));
-            if (g_xinput_get_state(0, &st) == 0) {
-                s_xi_ok = 1;
-                s_xi_btns = st.Gamepad.wButtons;
-                const SHORT dz = 7849;
-                if (st.Gamepad.sThumbLX > dz || st.Gamepad.sThumbLX < -dz) {
-                    s_xi_ax = (float)st.Gamepad.sThumbLX / 32767.0f;
-                }
-                if (st.Gamepad.sThumbLY > dz || st.Gamepad.sThumbLY < -dz) {
-                    // XInput +Y is Up; VT4 AnalogY -1.0 is Up
-                    s_xi_ay = -(float)st.Gamepad.sThumbLY / 32767.0f;
-                }
-                if (s_xi_btns & 0x0004) s_xi_ax = -1.0f; // DPAD_LEFT
-                else if (s_xi_btns & 0x0008) s_xi_ax = 1.0f; // DPAD_RIGHT
-                if (s_xi_btns & 0x0001) s_xi_ay = -1.0f; // DPAD_UP
-                else if (s_xi_btns & 0x0002) s_xi_ay = 1.0f; // DPAD_DOWN
 
-                // Ensure native VT4 gamepad slot 0 is enabled if no Launcher config.txt ran
-                if (!g_xinput_pad_tbl_inited) {
-                    g_xinput_pad_tbl_inited = 1;
-                    *(uint8_t *)0x00835ee8 = 1;
-                    uint32_t *pad_p1 = (uint32_t *)0x00820f38;
-                    if (pad_p1[2] == 0 && pad_p1[3] == 0) {
-                        memcpy(pad_p1, (const void *)0x00820db0, 21 * sizeof(uint32_t));
+        VT4_XINPUT_STATE st;
+        if (s_last_xi_dll >= 0 && g_xinput_fns[s_last_xi_dll]) {
+            memset(&st, 0, sizeof(st));
+            if (g_xinput_fns[s_last_xi_dll](s_last_xi_user, &st) == 0) {
+                s_xi_ok = 1;
+                xinput_read_xi_state(&st, &s_xi_ax, &s_xi_ay, &s_xi_btns);
+            } else {
+                s_last_xi_dll = -1;
+            }
+        }
+        if (!s_xi_ok) {
+            for (int d = 0; d < 3 && !s_xi_ok; d++) {
+                if (!g_xinput_fns[d]) continue;
+                for (DWORD u = 0; u < 4; u++) {
+                    memset(&st, 0, sizeof(st));
+                    if (g_xinput_fns[d](u, &st) == 0) {
+                        s_xi_ok = 1;
+                        s_last_xi_dll = d;
+                        s_last_xi_user = u;
+                        xinput_read_xi_state(&st, &s_xi_ax, &s_xi_ay, &s_xi_btns);
+                        break;
                     }
-                    log_msg("[VT4-Mod] XInput P1 controller detected -> enabled native gamepad slot 0");
                 }
             }
+        }
+        if (!s_xi_ok && g_joy_get_pos_ex) {
+            VT4_JOYINFOEX ji;
+            int order[2] = { (s_last_joy_id == 1) ? 1 : 0, (s_last_joy_id == 1) ? 0 : 1 };
+            for (int k = 0; k < 2; k++) {
+                UINT jid = (UINT)order[k];
+                memset(&ji, 0, sizeof(ji));
+                ji.dwSize = sizeof(ji);
+                ji.dwFlags = 0xFFu;
+                if (g_joy_get_pos_ex(jid, &ji) == 0) {
+                    s_xi_ok = 1;
+                    s_last_joy_id = (int)jid;
+                    xinput_read_joy_state(&ji, &s_xi_ax, &s_xi_ay, &s_xi_btns);
+                    if (!g_winmm_pad_logged) {
+                        g_winmm_pad_logged = 1;
+                        log_msg("[VT4-Mod] WinMM/DirectInput P1 joystick active (id=%u)", jid);
+                    }
+                    break;
+                }
+            }
+        }
+        if (s_xi_ok) {
+            g_real_gamepad_active = 1;
+            // Ensure native VT4 gamepad slot 0 is enabled if no Launcher config.txt ran
+            if (!g_xinput_pad_tbl_inited) {
+                g_xinput_pad_tbl_inited = 1;
+                *(uint8_t *)0x00835ee8 = 1;
+                uint32_t *pad_p1 = (uint32_t *)0x00820f38;
+                if (pad_p1[13] == 0xFFFFFFFFu) {
+                    memcpy(pad_p1, (const void *)0x00820db0, 21 * sizeof(uint32_t));
+                }
+                log_msg("[VT4-Mod] Gamepad P1 controller detected (xi=%d.%lu joy=%d) -> enabled native gamepad slot 0",
+                        s_last_xi_dll, (unsigned long)s_last_xi_user, s_last_joy_id);
+            }
+            touch_gamepad_notify_real_xinput(s_xi_ax, s_xi_ay, s_xi_btns, g_cfg_touch_hud);
         }
     }
     float t_ax = 0.0f, t_ay = 0.0f;
@@ -1547,6 +1827,7 @@ static void __cdecl hk_MainMenu_OpenNetplayUI(void *dialog_cfg) {
     g_menu_visible = 0;
     netplay_ui_sync_from_live();
     g_netplay_menu_visible = 1;
+    g_mod_menu_open_frame = g_present_calls;
     play_vt4_menu_se(5);
     log_msg("[VT4-Mod] Opened P2P Netplay UI from Main Menu 'EN LINEA' (local_ip=%s)", s_np_local_ip);
 }
@@ -1741,6 +2022,36 @@ static const char *g_custom_ioc_codes[12] = {
 static const uint8_t g_custom_lefty[12]     = { 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1 };
 static const uint8_t g_custom_bh2[12]       = { 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 0 };
 static const uint8_t g_custom_bio_proxy[12] = { 1, 9, 5, 5, 14, 5, 17, 18, 22, 17, 1, 18 };
+static const char *g_custom_height_cm[12] = {
+    "183", "191", "185", "180", "180", "180",
+    "176", "175", "176", "182", "191", "173"
+};
+static const char *g_custom_weight_kg[12] = {
+    "74", "77", "77", "80", "73", "75",
+    "64", "72", "65", "80", "83", "66"
+};
+static char g_bio_ht_cm[MAX_ROSTER_PLAYERS - 26][16];
+static char g_bio_ht_ft[MAX_ROSTER_PLAYERS - 26][16];
+static char g_bio_wt_kg[MAX_ROSTER_PLAYERS - 26][16];
+static char g_bio_wt_lb[MAX_ROSTER_PLAYERS - 26][16];
+
+static void init_custom_bio_strings(void) {
+    for (int id = 26; id < MAX_ROSTER_PLAYERS; id++) {
+        int idx = id - 26;
+        const char *h_s = (id < 38) ? g_custom_height_cm[idx] : g_extra_players[id - 38].height;
+        const char *w_s = (id < 38) ? g_custom_weight_kg[idx] : g_extra_players[id - 38].weight;
+        int cm = atoi(h_s);
+        int kg = atoi(w_s);
+        if (cm <= 0) cm = 180;
+        if (kg <= 0) kg = 75;
+        int tot_in = (int)((double)cm / 2.54 + 0.5);
+        int lb = (int)((double)kg * 2.20462 + 0.5);
+        snprintf(g_bio_ht_cm[idx], sizeof(g_bio_ht_cm[idx]), "%dcm.", cm);
+        snprintf(g_bio_ht_ft[idx], sizeof(g_bio_ht_ft[idx]), "%d'%d$Q", tot_in / 12, tot_in % 12);
+        snprintf(g_bio_wt_kg[idx], sizeof(g_bio_wt_kg[idx]), "%dkg", kg);
+        snprintf(g_bio_wt_lb[idx], sizeof(g_bio_wt_lb[idx]), "%dlb", lb);
+    }
+}
 static int32_t g_player_flags[MAX_ROSTER_PLAYERS] = {0};
 static uint32_t g_player_anim_presets[MAX_ROSTER_PLAYERS * 5] = {0};
 static float g_player_bone_scales[MAX_ROSTER_PLAYERS * 60] = {0};
@@ -1784,21 +2095,60 @@ static void __thiscall hk_SetServeMotionId(void *self, int id1, int id2) {
 
 typedef void *(__thiscall *GetMotionDataFn_t)(void *self, int slot, int motion_id);
 static GetMotionDataFn_t g_real_get_motion_data = NULL;
+
+static inline int is_valid_motion_handle(void *res) {
+    uintptr_t p = (uintptr_t)res;
+    if (p < 0x10000u || p >= 0x7FFE0000u || IsBadReadPtr(res, 4)) return 0;
+    uintptr_t inner = *(uintptr_t *)res;
+    if (inner < 0x10000u || inner >= 0x7FFE0000u || IsBadReadPtr((const void *)inner, 16)) return 0;
+    return 1;
+}
+
 static void *__thiscall hk_GetMotionData(void *self, int slot, int motion_id) {
-    void *res = g_real_get_motion_data ? g_real_get_motion_data(self, slot, motion_id) : NULL;
-    if ((uintptr_t)res < 0x10000u || (uintptr_t)res >= 0x7FFE0000u) {
-        if (g_cfg_debug_log) {
-            static int s_bad_mot_logs = 0;
-            if (s_bad_mot_logs < 16) {
-                s_bad_mot_logs++;
-                log_msg("[VT4-Mod] [DIAG-MOT] GetMotionData(self=%p, slot=%d, motion_id=%d/0x%x) -> BAD ptr=%p caller=%p",
-                        self, slot, motion_id, motion_id, res, __builtin_return_address(0));
+    const int16_t *map = NULL;
+    if (self && slot >= 0 && slot < 16 && !IsBadReadPtr(self, 4)) {
+        uint8_t *mgr = *(uint8_t **)self;
+        if ((uintptr_t)mgr >= 0x10000u && !IsBadReadPtr(mgr + (size_t)slot * 0x58 + 0x10, 4)) {
+            map = *(const int16_t **)(mgr + (size_t)slot * 0x58 + 0x10);
+            if ((uintptr_t)map < 0x10000u) map = NULL;
+        }
+    }
+    if (map && motion_id >= 0 && motion_id < 4096 && !IsBadReadPtr(&map[motion_id * 2], 4) && map[motion_id * 2] < 0) {
+        static int s_unloaded_mot_logs = 0;
+        int fb = (slot == 3) ? 0x50 : 0;
+        if (IsBadReadPtr(&map[fb * 2], 4) || map[fb * 2] < 0) {
+            fb = -1;
+            for (int k = 0; k < 512; k++) {
+                if (!IsBadReadPtr(&map[k * 2], 4) && map[k * 2] >= 0) { fb = k; break; }
             }
         }
-        // Safe fallback to common motion (0 for slot 0 AthleteCommonMan, 0x50 for slot 3 BallCommonMan)
+        if (s_unloaded_mot_logs < 16) {
+            s_unloaded_mot_logs++;
+            log_msg("[VT4-Mod] [MOT-FIX] Unloaded motion G[%d] ID[0x%x] -> redirecting to safe loaded ID[0x%x] caller=%p",
+                    slot, motion_id, fb, __builtin_return_address(0));
+        }
+        if (fb >= 0 && g_real_get_motion_data) {
+            void *res_fb = g_real_get_motion_data(self, slot, fb);
+            if (is_valid_motion_handle(res_fb)) return res_fb;
+        }
+    }
+
+    void *res = g_real_get_motion_data ? g_real_get_motion_data(self, slot, motion_id) : NULL;
+    if (!is_valid_motion_handle(res)) {
+        static int s_bad_mot_logs = 0;
+        if (s_bad_mot_logs < 16) {
+            s_bad_mot_logs++;
+            log_msg("[VT4-Mod] [DIAG-MOT] GetMotionData(self=%p, slot=%d, motion_id=%d/0x%x) -> BAD ptr=%p caller=%p",
+                    self, slot, motion_id, motion_id, res, __builtin_return_address(0));
+        }
         int fb = (slot == 3) ? 0x50 : 0;
+        if (map && (IsBadReadPtr(&map[fb * 2], 4) || map[fb * 2] < 0)) {
+            for (int k = 0; k < 512; k++) {
+                if (!IsBadReadPtr(&map[k * 2], 4) && map[k * 2] >= 0) { fb = k; break; }
+            }
+        }
         void *res2 = g_real_get_motion_data ? g_real_get_motion_data(self, slot, fb) : NULL;
-        if ((uintptr_t)res2 >= 0x10000u && (uintptr_t)res2 < 0x7FFE0000u) return res2;
+        if (is_valid_motion_handle(res2)) return res2;
     }
     return res;
 }
@@ -1881,6 +2231,7 @@ static int sto_is_federer_dob(const char *s) {
 }
 
 static int      g_loading_cur_char_id = -1;
+static int      g_loading_bio_char_id = -1;
 static uint32_t g_loading_cur_frame   = 0;
 
 static void __thiscall hk_Loading_SetPlayerPhoto(void *self, int slot, int char_id) {
@@ -1892,38 +2243,55 @@ static void __thiscall hk_Loading_SetPlayerPhoto(void *self, int slot, int char_
     ((SetPhotoFn_t)0x005E6510)(self, slot, char_id);
 }
 
+static void __thiscall hk_Loading_SetBioCard(void *self, void *info) {
+    int prev = g_loading_bio_char_id;
+    if (info && !IsBadReadPtr(info, 12)) {
+        int cid = *(int *)((char *)info + 8);
+        if (cid >= 0 && cid < MAX_ROSTER_PLAYERS) {
+            g_loading_bio_char_id = cid;
+        }
+    }
+    typedef void (__thiscall *SetBioFn_t)(void *, void *);
+    ((SetBioFn_t)0x005e58a0)(self, info);
+    g_loading_bio_char_id = prev;
+}
+
 static const char *__fastcall hk_StoLookup(void *sto_obj, void *edx, int table_id, int row_id) {
     (void)edx;
     if (!g_real_sto_lookup) return "";
-    /* Pre-match loading/versus text template (caller 0x006693E9) receives char ids already reduced
-     * modulo 26 (82 -> 4 "Del Potro", 43 -> 17 "Sharapova"). Restore the real id using
-     * hk_Loading_SetPlayerPhoto (0x0043CAC9) which sets g_loading_cur_char_id right before 0x006693E9. */
-    if (sto_obj == g_tr_common_sto && row_id >= 0 && row_id < 26 &&
-        __builtin_return_address(0) == (void *)0x006693E9) {
-        int resolved = -1;
-        if (g_loading_cur_char_id >= 26 && g_loading_cur_char_id < MAX_ROSTER_PLAYERS &&
-            g_present_calls <= g_loading_cur_frame + 10u && (g_loading_cur_char_id % 26) == row_id) {
-            resolved = g_loading_cur_char_id;
-        } else if (g_vp_p1_id >= 0) {
-            static uint32_t s_lt_frame = 0;
-            static int s_lt_idx = -1, s_lt_last_row = -1;
-            if (g_present_calls > s_lt_frame + 3u) { s_lt_idx = -1; s_lt_last_row = -1; }
-            s_lt_frame = g_present_calls;
-            if (row_id != s_lt_last_row) { s_lt_idx++; s_lt_last_row = row_id; }
-            int pid = (s_lt_idx == 0) ? g_vp_p1_id : (s_lt_idx == 1 ? g_vp_p2_id : -1);
-            if (pid >= 26 && pid < MAX_ROSTER_PLAYERS && (pid % 26) == row_id) {
-                resolved = pid;
-            }
-        }
-        if (resolved >= 26) {
-            if (g_cfg_debug_log) {
-                static int s_lt_log = 0;
-                if (s_lt_log < 16) {
-                    s_lt_log++;
-                    log_msg("[VT4-Mod] [LOADFIX] loading text tbl=%d row %d -> real id %d", table_id, row_id, resolved);
+    /* Restrict player-ID resolution and overrides strictly to player tables 0..14!
+     * Tables 15..16 are 200-country IOC/name tables keyed by flag_id (must never remap row_id >= 26). */
+    if (g_has_custom_roster && sto_obj == g_tr_common_sto && table_id >= 0 && table_id <= 14) {
+        if (g_loading_bio_char_id >= 26 && g_loading_bio_char_id < MAX_ROSTER_PLAYERS) {
+            row_id = g_loading_bio_char_id;
+        } else if (row_id >= 0 && row_id < 28 && __builtin_return_address(0) == (void *)0x006693E9) {
+            int resolved = -1;
+            if (g_loading_cur_char_id >= 26 && g_loading_cur_char_id < MAX_ROSTER_PLAYERS &&
+                g_present_calls <= g_loading_cur_frame + 10u &&
+                ((g_loading_cur_char_id % 26) == row_id || (g_loading_cur_char_id % 28) == row_id)) {
+                resolved = g_loading_cur_char_id;
+            } else if (g_vp_p1_id >= 0) {
+                static uint32_t s_lt_frame = 0;
+                static int s_lt_idx = -1, s_lt_last_row = -1;
+                if (g_present_calls > s_lt_frame + 3u) { s_lt_idx = -1; s_lt_last_row = -1; }
+                s_lt_frame = g_present_calls;
+                if (row_id != s_lt_last_row) { s_lt_idx++; s_lt_last_row = row_id; }
+                int pid = (s_lt_idx == 0) ? g_vp_p1_id : (s_lt_idx == 1 ? g_vp_p2_id : -1);
+                if (pid >= 26 && pid < MAX_ROSTER_PLAYERS &&
+                    ((pid % 26) == row_id || (pid % 28) == row_id)) {
+                    resolved = pid;
                 }
             }
-            row_id = resolved;
+            if (resolved >= 26) {
+                if (g_cfg_debug_log) {
+                    static int s_lt_log = 0;
+                    if (s_lt_log < 16) {
+                        s_lt_log++;
+                        log_msg("[VT4-Mod] [LOADFIX] loading text tbl=%d row %d -> real id %d", table_id, row_id, resolved);
+                    }
+                }
+                row_id = resolved;
+            }
         }
     }
     if (sto_obj && sto_obj != g_tr_common_sto) {
@@ -1944,17 +2312,25 @@ static const char *__fastcall hk_StoLookup(void *sto_obj, void *edx, int table_i
         }
     }
     if (sto_obj == g_tr_common_sto) {
-        if (g_sto_tbl_dob < 0 && table_id > 6) {
+        if (g_sto_tbl_dob < 0 && table_id > 6 && table_id <= 14) {
             const char *fed = g_real_sto_lookup(sto_obj, table_id, 0);
             if (sto_is_federer_dob(fed)) {
                 g_sto_tbl_dob = table_id;
                 log_msg("[VT4-Mod] Auto-detected TR_COMMON.sto DOB table_id=%d (\"%s\")", table_id, fed);
             }
         }
-        if (row_id >= 26 && row_id < MAX_ROSTER_PLAYERS) {
+        if (g_has_custom_roster && table_id >= 0 && table_id <= 14 && row_id >= 26 && row_id < MAX_ROSTER_PLAYERS) {
             if ((g_sto_tbl_dob >= 0 && table_id == g_sto_tbl_dob) || table_id == 10) {
                 return g_custom_dob[row_id - 26];
             }
+            if (table_id == 7) {
+                int flg = g_player_flags[row_id];
+                return g_real_sto_lookup(sto_obj, 16, (flg >= 0 && flg < 200) ? flg : 0);
+            }
+            if (table_id == 11) return g_bio_ht_cm[row_id - 26];
+            if (table_id == 12) return g_bio_ht_ft[row_id - 26];
+            if (table_id == 13) return g_bio_wt_kg[row_id - 26];
+            if (table_id == 14) return g_bio_wt_lb[row_id - 26];
             if (row_id < 38) {
                 int idx = row_id - 26;
                 switch (table_id) {
@@ -1968,10 +2344,7 @@ static const char *__fastcall hk_StoLookup(void *sto_obj, void *edx, int table_i
                     case 8: return g_real_sto_lookup(sto_obj, 8, g_custom_lefty[idx] ? 1 : 0);
                     case 9: return g_real_sto_lookup(sto_obj, 9, g_custom_bh2[idx] ? 2 : 0);
                     default:
-                        if (table_id >= 7) {
-                            return g_real_sto_lookup(sto_obj, table_id, (int)g_custom_bio_proxy[idx]);
-                        }
-                        break;
+                        return g_real_sto_lookup(sto_obj, table_id, (int)g_custom_bio_proxy[idx]);
                 }
             } else {
                 const ExtraPlayerDef *ep = &g_extra_players[row_id - 38];
@@ -1986,10 +2359,7 @@ static const char *__fastcall hk_StoLookup(void *sto_obj, void *edx, int table_i
                     case 8: return g_real_sto_lookup(sto_obj, 8, ep->lefty ? 1 : 0);
                     case 9: return g_real_sto_lookup(sto_obj, 9, ep->bh2 ? 2 : 0);
                     default:
-                        if (table_id >= 7) {
-                            return g_real_sto_lookup(sto_obj, table_id, (int)ep->bio_proxy);
-                        }
-                        break;
+                        return g_real_sto_lookup(sto_obj, table_id, (int)ep->bio_proxy);
                 }
             }
         }
@@ -2072,11 +2442,13 @@ static uint8_t __cdecl hk_PlayerDB_IsType3(int id) {
 }
 
 static const char *__cdecl hk_PlayerDB_GetHeight(int id) {
+    if (id >= 26 && id < 38) return g_custom_height_cm[id - 26];
     if (id >= 38 && id < MAX_ROSTER_PLAYERS) return g_extra_players[id - 38].height;
     return g_real_pdb_get_height ? g_real_pdb_get_height(id) : "180";
 }
 
 static const char *__cdecl hk_PlayerDB_GetWeight(int id) {
+    if (id >= 26 && id < 38) return g_custom_weight_kg[id - 26];
     if (id >= 38 && id < MAX_ROSTER_PLAYERS) return g_extra_players[id - 38].weight;
     return g_real_pdb_get_weight ? g_real_pdb_get_weight(id) : "75";
 }
@@ -2177,7 +2549,7 @@ static void __attribute__((noinline)) init_arrow_textures(void *dev) {
     if (!dev) dev = g_d3d_device;
     if (!dev || !*(void ***)dev) return;
     g_arrow_textures_attempted = 1;
-    HMODULE hD3DX = LoadLibraryA("d3dx9_43.dll");
+    HMODULE hD3DX = get_d3dx9_43();
     if (hD3DX) {
         g_d3dx_createtexture = (D3DXCreateTextureFromFileA_t)GetProcAddress(hD3DX, "D3DXCreateTextureFromFileA");
     }
@@ -2285,29 +2657,29 @@ static void toggle_weapon_mode(void) {
 }
 
 static int check_roster_arrow_click(int mx, int my) {
-    if (g_chara_select_frames <= 0) return 0;
+    if (!g_has_custom_roster || g_chara_select_frames <= 0) return 0;
     float fx = (float)mx;
     float fy = (float)my;
-    float sx = (float)g_cfg_width / 1920.0f;
     float sy = (float)g_cfg_height / 1080.0f;
+    float cs_x0 = (float)g_cfg_width * 0.5f - 960.0f * sy;
 
-    if (fx >= 830.0f * sx && fx <= 926.0f * sx &&
+    if (fx >= cs_x0 + 830.0f * sy && fx <= cs_x0 + 926.0f * sy &&
         fy >= 172.0f * sy && fy <= 208.0f * sy) {
         switch_roster_page(-1);
         return 1;
     }
-    if (fx >= 1354.0f * sx && fx <= 1450.0f * sx &&
+    if (fx >= cs_x0 + 1354.0f * sy && fx <= cs_x0 + 1450.0f * sy &&
         fy >= 172.0f * sy && fy <= 208.0f * sy) {
         switch_roster_page(1);
         return 1;
     }
     if (g_agassi_hovered_cs &&
-        fx >= 828.0f * sx && fx <= 1451.0f * sx &&
+        fx >= cs_x0 + 828.0f * sy && fx <= cs_x0 + 1451.0f * sy &&
         fy >= 854.0f * sy && fy <= 888.0f * sy) {
         toggle_agassi_skin();
         return 1;
     }
-    if (fx >= 828.0f * sx && fx <= 1451.0f * sx &&
+    if (fx >= cs_x0 + 828.0f * sy && fx <= cs_x0 + 1451.0f * sy &&
         fy >= 894.0f * sy && fy <= 926.0f * sy) {
         toggle_weapon_mode();
         return 1;
@@ -2327,7 +2699,9 @@ static int __thiscall hk_FPPlayerEntry_IsReady(void *self) {
                 (esi && (uintptr_t)esi > 0x10000) ? (int)esi[0x18] : -1,
                 (esi && (uintptr_t)esi > 0x10000) ? (int)esi[0x10] : -1);
     }
-    if (is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || is_key_down('C')) {
+    WORD xb = 0;
+    xinput_get_p1(NULL, NULL, &xb);
+    if (is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || is_key_down('C') || ((xb & (0x1000 | 0x0010)) != 0)) {
         s_entry_confirmed = 1;
         log_msg("[VT4-Mod] Player confirmed position on court -> advancing to character select!");
     }
@@ -2359,6 +2733,19 @@ static void __thiscall hk_FPCharaSelect_Update(void *self) {
     g_pCharaSelect = self;
     g_chara_select_frames = 30;
     g_chara_select_ticks++;
+
+    if (g_has_custom_roster && !g_menu_visible && !g_netplay_menu_visible) {
+        WORD xb = 0;
+        static WORD s_prev_cs_lr = 0;
+        xinput_get_p1(NULL, NULL, &xb);
+        if ((xb & 0x0100) && !(s_prev_cs_lr & 0x0100)) {
+            switch_roster_page(-1);
+        }
+        if ((xb & 0x0200) && !(s_prev_cs_lr & 0x0200)) {
+            switch_roster_page(1);
+        }
+        s_prev_cs_lr = xb;
+    }
 
     static int s_logged_cs = 0;
     if (s_logged_cs++ < 5 || (s_logged_cs % 180) == 0) {
@@ -2564,7 +2951,7 @@ static void init_roster_card_textures(void *dev) {
     if (!s_eye_loaded) {
         s_eye_loaded = 1;
         if (!g_d3dx_createtexture) {
-            HMODULE hD3DX = LoadLibraryA("d3dx9_43.dll");
+            HMODULE hD3DX = get_d3dx9_43();
             if (hD3DX) g_d3dx_createtexture = (D3DXCreateTextureFromFileA_t)GetProcAddress(hD3DX, "D3DXCreateTextureFromFileA");
         }
         if (g_d3dx_createtexture) {
@@ -2598,6 +2985,7 @@ static void init_roster_card_textures(void *dev) {
 }
 
 static void render_roster_pagination_hud(void *dev) {
+    if (!g_has_custom_roster) return;
     if (!dev) dev = g_d3d_device;
     if (!dev || !*(void ***)dev || g_chara_select_frames < 28 || g_menu_visible) return;
 
@@ -2628,8 +3016,9 @@ static void render_roster_pagination_hud(void *dev) {
     }
     init_roster_card_textures(dev);
 
-    float sx = (float)g_cfg_width / 1920.0f;
     float sy = (float)g_cfg_height / 1080.0f;
+    float sx = sy;
+    float cs_x0 = (float)g_cfg_width * 0.5f - 960.0f * sy;
 
     // Render all 21 grid cards dynamically with each player's own cropped eye-strip & crisp surname
     int p_slots[2] = { g_cs_p_slots[0], g_cs_p_slots[1] };
@@ -2638,7 +3027,7 @@ static void render_roster_pagination_hud(void *dev) {
     for (int slot = 0; slot < 21; slot++) {
         int col = slot % 3;
         int row = slot / 3;
-        float x1 = (828.0f + col * 211.5f) * sx;
+        float x1 = cs_x0 + (828.0f + col * 211.5f) * sy;
         float y1 = (235.0f + row * 76.285f) * sy;
         float x2 = x1 + 200.0f * sx;
         float y2 = y1 + 71.0f * sy;
@@ -2693,8 +3082,8 @@ static void render_roster_pagination_hud(void *dev) {
     }
 
     float pill_w = 96.0f * sx, pill_h = 36.0f * sy;
-    float l_x = 830.0f * sx, l_y = 172.0f * sy;
-    float r_x = 1354.0f * sx, r_y = 172.0f * sy;
+    float l_x = cs_x0 + 830.0f * sy, l_y = 172.0f * sy;
+    float r_x = cs_x0 + 1354.0f * sy, r_y = 172.0f * sy;
 
     g_arr_left_rc[0] = l_x; g_arr_left_rc[1] = l_y;
     g_arr_left_rc[2] = l_x + pill_w; g_arr_left_rc[3] = l_y + pill_h;
@@ -2712,7 +3101,7 @@ static void render_roster_pagination_hud(void *dev) {
     draw_screen_quad(dev, r_x, r_y + pill_h - 2.0f * sy, r_x + pill_w, r_y + pill_h, 0xFF00E5FF);
 
     // Subtle header bar above grid (grid is x=830..1450, y=218..780)
-    float hdr_x1 = 934.0f * sx, hdr_y1 = 172.0f * sy, hdr_x2 = 1346.0f * sx, hdr_y2 = 208.0f * sy;
+    float hdr_x1 = cs_x0 + 934.0f * sy, hdr_y1 = 172.0f * sy, hdr_x2 = cs_x0 + 1346.0f * sy, hdr_y2 = 208.0f * sy;
     draw_screen_quad(dev, hdr_x1, hdr_y1, hdr_x2, hdr_y2, 0xCC0A1424);
     static const DWORD k_page_accents[NUM_ROSTER_PAGES] = { 0xFF4585E5, 0xFF00E5FF, 0xFFFFA726, 0xFFFFD54F };
     int p_idx = (g_current_roster_page >= 0 && g_current_roster_page < NUM_ROSTER_PAGES) ? g_current_roster_page : 0;
@@ -2730,7 +3119,7 @@ static void render_roster_pagination_hud(void *dev) {
         }
     }
     if (has_multi_hovered) {
-        float sk_x1 = 828.0f * sx, sk_x2 = 1451.0f * sx, sk_y1 = 854.0f * sy, sk_y2 = 888.0f * sy;
+        float sk_x1 = cs_x0 + 828.0f * sy, sk_x2 = cs_x0 + 1451.0f * sy, sk_y1 = 854.0f * sy, sk_y2 = 888.0f * sy;
         draw_screen_quad(dev, sk_x1, sk_y1, sk_x2, sk_y2, 0xCC0A1424);
         DWORD sk_acc = g_agassi_skin ? 0xFFD0D8E4 : 0xFFFF40A8;
         draw_screen_quad(dev, sk_x1, sk_y2 - 3.0f * sy, sk_x2, sk_y2, sk_acc);
@@ -2739,7 +3128,7 @@ static void render_roster_pagination_hud(void *dev) {
     }
 
     {
-        float wp_x1 = 828.0f * sx, wp_x2 = 1451.0f * sx, wp_y1 = 894.0f * sy, wp_y2 = 926.0f * sy;
+        float wp_x1 = cs_x0 + 828.0f * sy, wp_x2 = cs_x0 + 1451.0f * sy, wp_y1 = 894.0f * sy, wp_y2 = 926.0f * sy;
         draw_screen_quad(dev, wp_x1, wp_y1, wp_x2, wp_y2, 0xC00A1424);
         static const DWORD k_wp_acc[4] = { 0xFF566880, 0xFFFF9F40, 0xFF38D4FF, 0xFFFFE040 };
         uint32_t wm = (g_cfg_weapon_mode < 4u) ? g_cfg_weapon_mode : 0u;
@@ -2821,6 +3210,7 @@ static void __thiscall hk_OptionMode_EnterSubmenu(void *this_ptr, const char *na
         g_opt_legends_sub = 1;
         g_menu_visible = 1;
         g_menu_opened_by_optionmode = 1;
+        g_mod_menu_open_frame = g_present_calls;
         log_msg("[VT4-Mod] Entered native OptionMode submenu -> GRAFICOS HD Y LEGENDS");
         return;
     }
@@ -3122,7 +3512,9 @@ static LRESULT CALLBACK hk_GameWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                 if (!(lParam & (1 << 30))) {
                     g_netplay_menu_visible = 0;
                     g_menu_visible = !g_menu_visible;
-                    if (!g_menu_visible) {
+                    if (g_menu_visible) {
+                        g_mod_menu_open_frame = g_present_calls;
+                    } else {
                         close_legends_settings_menu();
                     }
                     log_msg("[VT4-Mod] F2 pressed: g_menu_visible=%d", g_menu_visible);
@@ -3140,6 +3532,7 @@ static LRESULT CALLBACK hk_GameWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
             }
             if (wParam == VK_F6) { // F6 toggle Interactive Xbox Touch HUD live
                 if (!(lParam & (1 << 30))) {
+                    g_tg_auto_hidden_by_xinput = 0;
                     g_cfg_touch_hud = g_cfg_touch_hud ? 0u : 2u;
                     sync_menu_indices_from_cfg();
                     save_vt4_settings();
@@ -3151,7 +3544,9 @@ static LRESULT CALLBACK hk_GameWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                 if (!(lParam & (1 << 30))) {
                     g_netplay_menu_visible = 0;
                     g_menu_visible = !g_menu_visible;
-                    if (!g_menu_visible) {
+                    if (g_menu_visible) {
+                        g_mod_menu_open_frame = g_present_calls;
+                    } else {
                         close_legends_settings_menu();
                     }
                     log_msg("[VT4-Mod] TAB in OptionMode: g_menu_visible=%d", g_menu_visible);
@@ -3171,17 +3566,19 @@ static LRESULT CALLBACK hk_GameWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                 return 0;
             }
             if (!g_menu_visible && g_chara_select_frames > 0 && !(lParam & (1 << 30))) {
-                if (wParam == 'Q' || wParam == 'q' || wParam == VK_OEM_4 || wParam == VK_PRIOR) {
-                    switch_roster_page(-1);
-                    return 0;
-                }
-                if (wParam == 'E' || wParam == 'e' || wParam == VK_OEM_6 || wParam == VK_NEXT) {
-                    switch_roster_page(1);
-                    return 0;
-                }
-                if ((wParam == 'F' || wParam == 'f') && g_agassi_hovered_cs) {
-                    toggle_agassi_skin();
-                    return 0;
+                if (g_has_custom_roster) {
+                    if (wParam == 'Q' || wParam == 'q' || wParam == VK_OEM_4 || wParam == VK_PRIOR) {
+                        switch_roster_page(-1);
+                        return 0;
+                    }
+                    if (wParam == 'E' || wParam == 'e' || wParam == VK_OEM_6 || wParam == VK_NEXT) {
+                        switch_roster_page(1);
+                        return 0;
+                    }
+                    if ((wParam == 'F' || wParam == 'f') && g_agassi_hovered_cs) {
+                        toggle_agassi_skin();
+                        return 0;
+                    }
                 }
                 if (wParam == 'R' || wParam == 'r') {
                     toggle_weapon_mode();
@@ -3207,6 +3604,10 @@ static LRESULT CALLBACK hk_GameWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
             }
             int mx = (short)LOWORD(lParam);
             int my = (short)HIWORD(lParam);
+            if (touch_gamepad_should_show(g_cfg_touch_hud) && g_tg_diag_logs < 6u) {
+                g_tg_diag_logs++;
+                log_msg("[VT4-Mod] [TOUCHHUD] miss WM_LBUTTONDOWN cx=%d cy=%d", mx, my);
+            }
             if (check_roster_arrow_click(mx, my)) {
                 return 0;
             }
@@ -3223,6 +3624,14 @@ static LRESULT CALLBACK hk_GameWndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPAR
                 return 0;
             }
             break;
+        }
+        case WM_RBUTTONDOWN:
+        case WM_RBUTTONUP:
+        case WM_RBUTTONDBLCLK:
+        case WM_XBUTTONDOWN:
+        case WM_XBUTTONUP:
+        case 0x0319: { /* WM_APPCOMMAND: prevent Winlator two-finger right-click or Android Back gesture from cancelling menus */
+            return 0;
         }
         case WM_KEYUP: {
             if (wParam < 256) g_keys_down[wParam] = 0;
@@ -3691,8 +4100,11 @@ static HRESULT __stdcall hk_EndScene(void *dev) {
         s_es_hud_logged = 1;
         log_msg("[VT4-Mod] hk_EndScene: rendering settings HUD (frame=%u, dev=%p)", g_present_calls, dev);
     }
-    ee_render_match_overlay(dev, (float)g_cfg_width / 1280.0f, (float)g_cfg_height / 720.0f);
     {
+        float hud_sx = (float)g_cfg_width / 1280.0f;
+        float hud_sy = (float)g_cfg_height / 720.0f;
+        float hud_s = (hud_sx < hud_sy) ? hud_sx : hud_sy;
+        ee_render_match_overlay(dev, hud_s, hud_s);
         int bhud_live = (g_ee_live_match_present_frame != 0 &&
                          g_present_calls <= g_ee_live_match_present_frame + 4 &&
                          *(uint8_t *)0x008232f6 == 0 &&
@@ -3700,12 +4112,12 @@ static HRESULT __stdcall hk_EndScene(void *dev) {
         render_broadcast_tv_hud(dev, bhud_live, g_cfg_broadcast_hud,
                                 g_menu_visible, g_netplay_menu_visible, g_ee1_fury_active,
                                 g_vp_p1_id, g_vp_p2_id,
-                                (float)g_cfg_width / 1280.0f, (float)g_cfg_height / 720.0f);
+                                hud_s, hud_s);
         render_roster_pagination_hud(dev);
         render_settings_hud(dev);
         render_netplay_hud(dev);
         render_netplay_menu(dev);
-        {
+        if (touch_gamepad_should_show(g_cfg_touch_hud)) {
             float v_ax = 0.0f, v_ay = 0.0f;
             WORD  v_btns = 0;
             xinput_get_p1(&v_ax, &v_ay, &v_btns);
@@ -3804,7 +4216,7 @@ static HRESULT __stdcall hk_Present(void *dev, const RECT *src, const RECT *dst,
         g_screenshot_requested = 1;
     }
 
-    if (g_present_calls == 1 || g_present_calls == 60 || g_screenshot_requested) {
+    if (g_screenshot_requested || (g_cfg_debug_log && (g_present_calls == 1 || g_present_calls == 60))) {
         g_screenshot_requested = 0;
         char path[MAX_PATH];
         snprintf(path, sizeof(path), "%s\\vt4_present_%u.png", g_game_dir, g_present_calls);
@@ -3825,11 +4237,10 @@ static HRESULT __stdcall hk_Present(void *dev, const RECT *src, const RECT *dst,
 static void capture_d3d9_screenshot(void *dev, const char *png_path) {
     if (!dev) return;
     if (!g_d3dx_save) {
-        HMODULE hD3DX = LoadLibraryA("d3dx9_43.dll");
+        HMODULE hD3DX = get_d3dx9_43();
         if (hD3DX) g_d3dx_save = (D3DXSaveSurfaceToFileA_t)GetProcAddress(hD3DX, "D3DXSaveSurfaceToFileA");
     }
     if (!g_d3dx_save) {
-        log_msg("[VT4-Mod] D3DXSaveSurfaceToFileA not available");
         return;
     }
 
@@ -3912,6 +4323,9 @@ static void save_bmp(HWND hwnd, const char *path) {
     ReleaseDC(hwnd, hdcWin);
 }
 
+static int g_d3d_is_ex = 0;
+static UINT g_d3d_sdk_ver = 32;
+
 static HRESULT __stdcall hk_CreateDevice(void *self, UINT adapter, DWORD devtype, HWND focus,
                                          DWORD flags, VT4_D3DPRESENT_PARAMETERS *pp, void **ppdev) {
     log_msg("[VT4-Mod] CreateDevice called: adapter=%u type=%u focus=%p flags=%08x", adapter, devtype, focus, flags);
@@ -3924,7 +4338,7 @@ static HRESULT __stdcall hk_CreateDevice(void *self, UINT adapter, DWORD devtype
         pp->FullScreen_RefreshRateInHz = 0;
         pp->PresentationInterval = (g_perf_pacer_active || !g_cfg_vsync) ? 0x80000000u : 1u;
         if (g_cfg_perf_profile == 2) {
-            pp->BackBufferCount = 1;
+            pp->BackBufferCount = 2; // Triple buffering for parallel CPU/GPU pipelining on Mali/Vortek & Turnip
             pp->SwapEffect = 1; // D3DSWAPEFFECT_DISCARD (cleanest for DXVK/Turnip)
         }
         pp->MultiSampleType = g_cfg_antialiasing;
@@ -3972,6 +4386,32 @@ static HRESULT __stdcall hk_CreateDevice(void *self, UINT adapter, DWORD devtype
         }
     }
 
+    if (hr < 0 && g_d3d_is_ex && g_real_d3dcreate9) {
+        log_msg("[VT4-Mod] CreateDevice failed on D3D9Ex (hr=%08lx); trying standard Direct3DCreate9 fallback...", (unsigned long)hr);
+        void *std_d3d = g_real_d3dcreate9(g_d3d_sdk_ver);
+        if (std_d3d && *(void ***)std_d3d) {
+            CreateDevice_t std_cd = (CreateDevice_t)(*(void ***)std_d3d)[16];
+            if (std_cd) {
+                if (pp) {
+                    pp->Windowed = TRUE;
+                    pp->MultiSampleType = 0;
+                    pp->MultiSampleQuality = 0;
+                    pp->BackBufferFormat = 22;
+                }
+                static const DWORD std_flags[2] = { 0x40, 0x20 };
+                for (int k = 0; k < 2; k++) {
+                    hr = std_cd(std_d3d, adapter, devtype, focus, std_flags[k], pp, ppdev);
+                    log_msg("[VT4-Mod] Direct3DCreate9 fallback CreateDevice flags=%08x -> hr=%08lx dev=%p",
+                            std_flags[k], (unsigned long)hr, ppdev ? *ppdev : NULL);
+                    if (hr >= 0 && ppdev && *ppdev) {
+                        g_d3d_is_ex = 0;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     if (hr >= 0 && ppdev && *ppdev) {
         g_d3d_device = *ppdev;
         g_game_hwnd = focus ? focus : (pp ? pp->hDeviceWindow : NULL);
@@ -3993,8 +4433,8 @@ static HRESULT __stdcall hk_CreateDevice(void *self, UINT adapter, DWORD devtype
             AdjustWindowRect(&wr, style, FALSE);
             int win_w = wr.right - wr.left;
             int win_h = wr.bottom - wr.top;
-            int pos_x = (scr_w > win_w) ? (scr_w - win_w) / 2 : 50;
-            int pos_y = (scr_h > win_h) ? (scr_h - win_h) / 2 : 50;
+            int pos_x = (scr_w > win_w) ? (scr_w - win_w) / 2 : 0;
+            int pos_y = (scr_h > win_h) ? (scr_h - win_h) / 2 : 0;
 
             SetWindowLongA(g_game_hwnd, GWL_STYLE, style);
             SetWindowPos(g_game_hwnd, HWND_TOP, pos_x, pos_y, win_w, win_h, SWP_SHOWWINDOW | SWP_FRAMECHANGED);
@@ -4077,16 +4517,24 @@ static void ensure_d3d9_device_hooks(void *dev) {
 
 static void *__stdcall hk_Direct3DCreate9(UINT sdk) {
     void *d3d = NULL;
-    if (!g_d3dcreate9ex) {
-        HMODULE hD3D9 = GetModuleHandleA("d3d9.dll");
-        if (!hD3D9) hD3D9 = LoadLibraryA("d3d9.dll");
-        if (hD3D9) g_d3dcreate9ex = (Direct3DCreate9Ex_t)GetProcAddress(hD3D9, "Direct3DCreate9Ex");
-    }
-    if (g_d3dcreate9ex) {
-        HRESULT hr = g_d3dcreate9ex(sdk, &d3d);
-        log_msg("[VT4-Mod] Direct3DCreate9Ex(%u) -> hr=%08lx d3d=%p", sdk, (unsigned long)hr, d3d);
+    g_d3d_sdk_ver = sdk;
+    g_d3d_is_ex = 0;
+    if (g_cfg_use_d3d9ex) {
+        if (!g_d3dcreate9ex) {
+            HMODULE hD3D9 = GetModuleHandleA("d3d9.dll");
+            if (!hD3D9) hD3D9 = LoadLibraryA("d3d9.dll");
+            if (hD3D9) g_d3dcreate9ex = (Direct3DCreate9Ex_t)GetProcAddress(hD3D9, "Direct3DCreate9Ex");
+        }
+        if (g_d3dcreate9ex) {
+            HRESULT hr = g_d3dcreate9ex(sdk, &d3d);
+            if (SUCCEEDED(hr) && d3d) g_d3d_is_ex = 1;
+            log_msg("[VT4-Mod] Direct3DCreate9Ex(%u) -> hr=%08lx d3d=%p", sdk, (unsigned long)hr, d3d);
+        }
+    } else {
+        log_msg("[VT4-Mod] UseD3D9Ex=0: using standard Direct3DCreate9(%u)", sdk);
     }
     if (!d3d) {
+        g_d3d_is_ex = 0;
         d3d = g_real_d3dcreate9(sdk);
         log_msg("[VT4-Mod] Direct3DCreate9 fallback(%u) -> %p", sdk, d3d);
     }
@@ -4858,9 +5306,9 @@ static BOOL WINAPI hk_GetKeyboardState(PBYTE lpKeyState) {
     }
 
     // Match/Menu shots: Z/J=Topspin, X/L=Slice, C/K=Lob, V/I=Dropshot
+    // (Never alias Topspin Z/J to Cancel 0x80)
     if (is_key_down('Z') || is_key_down('J')) {
         lpKeyState['Z'] |= 0x80;
-        lpKeyState[0x80] |= 0x80; // Button B
     }
     if (is_key_down('X') || is_key_down('L')) {
         lpKeyState['X'] |= 0x80;
@@ -4927,9 +5375,9 @@ static int is_mapped_button_down(int button) {
         // Action Buttons
         case 0x81: // Confirm / A Button / Lob
             return is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || is_key_down('C') || is_key_down('K') || (xb & 0x1000);
-        case 0x80: // Cancel / Back / B Button / Topspin
+        case 0x80: // Cancel / Back / B Button
         case 0x0E: // Virtual Cancel / Escape (used by FPPlayerEntry and Sega AFC)
-            return is_key_down(VK_ESCAPE) || is_key_down('Z') || is_key_down('J') || is_key_down(VK_BACK) || (xb & 0x2000);
+            return is_key_down(VK_ESCAPE) || is_key_down(VK_BACK) || (xb & 0x2000);
         case 0x82: // X Button / Slice
             return is_key_down('X') || is_key_down('L') || (xb & 0x4000);
         case 0x83: // Y Button / Dropshot
@@ -4981,13 +5429,6 @@ static int __thiscall hk_IsButtonDown(void *self, int button) {
 
 static int __thiscall hk_IsButtonPressed(void *self, int button) {
     if (g_menu_visible || g_netplay_menu_visible) return 0;
-    if (g_chara_select_frames > 0) {
-        if (button == 0x84) { // LB
-            switch_roster_page(-1);
-        } else if (button == 0x85) { // RB
-            switch_roster_page(1);
-        }
-    }
     if (button >= 0 && button < 256) {
         if (is_mapped_button_down(button)) {
             g_btn_hold[button]++;
@@ -5026,13 +5467,14 @@ static uint8_t  g_fwkbd_cur[256] = {0};
 
 static int fwkbd_bit_down(int bit_idx) {
     if (g_menu_visible || g_netplay_menu_visible) return 0;
+    float ax = 0.0f, ay = 0.0f;
     WORD xb = 0;
-    xinput_get_p1(NULL, NULL, &xb);
+    xinput_get_p1(&ax, &ay, &xb);
     switch (bit_idx) {
-        case VK_UP:     return is_key_down(VK_UP)    || is_key_down('W') || (xb & 0x0001);
-        case VK_DOWN:   return is_key_down(VK_DOWN)  || is_key_down('S') || (xb & 0x0002);
-        case VK_LEFT:   return is_key_down(VK_LEFT)  || is_key_down('A') || (xb & 0x0004);
-        case VK_RIGHT:  return is_key_down(VK_RIGHT) || is_key_down('D') || (xb & 0x0008);
+        case VK_UP:     return is_key_down(VK_UP)    || is_key_down('W') || (xb & 0x0001) || (ay < -0.35f);
+        case VK_DOWN:   return is_key_down(VK_DOWN)  || is_key_down('S') || (xb & 0x0002) || (ay > 0.35f);
+        case VK_LEFT:   return is_key_down(VK_LEFT)  || is_key_down('A') || (xb & 0x0004) || (ax < -0.35f);
+        case VK_RIGHT:  return is_key_down(VK_RIGHT) || is_key_down('D') || (xb & 0x0008) || (ax > 0.35f);
         case 'Z':       return is_key_down('Z') || is_key_down('J') || (g_chara_select_frames <= 0 && is_key_down(VK_RETURN)) || (xb & 0x1000);
         case 'X':       return is_key_down('X') || is_key_down('L') || (xb & 0x4000);
         case 'C':       return is_key_down('C') || is_key_down('K') || (xb & 0x2000);
@@ -5074,8 +5516,12 @@ static void fwkbd_poll_frame_start(void) {
     }
 }
 
+static void poll_mod_overlay_gamepad_input(void);
+
 static void __thiscall hk_SceneTreeRootPreUpdate(void *root) {
     g_logic_ticks++;
+    touch_gamepad_poll_mouse(g_game_hwnd, g_cfg_touch_hud);
+    poll_mod_overlay_gamepad_input();
     fwkbd_poll_frame_start();
     typedef void (__thiscall *TreePreUpdate_t)(void *);
     ((TreePreUpdate_t)0x0062fb00)(root);
@@ -5230,12 +5676,13 @@ static void sample_p1_override_input(uint8_t *out3) {
         rising = (uint8_t)(s_p1_cur_mask & ~s_p1_prev_mask);
     }
 
+    uint8_t sega_edge_only = *(const uint8_t *)0x008232d1;
     int p1_state = get_p1_player_state();
     uint8_t emit = rising;
     if (p1_state == 2 || p1_state == 3 || p1_state == 10 || p1_state == 11) {
         s_buf_ticks = 0;
         s_buf_mask = 0;
-    } else if (p1_state >= 4 && p1_state <= 9) {
+    } else if (!sega_edge_only || (p1_state >= 4 && p1_state <= 9) || p1_state == 0 || p1_state == 1 || p1_state < 0) {
         emit = (uint8_t)(rising | s_p1_cur_mask);
         if (!emit && s_buf_ticks > 0) {
             emit = s_buf_mask;
@@ -5735,23 +6182,12 @@ static inline int original_menu_input_offset(void *self, int user, int offset) {
 
 // 0x00455180: Menu / Slider Left
 static int __thiscall hk_MenuInput_Left(void *self, int user) {
+    if (g_menu_visible || g_netplay_menu_visible) return 0;
     float ax = 0.0f; WORD xb = 0;
     xinput_get_p1(&ax, NULL, &xb);
     int kbd_active = is_key_down(VK_LEFT) || is_key_down('A');
     int xi_active  = (xb & 0x0004) || (ax < -0.5f);
     int active     = kbd_active || xi_active;
-    if (g_netplay_menu_visible) {
-        if (!kbd_active && eval_nav_key(0, xi_active || original_menu_input_offset(self, user, 0x08), 14, 4)) {
-            handle_netplay_menu_input(VK_LEFT);
-        }
-        return 0;
-    }
-    if (g_menu_visible) {
-        if (!kbd_active && eval_nav_key(0, xi_active || original_menu_input_offset(self, user, 0x08), 14, 4)) {
-            handle_settings_menu_input(VK_LEFT, NULL);
-        }
-        return 0;
-    }
     if (active) {
         if (eval_nav_key(0, 1, 14, 4)) {
             if (g_present_calls < 600) {
@@ -5767,23 +6203,12 @@ static int __thiscall hk_MenuInput_Left(void *self, int user) {
 
 // 0x004551E0: Menu / Slider Right
 static int __thiscall hk_MenuInput_Right(void *self, int user) {
+    if (g_menu_visible || g_netplay_menu_visible) return 0;
     float ax = 0.0f; WORD xb = 0;
     xinput_get_p1(&ax, NULL, &xb);
     int kbd_active = is_key_down(VK_RIGHT) || is_key_down('D');
     int xi_active  = (xb & 0x0008) || (ax > 0.5f);
     int active     = kbd_active || xi_active;
-    if (g_netplay_menu_visible) {
-        if (!kbd_active && eval_nav_key(1, xi_active || original_menu_input_offset(self, user, 0x28), 14, 4)) {
-            handle_netplay_menu_input(VK_RIGHT);
-        }
-        return 0;
-    }
-    if (g_menu_visible) {
-        if (!kbd_active && eval_nav_key(1, xi_active || original_menu_input_offset(self, user, 0x28), 14, 4)) {
-            handle_settings_menu_input(VK_RIGHT, NULL);
-        }
-        return 0;
-    }
     if (active) {
         if (eval_nav_key(1, 1, 14, 4)) {
             if (g_present_calls < 600) {
@@ -5799,23 +6224,12 @@ static int __thiscall hk_MenuInput_Right(void *self, int user) {
 
 // 0x00455240: Menu Up
 static int __thiscall hk_MenuInput_Up(void *self, int user) {
+    if (g_menu_visible || g_netplay_menu_visible) return 0;
     float ay = 0.0f; WORD xb = 0;
     xinput_get_p1(NULL, &ay, &xb);
     int kbd_active = is_key_down(VK_UP) || is_key_down('W');
     int xi_active  = (xb & 0x0001) || (ay < -0.5f);
     int active     = kbd_active || xi_active;
-    if (g_netplay_menu_visible) {
-        if (!kbd_active && eval_nav_key(2, xi_active || original_menu_input_offset(self, user, 0x48), 18, 6)) {
-            handle_netplay_menu_input(VK_UP);
-        }
-        return 0;
-    }
-    if (g_menu_visible) {
-        if (!kbd_active && eval_nav_key(2, xi_active || original_menu_input_offset(self, user, 0x48), 18, 6)) {
-            handle_settings_menu_input(VK_UP, NULL);
-        }
-        return 0;
-    }
     if (active) {
         if (eval_nav_key(2, 1, 18, 6)) {
             if (g_present_calls < 600) {
@@ -5831,23 +6245,12 @@ static int __thiscall hk_MenuInput_Up(void *self, int user) {
 
 // 0x004552A0: Menu Down
 static int __thiscall hk_MenuInput_Down(void *self, int user) {
+    if (g_menu_visible || g_netplay_menu_visible) return 0;
     float ay = 0.0f; WORD xb = 0;
     xinput_get_p1(NULL, &ay, &xb);
     int kbd_active = is_key_down(VK_DOWN) || is_key_down('S');
     int xi_active  = (xb & 0x0002) || (ay > 0.5f);
     int active     = kbd_active || xi_active;
-    if (g_netplay_menu_visible) {
-        if (!kbd_active && eval_nav_key(3, xi_active || original_menu_input_offset(self, user, 0x68), 18, 6)) {
-            handle_netplay_menu_input(VK_DOWN);
-        }
-        return 0;
-    }
-    if (g_menu_visible) {
-        if (!kbd_active && eval_nav_key(3, xi_active || original_menu_input_offset(self, user, 0x68), 18, 6)) {
-            handle_settings_menu_input(VK_DOWN, NULL);
-        }
-        return 0;
-    }
     if (active) {
         if (eval_nav_key(3, 1, 18, 6)) {
             if (g_present_calls < 600) {
@@ -5898,6 +6301,7 @@ static int s_menu_enter_cooldown = 0;
 // 0x00455300: Menu Decide / Enter
 static MenuInputFn_t g_real_menu_decide = NULL;
 static int __thiscall hk_MenuInput_Decide(void *self, int user) {
+    if (g_menu_visible || g_netplay_menu_visible) return 0;
     if (s_menu_enter_cooldown > 0) {
         return 0; // Debounce lockout: ignore buffered Enter while transitioning from Title
     }
@@ -5906,18 +6310,6 @@ static int __thiscall hk_MenuInput_Decide(void *self, int user) {
     int kbd_active = is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || is_key_down('C');
     int xi_active  = (xb & 0x1000) != 0;
     int active     = kbd_active || xi_active;
-    if (g_netplay_menu_visible) {
-        if (!kbd_active && eval_nav_key(4, xi_active || (g_real_menu_decide ? g_real_menu_decide(self, user) : 0), 30, 20)) {
-            handle_netplay_menu_input(VK_RETURN);
-        }
-        return 0;
-    }
-    if (g_menu_visible) {
-        if (!kbd_active && eval_nav_key(4, xi_active || (g_real_menu_decide ? g_real_menu_decide(self, user) : 0), 30, 20)) {
-            handle_settings_menu_input(VK_RETURN, NULL);
-        }
-        return 0;
-    }
     if (g_menu_close_cooldown_frame != 0 && g_present_calls <= g_menu_close_cooldown_frame + 12) {
         eval_nav_key(4, active, 30, 20);
         return 0;
@@ -5935,6 +6327,9 @@ static int __thiscall hk_MenuInput_Decide(void *self, int user) {
     if (is_key_down(VK_ESCAPE) || is_key_down('Z') || is_key_down(VK_BACK)) {
         return 0;
     }
+    if (g_real_gamepad_active) {
+        return 0; // Avoid double-confirming via DirectInput + XInput/WinMM
+    }
     if (g_real_menu_decide) {
         return g_real_menu_decide(self, user);
     }
@@ -5943,40 +6338,22 @@ static int __thiscall hk_MenuInput_Decide(void *self, int user) {
 
 // 0x00455440: Menu Cancel / Escape
 static MenuInputFn_t g_real_menu_cancel = NULL;
+static uint32_t s_cancel_cooldown_frame = 0;
 static int __thiscall hk_MenuInput_Cancel(void *self, int user) {
+    if (g_menu_visible || g_netplay_menu_visible) return 0;
     WORD xb = 0;
     xinput_get_p1(NULL, NULL, &xb);
-    int kbd_active = is_key_down(VK_ESCAPE) || is_key_down('Z') || is_key_down(VK_BACK);
+    int kbd_active = is_key_down(VK_ESCAPE) || is_key_down(VK_BACK);
     int xi_active  = (xb & 0x2000) != 0;
     int active     = kbd_active || xi_active;
-    if (g_netplay_menu_visible) {
-        int real_cancel = (!kbd_active && (xi_active || (g_real_menu_cancel ? g_real_menu_cancel(self, user) : 0))) ? 1 : 0;
-        if (!kbd_active && eval_nav_key(5, real_cancel, 30, 20)) {
-            close_netplay_menu();
-            play_vt4_menu_se(6);
-        } else {
-            eval_nav_key(5, active, 30, 20);
-        }
-        return 0;
-    }
-    if (g_menu_visible) {
-        int real_cancel = (!kbd_active && (xi_active || (g_real_menu_cancel ? g_real_menu_cancel(self, user) : 0))) ? 1 : 0;
-        if (!kbd_active && eval_nav_key(5, real_cancel, 30, 20)) {
-            log_msg("[VT4-Mod] Menu closed by hk_MenuInput_Cancel (real_cancel=%d, self=%p, user=%d, frame=%u)",
-                    real_cancel, self, user, g_present_calls);
-            close_legends_settings_menu();
-            play_vt4_menu_se(6);
-        } else {
-            eval_nav_key(5, active, 30, 20);
-        }
-        return 0;
-    }
-    if (g_menu_close_cooldown_frame != 0 && g_present_calls <= g_menu_close_cooldown_frame + 12) {
+    if ((g_menu_close_cooldown_frame != 0 && g_present_calls <= g_menu_close_cooldown_frame + 12) ||
+        (s_cancel_cooldown_frame != 0 && g_present_calls <= s_cancel_cooldown_frame + 20)) {
         eval_nav_key(5, active, 30, 20);
         return 0;
     }
     if (active) {
         if (eval_nav_key(5, 1, 30, 20)) {
+            s_cancel_cooldown_frame = g_present_calls;
             if (g_present_calls < 600) {
                 log_msg("[VT4-Mod] Menu Cancel triggered at frame %u (user=%d)", g_present_calls, user);
             }
@@ -5985,10 +6362,62 @@ static int __thiscall hk_MenuInput_Cancel(void *self, int user) {
         return 0;
     }
     eval_nav_key(5, 0, 30, 20);
+    if (g_real_gamepad_active) {
+        return 0; // Avoid phantom double-back from DirectInput B/Button2 release
+    }
     if (g_real_menu_cancel) {
         return g_real_menu_cancel(self, user);
     }
     return 0;
+}
+
+static void poll_mod_overlay_gamepad_input(void) {
+    if (!g_menu_visible && !g_netplay_menu_visible) return;
+    float ax = 0.0f, ay = 0.0f;
+    WORD xb = 0;
+    xinput_get_p1(&ax, &ay, &xb);
+
+    int left  = ((xb & 0x0004) != 0) || (ax < -0.5f);
+    int right = ((xb & 0x0008) != 0) || (ax >  0.5f);
+    int up    = ((xb & 0x0001) != 0) || (ay < -0.5f);
+    int down  = ((xb & 0x0002) != 0) || (ay >  0.5f);
+    int ok    = ((xb & (0x1000 | 0x0010)) != 0);
+    int back  = ((xb & 0x2000) != 0);
+    int entry_grace = (g_mod_menu_open_frame != 0 && g_present_calls <= g_mod_menu_open_frame + 12);
+
+    if (eval_nav_key(0, left, 14, 4)) {
+        if (g_netplay_menu_visible) handle_netplay_menu_input(VK_LEFT);
+        else handle_settings_menu_input(VK_LEFT, NULL);
+    }
+    if (eval_nav_key(1, right, 14, 4)) {
+        if (g_netplay_menu_visible) handle_netplay_menu_input(VK_RIGHT);
+        else handle_settings_menu_input(VK_RIGHT, NULL);
+    }
+    if (eval_nav_key(2, up, 18, 6)) {
+        if (g_netplay_menu_visible) handle_netplay_menu_input(VK_UP);
+        else handle_settings_menu_input(VK_UP, NULL);
+    }
+    if (eval_nav_key(3, down, 18, 6)) {
+        if (g_netplay_menu_visible) handle_netplay_menu_input(VK_DOWN);
+        else handle_settings_menu_input(VK_DOWN, NULL);
+    }
+
+    int ok_trig = eval_nav_key(4, ok, 30, 20);
+    if (ok_trig && !entry_grace) {
+        if (g_netplay_menu_visible) handle_netplay_menu_input(VK_RETURN);
+        else handle_settings_menu_input(VK_RETURN, NULL);
+    }
+
+    int bk_trig = eval_nav_key(5, back, 30, 20);
+    if (bk_trig && !entry_grace) {
+        s_cancel_cooldown_frame = g_present_calls;
+        if (g_netplay_menu_visible) {
+            close_netplay_menu();
+            play_vt4_menu_se(6);
+        } else {
+            handle_settings_menu_input(VK_ESCAPE, NULL);
+        }
+    }
 }
 
 // 0x00454F80 (Analog X: Left=-1.0, Right=+1.0) & 0x00455080 (Analog Y: Up=-1.0, Down=+1.0)
@@ -6050,7 +6479,9 @@ static InputCheckFn_t g_real_455300 = (InputCheckFn_t)0x00455300;
 
 static int s_prev_start_key = 0;
 static int __thiscall hk_IsStartPressed(void *self, int user) {
-    int cur_down = is_key_down(VK_RETURN) || is_key_down(VK_SPACE);
+    WORD xb = 0;
+    xinput_get_p1(NULL, NULL, &xb);
+    int cur_down = is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || ((xb & (0x1000 | 0x0010)) != 0);
     int triggered = (cur_down && !s_prev_start_key);
     s_prev_start_key = cur_down;
     if (triggered) {
@@ -6062,7 +6493,9 @@ static int __thiscall hk_IsStartPressed(void *self, int user) {
 
 static int s_prev_title_key = 0;
 static int __thiscall hk_CheckInput_455300(void *self, int user) {
-    int cur_down = is_key_down(VK_RETURN) || is_key_down(VK_SPACE);
+    WORD xb = 0;
+    xinput_get_p1(NULL, NULL, &xb);
+    int cur_down = is_key_down(VK_RETURN) || is_key_down(VK_SPACE) || ((xb & (0x1000 | 0x0010)) != 0);
     int triggered = (cur_down && !s_prev_title_key);
     s_prev_title_key = cur_down;
     if (triggered) {
@@ -6363,7 +6796,110 @@ static void apply_remove_live_mode_patch(void) {
     log_msg("[VT4-Mod] LIVE Mode cleanly eliminated from Main Menu carousel (9 items total)");
 }
 
+static int safe_check_bytes(uintptr_t va, const uint8_t *expected, size_t len) {
+    MEMORY_BASIC_INFORMATION mbi;
+    if (!VirtualQuery((const void *)va, &mbi, sizeof(mbi))) return 0;
+    if (mbi.State != MEM_COMMIT) return 0;
+    DWORD prot = mbi.Protect & 0xFF;
+    if (prot != PAGE_READONLY && prot != PAGE_READWRITE && prot != PAGE_EXECUTE_READ &&
+        prot != PAGE_EXECUTE_READWRITE && prot != PAGE_EXECUTE_WRITECOPY && prot != PAGE_WRITECOPY) {
+        return 0;
+    }
+    uintptr_t region_end = (uintptr_t)mbi.BaseAddress + mbi.RegionSize;
+    if (va + len > region_end) return 0;
+    return memcmp((const void *)va, expected, len) == 0;
+}
+
+static void show_unsupported_exe_warning(const char *msg) {
+    HMODULE hUser32 = GetModuleHandleA("user32.dll");
+    if (!hUser32) hUser32 = LoadLibraryA("user32.dll");
+    if (hUser32) {
+        typedef int (__stdcall *MsgBoxA_t)(HWND, LPCSTR, LPCSTR, UINT);
+        MsgBoxA_t fn = (MsgBoxA_t)GetProcAddress(hUser32, "MessageBoxA");
+        if (fn) {
+            fn(NULL, msg, "VT4 Legends - Unsupported VT4.exe", MB_OK | MB_ICONWARNING);
+        }
+    }
+}
+
+static int verify_vt4_exe_signature(void) {
+    HMODULE hMod = GetModuleHandleA(NULL);
+    if ((uintptr_t)hMod != 0x00400000u) {
+        log_msg("[VT4-Mod] ERROR: Unsupported VT4.exe base address %p (expected 0x00400000)! Aborting memory patches and running vanilla.", hMod);
+        show_unsupported_exe_warning(
+            "Unsupported VT4.exe image base detected (expected PC v1.0 unpacked at 0x00400000).\n"
+            "Memory patches were safely aborted; running vanilla GFWL compatibility only.\n"
+            "See xlive_mod.log for details.");
+        return 0;
+    }
+
+    static const uint8_t sig_res[12]   = { 0x80, 0x02, 0x00, 0x00, 0xC7, 0x85, 0x58, 0x01, 0x00, 0x00, 0xE0, 0x01 };
+    static const uint8_t sig_chdir[12] = { 0x68, 0xF4, 0x96, 0x78, 0x00, 0xFF, 0x15, 0x4C, 0x80, 0x78, 0x00, 0x6A };
+    static const uint8_t sig_fidx[12]  = { 0x55, 0x8B, 0xEC, 0x83, 0xE4, 0xF8, 0x83, 0xEC, 0x24, 0x53, 0x8B, 0x5D };
+    static const uint8_t sig_unlk[12]  = { 0x8B, 0x44, 0x24, 0x04, 0x53, 0x57, 0x0F, 0xB6, 0xB8, 0x50, 0x5F, 0x7C };
+    static const uint8_t sig_sto[12]   = { 0x6A, 0xFF, 0x68, 0xA8, 0xFD, 0x77, 0x00, 0x64, 0xA1, 0x00, 0x00, 0x00 };
+    static const struct { uintptr_t va; const uint8_t *bytes; size_t len; } checks[5] = {
+        { 0x00402694, sig_res,   sizeof(sig_res)   },
+        { 0x0042FE2E, sig_chdir, sizeof(sig_chdir) },
+        { 0x00407380, sig_fidx,  sizeof(sig_fidx)  },
+        { 0x005DFE90, sig_unlk,  sizeof(sig_unlk)  },
+        { 0x00668FA0, sig_sto,   sizeof(sig_sto)   }
+    };
+    for (int i = 0; i < 5; i++) {
+        if (!safe_check_bytes(checks[i].va, checks[i].bytes, checks[i].len)) {
+            log_msg("[VT4-Mod] ERROR: Unsupported/packed VT4.exe binary (signature mismatch at VA 0x%08x)! Aborting memory patches and running vanilla.",
+                    (unsigned int)checks[i].va);
+            show_unsupported_exe_warning(
+                "Unsupported or packed/encrypted VT4.exe binary detected.\n"
+                "VT4 Legends requires the unpacked PC v1.0 executable.\n"
+                "Memory patches were safely aborted; see xlive_mod.log for details.");
+            return 0;
+        }
+    }
+    log_msg("[VT4-Mod] VT4.exe signature verified OK (PC v1.0 unpacked)");
+    return 1;
+}
+
+static void detect_custom_roster_assets(void) {
+    char p_sdo[MAX_PATH], p_dds[MAX_PATH];
+    snprintf(p_sdo, sizeof(p_sdo), "%s\\archive\\HIGH\\Player\\Model\\P_M_ALC_NG.sdo", g_game_dir);
+    snprintf(p_dds, sizeof(p_dds), "%s\\archive\\HIGH\\Frontend\\VR\\photo_L\\26.dds", g_game_dir);
+    DWORD a_sdo = GetFileAttributesA(p_sdo);
+    DWORD a_dds = GetFileAttributesA(p_dds);
+    if (a_sdo != INVALID_FILE_ATTRIBUTES && a_dds != INVALID_FILE_ATTRIBUTES) {
+        g_has_custom_roster = 1;
+        log_msg("[VT4-Mod] Full Legends Roster Pack detected (84 players enabled)");
+    } else {
+        g_has_custom_roster = 0;
+        log_msg("[VT4-Mod] Core Mode (custom roster pack not found): running 26 base + 2 unlocked bosses safely");
+    }
+}
+
+static void apply_dpi_awareness(void) {
+    HMODULE hUser32 = GetModuleHandleA("user32.dll");
+    if (!hUser32) hUser32 = LoadLibraryA("user32.dll");
+    if (hUser32) {
+        typedef BOOL (__stdcall *SetProcessDPIAware_t)(void);
+        SetProcessDPIAware_t fn = (SetProcessDPIAware_t)GetProcAddress(hUser32, "SetProcessDPIAware");
+        if (fn) {
+            BOOL ok = fn();
+            log_msg("[VT4-Mod] SetProcessDPIAware() -> %d", (int)ok);
+        }
+    }
+}
+
 static void apply_vt4_patches(void) {
+    init_portable_paths();
+    log_msg("[VT4-Mod] Applying startup patches...");
+    if (!verify_vt4_exe_signature()) {
+        return;
+    }
+
+    apply_dpi_awareness();
+    load_vt4_settings();
+    ensure_default_config_txt();
+    detect_custom_roster_assets();
+
     DWORD old_code_prot = 0;
     VirtualProtect((void *)0x00401000, 0x00400000, PAGE_EXECUTE_READWRITE, &old_code_prot);
 
@@ -6372,13 +6908,34 @@ static void apply_vt4_patches(void) {
     hook_iat(GetModuleHandleA(NULL), "d3d9.dll", "Direct3DCreate9",
              (void *)hk_Direct3DCreate9, (void **)&g_real_d3dcreate9);
 
-    log_msg("[VT4-Mod] Applying startup patches...");
-    load_vt4_settings();
-
-    // 1. Registry-free save path & Spanish locale (0x0c0a = 3082)
+    // 1. Registry-free save path & configured locale
     *(uint32_t *)0x00a75da0 = 1;
     *(wchar_t **)0x00a75bc4 = g_save_path;
-    *(uint32_t *)0x00a75bc8 = 0x0c0a;
+    *(uint32_t *)0x00a75bc8 = g_cfg_locale_lcid;
+    log_msg("[VT4-Mod] Save path='%ls' locale=0x%04x (%s)", g_save_path, g_cfg_locale_lcid, g_cfg_locale_str);
+
+    // 1a. Wine / Winlator / Proton / Remote-Play startup compatibility bypasses
+    {
+        static const uint8_t sig_ge[6] = { 0x55, 0x8B, 0xEC, 0x83, 0xE4, 0xF8 };
+        if (safe_check_bytes(0x00404f20, sig_ge, sizeof(sig_ge))) {
+            const uint8_t ret_true_ge[3] = { 0xB0, 0x01, 0xC3 }; // mov al, 1; ret
+            patch_bytes(0x00404f20, ret_true_ge, sizeof(ret_true_ge));
+            log_msg("[VT4-Mod] Patched 0x00404f20: GameExplorer/ParentalControls privilege check bypassed (Wine/Winlator/SteamOS fix)");
+        } else {
+            log_msg("[VT4-Mod] WARNING: 0x00404f20 GameExplorer signature mismatch, skipping privilege bypass");
+        }
+
+        static const uint8_t sig_rdp[15] = {
+            0x68, 0x00, 0x10, 0x00, 0x00, 0xFF, 0x15, 0x84, 0x84, 0x78, 0x00, 0x85, 0xC0, 0x74, 0x27
+        };
+        if (safe_check_bytes(0x0040532d, sig_rdp, sizeof(sig_rdp))) {
+            const uint8_t jmp_short = 0xEB;
+            patch_bytes(0x0040533a, &jmp_short, 1);
+            log_msg("[VT4-Mod] Patched 0x0040533a: SM_REMOTESESSION check bypassed (RDP/Moonlight/Steam Remote Play fix)");
+        } else {
+            log_msg("[VT4-Mod] WARNING: 0x0040532d SM_REMOTESESSION signature mismatch, skipping remote session bypass");
+        }
+    }
 
     // 1b. Cleanly eliminate LIVE Mode from Main Menu carousel (9 items total)
     apply_remove_live_mode_patch();
@@ -6469,12 +7026,7 @@ static void apply_vt4_patches(void) {
     patch_bytes(0x004640a0, unlock_all_patch, 8); /* UnlockManager::IsPlayStyleAvailable */
     log_msg("[VT4-Mod] EXTRA-1: Unlocked 100%% characters, SPT shop gear, wear catalog & play styles");
 
-    // 5b. Roster Expansion: Roster Pagination (Page 0 = ATP/WTA, Page 1 = Legends)
-    // Initialize base 24-entry grid so Slots 21..23 remain Cargar (26), Actual (26), Aleatorio (27)
-    memcpy((void *)0x007c5f6c, g_roster_page_tour, 24);
-    log_msg("[VT4-Mod] Character Select Grid: Initialized to Page 0 (Tour: Federer at Slot 0, Slots 21..23 intact)");
-
-    // 5c. Smooth transition from Court Position Select to Character Select:
+    // 5b. Smooth transition from Court Position Select to Character Select:
     // Hook FPPlayerEntry::IsReady (0x005f62d0) so pressing Enter advances immediately
     install_jmp(0x005f62d0, (void *)hk_FPPlayerEntry_IsReady, 6);
     // Bypass 0x004545e0 device-name check (fwInputSegaLibGamePad / fwInputSegaLib) at 0x004460fd
@@ -6483,139 +7035,152 @@ static void apply_vt4_patches(void) {
     patch_bytes(0x004460fd, nops_6_pe, 6);
     log_msg("[VT4-Mod] FPPlayerEntry::IsReady hooked at 0x005f62d0 (0x004460fd device check bypassed)");
 
-    // Hook FPCharaSelect::Update at vtable 0x007c601c + 8
-    void *hk_cs = (void *)hk_FPCharaSelect_Update;
-    patch_bytes(0x007c601c + 8, &hk_cs, sizeof(hk_cs));
-    log_msg("[VT4-Mod] Hooked FPCharaSelect::Update at 0x007c601c+8 -> hk_FPCharaSelect_Update");
-
-    // 5d. Enable dynamic grid card updating for all 24 slots (Federer -> Becker/Edberg/Rafter)
-    // NOP the 10 bytes at 0x005df47c so Sega's card manager unconditionally reads 0x007c5f6c
-    const uint8_t nops_10[10] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
-    patch_bytes(0x005df47c, nops_10, 10);
-
-    // Redirect .fraw label-node lookups in UpdateGridCards (0x005df4a5) & InitGridCardLabels (0x005e00ca)
-    // to g_fraw_cell_char_id so paginated slots write character names into the correct UI cell nodes
-    uint32_t fraw_tbl_addr = (uint32_t)(uintptr_t)g_fraw_cell_char_id;
-    patch_bytes(0x005df4a5, &fraw_tbl_addr, 4);
-    patch_bytes(0x005e00ca, &fraw_tbl_addr, 4);
-
-    // Keep hovered character card label visible (replace cmp ebx,1; sete cl; movzx edx,cl with xor edx,edx + NOPs)
-    const uint8_t keep_hover_label[9] = { 0x31, 0xD2, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
-    patch_bytes(0x005df4b1, keep_hover_label, sizeof(keep_hover_label));
-
-    // Disable region == 2 lock check for King/Duke geometric slots 12/13 in UpdateBigPortraitAndCard & UpdateDisplay
-    const uint8_t disable_region_lock[1] = { 0x63 };
-    patch_bytes(0x005e03cd, disable_region_lock, 1);
-    patch_bytes(0x005df62b, disable_region_lock, 1);
-    log_msg("[VT4-Mod] Character Select UI patches active (fraw cell map, persistent hover labels, unlocked slots)");
-
-    // 5e. Fase 2 + Page 3 Roster Expansion (IDs 26..37 + 38..58 -> 59 total players)
-    memcpy(g_player_flags, (const void *)0x00820c18, 26 * sizeof(int32_t));
-    static const int32_t new_flags[12] = { 44, 24, 73, 73, 45, 73, 16, 73, 37, 5, 76, 73 };
-    memcpy(&g_player_flags[26], new_flags, sizeof(new_flags));
-    for (int i = 0; i < NUM_EXTRA_PLAYERS; i++) {
-        g_player_flags[38 + i] = g_extra_players[i].flag;
-    }
-    install_jmp(0x00452720, (void *)hk_GetPlayerFlag, 11);
-
-    // Clone signature motion preset table (0x007a5958[26]) -> g_player_anim_presets[59]
-    memcpy(g_player_anim_presets, (const void *)0x007a5958, 26 * 20);
-    // Assign closest signature serve/forehand/backhand motion tuples from pro icons
-    for (int i = 0; i < 12; i++) {
-        memcpy(&g_player_anim_presets[(26 + i) * 5], &g_player_anim_presets[g_custom_anim_proxy[i] * 5], 20);
-    }
-    for (int i = 0; i < NUM_EXTRA_PLAYERS; i++) {
-        memcpy(&g_player_anim_presets[(38 + i) * 5], &g_player_anim_presets[g_extra_players[i].anim_proxy * 5], 20);
-    }
-    uintptr_t ap_base = (uintptr_t)g_player_anim_presets;
-    static const uint32_t ap_f0_refs[15] = {
-        0x4e0918, 0x4e1661, 0x4e1668, 0x4e16fa, 0x4e1827, 0x4e182e, 0x4e18b6,
-        0x4e1b1f, 0x4e1b8d, 0x4e1c5d, 0x4e1c9f, 0x4e1e6f, 0x4e1ecf, 0x4e1fa0, 0x4e1fdf
-    };
-    for (int i = 0; i < 15; i++) { uint32_t v = (uint32_t)ap_base; patch_bytes(ap_f0_refs[i], &v, 4); }
-    { uint32_t v1 = (uint32_t)(ap_base + 4); patch_bytes(0x4e171a, &v1, 4); patch_bytes(0x4e18d6, &v1, 4); }
-    { uint32_t v2 = (uint32_t)(ap_base + 8); patch_bytes(0x4e173c, &v2, 4); patch_bytes(0x4e18f8, &v2, 4); }
-    { uint32_t v3 = (uint32_t)(ap_base + 12); patch_bytes(0x4e175e, &v3, 4); patch_bytes(0x4e191a, &v3, 4); }
-    { uint32_t v4 = (uint32_t)(ap_base + 16); patch_bytes(0x4e1780, &v4, 4); patch_bytes(0x4e193c, &v4, 4); }
-
-    // Clone 60-float bone scale table (0x007b9230[26]) -> g_player_bone_scales[59] matched to each star's base .sdo skeleton
-    memcpy(g_player_bone_scales, (const void *)0x007b9230, 26 * 240);
-    static const uint8_t proxy_bone_base[12] = { 2, 3, 14, 1, 1, 4, 17, 18, 20, 17, 1, 19 };
-    for (int i = 0; i < 12; i++) {
-        memcpy(&g_player_bone_scales[(26 + i) * 60], &g_player_bone_scales[proxy_bone_base[i] * 60], 240);
-    }
-    for (int i = 0; i < NUM_EXTRA_PLAYERS; i++) {
-        memcpy(&g_player_bone_scales[(38 + i) * 60], &g_player_bone_scales[g_extra_players[i].bone_proxy * 60], 240);
-    }
-    { uint32_t bs_addr = (uint32_t)(uintptr_t)g_player_bone_scales; patch_bytes(0x0053d661, &bs_addr, 4); }
-
-    // Hook PlayStyleParameter::LoadCharacter(char_id) at 0x00542260 (keep 0x005422ee at 0x21 for 33 PlayStyles!)
-    g_real_playstyle_loadchar = (PlayStyleLoadChar_t)make_trampoline(0x00542260, 6);
-    install_jmp(0x00542260, (void *)hk_PlayStyle_LoadChar, 6);
-
-    // Map serve/return motion table indices (0x007baaa8[28]) for IDs 26..58 in 0x0053d6d0
-    g_real_set_serve_motion_id = (SetServeMotionIdFn_t)make_trampoline(0x0053d6d0, 6);
-    install_jmp(0x0053d6d0, (void *)hk_SetServeMotionId, 6);
-
-    // Safe fallback + logging for GetMotionData (0x004e06f0)
-    g_real_get_motion_data = (GetMotionDataFn_t)make_trampoline(0x004e06f0, 6);
-    install_jmp(0x004e06f0, (void *)hk_GetMotionData, 6);
-
-    // Extend hardcoded pro-count bounds (0x1a -> 0x3b = 59) in PlayerDB helpers and CharaSelect
-    {
-        const uint8_t max_ps = (uint8_t)MAX_ROSTER_PLAYERS;
-        static const uint32_t db_cap_imm8[9] = {
-            0x00533403, 0x00533533, 0x00533677, 0x005338a3, 0x005339b3, 0x00533a89, 0x00533b32, 0x005df6a5, 0x005b9960
-        };
-        for (int i = 0; i < 9; i++) patch_bytes(db_cap_imm8[i], &max_ps, 1);
-        // Prevent GetFinalSelectedCharId (0x005dff30) from hijacking char_id 26 (Alcaraz) into edit_slot + 26 = 25
-        const uint8_t jmp_op = 0xEB;
-        patch_bytes(0x005dff33, &jmp_op, 1);
-    }
-
-    // Hook all PlayerDB getters (0x00533310..0x00533dc0) so IDs 38..58 work alongside native 38-stride fwDataDB_Player.bin
-    install_jmp(0x00533310, (void *)hk_PlayerDB_GetCount, 5);
-    g_real_pdb_get_code         = (PlayerDB_GetCode_t)make_trampoline_reloc(0x00533320, 7, 2, 0x00533280);
-    install_jmp(0x00533320, (void *)hk_PlayerDB_GetCode, 7);
-    g_real_pdb_find_by_code     = (PlayerDB_FindByCode_t)make_trampoline_reloc(0x00533360, 9, 4, 0x00533280);
-    install_jmp(0x00533360, (void *)hk_PlayerDB_FindByCode, 9);
-    g_real_pdb_is_man           = (PlayerDB_BoolId_t)make_trampoline(0x005333c0, 7);
-    install_jmp(0x005333c0, (void *)hk_PlayerDB_IsMan, 7);
-    g_real_pdb_get_type         = (PlayerDB_IntId_t)make_trampoline_reloc(0x005334d0, 5, 0, 0x00533280);
-    install_jmp(0x005334d0, (void *)hk_PlayerDB_GetType, 5);
-    g_real_pdb_get_style_name   = (PlayerDB_FStrOut_t)make_trampoline(0x005334f0, 7);
-    install_jmp(0x005334f0, (void *)hk_PlayerDB_GetStyleName, 7);
-    g_real_pdb_get_style_enum   = (PlayerDB_IntId_t)make_trampoline(0x00533630, 6);
-    install_jmp(0x00533630, (void *)hk_PlayerDB_GetStyleEnum, 6);
-    g_real_pdb_is_type3         = (PlayerDB_BoolId_t)make_trampoline_reloc(0x005337f0, 5, 0, 0x00533280);
-    install_jmp(0x005337f0, (void *)hk_PlayerDB_IsType3, 5);
-    g_real_pdb_get_height       = (PlayerDB_StrId_t)make_trampoline_reloc(0x00533820, 5, 0, 0x00533280);
-    install_jmp(0x00533820, (void *)hk_PlayerDB_GetHeight, 5);
-    g_real_pdb_get_weight       = (PlayerDB_StrId_t)make_trampoline_reloc(0x00533840, 5, 0, 0x00533280);
-    install_jmp(0x00533840, (void *)hk_PlayerDB_GetWeight, 5);
-    g_real_pdb_get_bh2          = (PlayerDB_BoolId_t)make_trampoline(0x00533860, 7);
-    install_jmp(0x00533860, (void *)hk_PlayerDB_GetBackHand2H, 7);
-    g_real_pdb_get_lefty        = (PlayerDB_BoolId_t)make_trampoline(0x00533970, 7);
-    install_jmp(0x00533970, (void *)hk_PlayerDB_GetLefty, 7);
-    g_real_pdb_get_tension      = (PlayerDB_IntId_t)make_trampoline(0x00533a80, 5);
-    install_jmp(0x00533a80, (void *)hk_PlayerDB_GetTension, 5);
-    g_real_pdb_get_wtdbls       = (PlayerDB_IntId_t)make_trampoline_reloc(0x00533ab0, 5, 0, 0x00533280);
-    install_jmp(0x00533ab0, (void *)hk_PlayerDB_GetWtDblsPt, 5);
-    g_real_pdb_get_short_name   = (PlayerDB_StrId_t)make_trampoline_reloc(0x00533ad0, 5, 0, 0x00533280);
-    install_jmp(0x00533ad0, (void *)hk_PlayerDB_GetShortName, 5);
-    g_real_pdb_get_voice_se     = (PlayerDB_FStrOut_t)make_trampoline(0x00533af0, 7);
-    install_jmp(0x00533af0, (void *)hk_PlayerDB_GetVoiceSE, 7);
-    g_real_pdb_get_model_prefix = (PlayerDB_ModelPrefix_t)make_trampoline_reloc(0x00533dc0, 8, 3, 0x00533280);
-    install_jmp(0x00533dc0, (void *)hk_PlayerDB_GetModelPrefix, 8);
-    patch_call(0x00533eec, (void *)hk_ModelSdo_GetAuthor);
-    patch_call(0x00539441, (void *)hk_ServeMin_GetFloat);
-    patch_call(0x00539456, (void *)hk_ServeMax_GetFloat);
-
+    // Hook TR_COMMON.sto lookup (always active so base bio/surname caching works in both Core & Full modes)
     g_real_sto_lookup = (StoLookup_t)make_trampoline(0x00668fa0, 7);
     install_jmp(0x00668fa0, (void *)hk_StoLookup, 7);
-    patch_call(0x0043CAC9, (void *)hk_Loading_SetPlayerPhoto);
-    log_msg("[VT4-Mod] Fase 2 + Page 3 + Page 4 Roster Expansion active: IDs 26..83 (%d players, %d pages, TR_COMMON + Loading hook)",
-            MAX_ROSTER_PLAYERS, NUM_ROSTER_PAGES);
+
+    if (g_has_custom_roster) {
+        // 5c. Roster Expansion: Roster Pagination (Page 0 = ATP/WTA, Page 1 = Legends)
+        // Initialize base 24-entry grid so Slots 21..23 remain Cargar (26), Actual (26), Aleatorio (27)
+        memcpy((void *)0x007c5f6c, g_roster_page_tour, 24);
+        log_msg("[VT4-Mod] Character Select Grid: Initialized to Page 0 (Tour: Federer at Slot 0, Slots 21..23 intact)");
+
+        // Hook FPCharaSelect::Update at vtable 0x007c601c + 8
+        void *hk_cs = (void *)hk_FPCharaSelect_Update;
+        patch_bytes(0x007c601c + 8, &hk_cs, sizeof(hk_cs));
+        log_msg("[VT4-Mod] Hooked FPCharaSelect::Update at 0x007c601c+8 -> hk_FPCharaSelect_Update");
+
+        // 5d. Enable dynamic grid card updating for all 24 slots (Federer -> Becker/Edberg/Rafter)
+        // NOP the 10 bytes at 0x005df47c so Sega's card manager unconditionally reads 0x007c5f6c
+        const uint8_t nops_10[10] = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
+        patch_bytes(0x005df47c, nops_10, 10);
+
+        // Redirect .fraw label-node lookups in UpdateGridCards (0x005df4a5) & InitGridCardLabels (0x005e00ca)
+        // to g_fraw_cell_char_id so paginated slots write character names into the correct UI cell nodes
+        uint32_t fraw_tbl_addr = (uint32_t)(uintptr_t)g_fraw_cell_char_id;
+        patch_bytes(0x005df4a5, &fraw_tbl_addr, 4);
+        patch_bytes(0x005e00ca, &fraw_tbl_addr, 4);
+
+        // Keep hovered character card label visible (replace cmp ebx,1; sete cl; movzx edx,cl with xor edx,edx + NOPs)
+        const uint8_t keep_hover_label[9] = { 0x31, 0xD2, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
+        patch_bytes(0x005df4b1, keep_hover_label, sizeof(keep_hover_label));
+
+        // Disable region == 2 lock check for King/Duke geometric slots 12/13 in UpdateBigPortraitAndCard & UpdateDisplay
+        const uint8_t disable_region_lock[1] = { 0x63 };
+        patch_bytes(0x005e03cd, disable_region_lock, 1);
+        patch_bytes(0x005df62b, disable_region_lock, 1);
+        log_msg("[VT4-Mod] Character Select UI patches active (fraw cell map, persistent hover labels, unlocked slots)");
+
+        // 5e. Fase 2 + Page 3 Roster Expansion (IDs 26..37 + 38..58 -> 59 total players)
+        memcpy(g_player_flags, (const void *)0x00820c18, 26 * sizeof(int32_t));
+        static const int32_t new_flags[12] = { 44, 24, 73, 73, 45, 73, 16, 73, 37, 5, 76, 73 };
+        memcpy(&g_player_flags[26], new_flags, sizeof(new_flags));
+        for (int i = 0; i < NUM_EXTRA_PLAYERS; i++) {
+            g_player_flags[38 + i] = g_extra_players[i].flag;
+        }
+        install_jmp(0x00452720, (void *)hk_GetPlayerFlag, 11);
+
+        // Clone signature motion preset table (0x007a5958[26]) -> g_player_anim_presets[59]
+        memcpy(g_player_anim_presets, (const void *)0x007a5958, 26 * 20);
+        // Assign closest signature serve/forehand/backhand motion tuples from pro icons
+        for (int i = 0; i < 12; i++) {
+            memcpy(&g_player_anim_presets[(26 + i) * 5], &g_player_anim_presets[g_custom_anim_proxy[i] * 5], 20);
+        }
+        for (int i = 0; i < NUM_EXTRA_PLAYERS; i++) {
+            memcpy(&g_player_anim_presets[(38 + i) * 5], &g_player_anim_presets[g_extra_players[i].anim_proxy * 5], 20);
+        }
+        uintptr_t ap_base = (uintptr_t)g_player_anim_presets;
+        static const uint32_t ap_f0_refs[15] = {
+            0x4e0918, 0x4e1661, 0x4e1668, 0x4e16fa, 0x4e1827, 0x4e182e, 0x4e18b6,
+            0x4e1b1f, 0x4e1b8d, 0x4e1c5d, 0x4e1c9f, 0x4e1e6f, 0x4e1ecf, 0x4e1fa0, 0x4e1fdf
+        };
+        for (int i = 0; i < 15; i++) { uint32_t v = (uint32_t)ap_base; patch_bytes(ap_f0_refs[i], &v, 4); }
+        { uint32_t v1 = (uint32_t)(ap_base + 4); patch_bytes(0x4e171a, &v1, 4); patch_bytes(0x4e18d6, &v1, 4); }
+        { uint32_t v2 = (uint32_t)(ap_base + 8); patch_bytes(0x4e173c, &v2, 4); patch_bytes(0x4e18f8, &v2, 4); }
+        { uint32_t v3 = (uint32_t)(ap_base + 12); patch_bytes(0x4e175e, &v3, 4); patch_bytes(0x4e191a, &v3, 4); }
+        { uint32_t v4 = (uint32_t)(ap_base + 16); patch_bytes(0x4e1780, &v4, 4); patch_bytes(0x4e193c, &v4, 4); }
+
+        // Clone 60-float bone scale table (0x007b9230[26]) -> g_player_bone_scales[59] matched to each star's base .sdo skeleton
+        memcpy(g_player_bone_scales, (const void *)0x007b9230, 26 * 240);
+        static const uint8_t proxy_bone_base[12] = { 2, 3, 14, 1, 1, 4, 17, 18, 20, 17, 1, 19 };
+        for (int i = 0; i < 12; i++) {
+            memcpy(&g_player_bone_scales[(26 + i) * 60], &g_player_bone_scales[proxy_bone_base[i] * 60], 240);
+        }
+        for (int i = 0; i < NUM_EXTRA_PLAYERS; i++) {
+            memcpy(&g_player_bone_scales[(38 + i) * 60], &g_player_bone_scales[g_extra_players[i].bone_proxy * 60], 240);
+        }
+        { uint32_t bs_addr = (uint32_t)(uintptr_t)g_player_bone_scales; patch_bytes(0x0053d661, &bs_addr, 4); }
+
+        // Hook PlayStyleParameter::LoadCharacter(char_id) at 0x00542260 (keep 0x005422ee at 0x21 for 33 PlayStyles!)
+        g_real_playstyle_loadchar = (PlayStyleLoadChar_t)make_trampoline(0x00542260, 6);
+        install_jmp(0x00542260, (void *)hk_PlayStyle_LoadChar, 6);
+
+        // Map serve/return motion table indices (0x007baaa8[28]) for IDs 26..58 in 0x0053d6d0
+        g_real_set_serve_motion_id = (SetServeMotionIdFn_t)make_trampoline(0x0053d6d0, 6);
+        install_jmp(0x0053d6d0, (void *)hk_SetServeMotionId, 6);
+
+        // Safe fallback + logging for GetMotionData (0x004e06f0)
+        g_real_get_motion_data = (GetMotionDataFn_t)make_trampoline(0x004e06f0, 6);
+        install_jmp(0x004e06f0, (void *)hk_GetMotionData, 6);
+
+        // Extend hardcoded pro-count bounds (0x1a -> 0x3b = 59) in PlayerDB helpers and CharaSelect
+        {
+            const uint8_t max_ps = (uint8_t)MAX_ROSTER_PLAYERS;
+            static const uint32_t db_cap_imm8[9] = {
+                0x00533403, 0x00533533, 0x00533677, 0x005338a3, 0x005339b3, 0x00533a89, 0x00533b32, 0x005df6a5, 0x005b9960
+            };
+            for (int i = 0; i < 9; i++) patch_bytes(db_cap_imm8[i], &max_ps, 1);
+            // Prevent GetFinalSelectedCharId (0x005dff30) from hijacking char_id 26 (Alcaraz) into edit_slot + 26 = 25
+            const uint8_t jmp_op = 0xEB;
+            patch_bytes(0x005dff33, &jmp_op, 1);
+        }
+
+        // Hook all PlayerDB getters (0x00533310..0x00533dc0) so IDs 38..58 work alongside native 38-stride fwDataDB_Player.bin
+        install_jmp(0x00533310, (void *)hk_PlayerDB_GetCount, 5);
+        g_real_pdb_get_code         = (PlayerDB_GetCode_t)make_trampoline_reloc(0x00533320, 7, 2, 0x00533280);
+        install_jmp(0x00533320, (void *)hk_PlayerDB_GetCode, 7);
+        g_real_pdb_find_by_code     = (PlayerDB_FindByCode_t)make_trampoline_reloc(0x00533360, 9, 4, 0x00533280);
+        install_jmp(0x00533360, (void *)hk_PlayerDB_FindByCode, 9);
+        g_real_pdb_is_man           = (PlayerDB_BoolId_t)make_trampoline(0x005333c0, 7);
+        install_jmp(0x005333c0, (void *)hk_PlayerDB_IsMan, 7);
+        g_real_pdb_get_type         = (PlayerDB_IntId_t)make_trampoline_reloc(0x005334d0, 5, 0, 0x00533280);
+        install_jmp(0x005334d0, (void *)hk_PlayerDB_GetType, 5);
+        g_real_pdb_get_style_name   = (PlayerDB_FStrOut_t)make_trampoline(0x005334f0, 7);
+        install_jmp(0x005334f0, (void *)hk_PlayerDB_GetStyleName, 7);
+        g_real_pdb_get_style_enum   = (PlayerDB_IntId_t)make_trampoline(0x00533630, 6);
+        install_jmp(0x00533630, (void *)hk_PlayerDB_GetStyleEnum, 6);
+        g_real_pdb_is_type3         = (PlayerDB_BoolId_t)make_trampoline_reloc(0x005337f0, 5, 0, 0x00533280);
+        install_jmp(0x005337f0, (void *)hk_PlayerDB_IsType3, 5);
+        g_real_pdb_get_height       = (PlayerDB_StrId_t)make_trampoline_reloc(0x00533820, 5, 0, 0x00533280);
+        install_jmp(0x00533820, (void *)hk_PlayerDB_GetHeight, 5);
+        g_real_pdb_get_weight       = (PlayerDB_StrId_t)make_trampoline_reloc(0x00533840, 5, 0, 0x00533280);
+        install_jmp(0x00533840, (void *)hk_PlayerDB_GetWeight, 5);
+        g_real_pdb_get_bh2          = (PlayerDB_BoolId_t)make_trampoline(0x00533860, 7);
+        install_jmp(0x00533860, (void *)hk_PlayerDB_GetBackHand2H, 7);
+        g_real_pdb_get_lefty        = (PlayerDB_BoolId_t)make_trampoline(0x00533970, 7);
+        install_jmp(0x00533970, (void *)hk_PlayerDB_GetLefty, 7);
+        g_real_pdb_get_tension      = (PlayerDB_IntId_t)make_trampoline(0x00533a80, 5);
+        install_jmp(0x00533a80, (void *)hk_PlayerDB_GetTension, 5);
+        g_real_pdb_get_wtdbls       = (PlayerDB_IntId_t)make_trampoline_reloc(0x00533ab0, 5, 0, 0x00533280);
+        install_jmp(0x00533ab0, (void *)hk_PlayerDB_GetWtDblsPt, 5);
+        g_real_pdb_get_short_name   = (PlayerDB_StrId_t)make_trampoline_reloc(0x00533ad0, 5, 0, 0x00533280);
+        install_jmp(0x00533ad0, (void *)hk_PlayerDB_GetShortName, 5);
+        g_real_pdb_get_voice_se     = (PlayerDB_FStrOut_t)make_trampoline(0x00533af0, 7);
+        install_jmp(0x00533af0, (void *)hk_PlayerDB_GetVoiceSE, 7);
+        g_real_pdb_get_model_prefix = (PlayerDB_ModelPrefix_t)make_trampoline_reloc(0x00533dc0, 8, 3, 0x00533280);
+        install_jmp(0x00533dc0, (void *)hk_PlayerDB_GetModelPrefix, 8);
+        patch_call(0x00533eec, (void *)hk_ModelSdo_GetAuthor);
+        patch_call(0x00539441, (void *)hk_ServeMin_GetFloat);
+        patch_call(0x00539456, (void *)hk_ServeMax_GetFloat);
+
+        init_custom_bio_strings();
+        patch_call(0x0043CAC9, (void *)hk_Loading_SetPlayerPhoto);
+        patch_call(0x005e5e0e, (void *)hk_Loading_SetBioCard);
+        log_msg("[VT4-Mod] Fase 2 + Page 3 + Page 4 Roster Expansion active: IDs 26..83 (%d players, %d pages, TR_COMMON + Loading bio/photo hooks)",
+                MAX_ROSTER_PLAYERS, NUM_ROSTER_PAGES);
+    } else {
+        log_msg("[VT4-Mod] Safe Core Mode active: keeping vanilla 26+2 roster untouched (no custom .sdo/.dds pack)");
+    }
 
     // 6. Fix Sega European Region ESRB infinite loop deadlock
     // In FUN_00431580 (AdvMode ctor), replace call to FUN_0044fc70 at 0x004315d1 with near jmp to 0x0043165c

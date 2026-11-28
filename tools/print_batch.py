@@ -1,8 +1,9 @@
+import os
 import json
 import sys
 
 for step in sys.argv[1:]:
-    path = rf'C:\Users\acorr\.gemini\antigravity\brain\870ede98-2986-4047-bf85-9d8d3fdf8f4d\.system_generated\steps\{step}\output.txt'
+    path = rfos.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scratch")
     print(f'================ STEP {step} ================')
     with open(path, encoding='utf-8') as f:
         d = json.load(f)

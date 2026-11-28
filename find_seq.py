@@ -1,9 +1,9 @@
 import pefile
 import struct
 
-pe = pefile.PE('c:/Users/acorr/Documents/tenis/game/VT4.exe')
+pe = pefile.PE('game/VT4.exe')
 base = pe.OPTIONAL_HEADER.ImageBase
-with open('c:/Users/acorr/Documents/tenis/game/VT4.exe', 'rb') as f:
+with open('game/VT4.exe', 'rb') as f:
     data = f.read()
 
 target = 0x00635610

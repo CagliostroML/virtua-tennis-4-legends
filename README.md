@@ -14,12 +14,13 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v1.0-1e88e5?style=flat-square" alt="Release v1.0">
+  <img src="https://img.shields.io/badge/Status-WIP%20(Work%20in%20Progress)-f9a825?style=flat-square" alt="Status WIP">
+  <img src="https://img.shields.io/badge/Release-v1.0.1-1e88e5?style=flat-square" alt="Release v1.0.1">
   <img src="https://img.shields.io/badge/Roster-84%20Players-2e7d32?style=flat-square" alt="Roster 84">
   <img src="https://img.shields.io/badge/3D%20Models-59%20SDO%20%2B%20UV%20Faces-8e24aa?style=flat-square" alt="59 SDO">
   <img src="https://img.shields.io/badge/Stages-4%20Grand%20Slams%20%2B%20Madrid-00897b?style=flat-square" alt="Grand Slams">
   <img src="https://img.shields.io/badge/Engine-D3D9%20%2B%20NextGenFX-6a1b9a?style=flat-square" alt="D3D9 NextGenFX">
-  <img src="https://img.shields.io/badge/Platforms-Windows%20%26%20Android-ef6c00?style=flat-square" alt="Platforms">
+  <img src="https://img.shields.io/badge/Platforms-Windows%20%7C%20Linux%20%7C%20Steam%20Deck%20%7C%20Android-ef6c00?style=flat-square" alt="Platforms">
 </p>
 
 <p align="center">
@@ -36,6 +37,9 @@
 
 > [!IMPORTANT]
 > **Legal Notice:** This repository contains exclusively original mod source code (`src/`), asset generation tools (`tools/`), screenshots, and documentation. **It does not include or distribute any copyrighted SEGA files, executables, or proprietary assets** (`VT4.exe`, `vt4.dll`, `resource*.bin`, base models, or base textures). A legitimate PC copy of *Virtua Tennis 4* is required.
+
+> [!NOTE]
+> **Work In Progress (`WIP`) &amp; Safe Core Mode:** This project is an active **WIP** native Win32 reverse-engineered `xlive.dll` mod loader + asset pipeline (not a full static C decompilation yet). Because the GitHub release contains **zero SEGA assets and zero `.exe` files** (`VT4_Legends-v1.0.1-Windows-x86.zip`), dropping `xlive.dll` onto your legal PC copy boots cleanly in **Safe Core Mode** (`26` original players + unlocked bosses + 60 FPS frame pacer, NextGenFX, TV Scoreboards, ProPhysics, `4:3`/16:10 scaling, LAN Netplay, and Linux/Winlator fixes). Generating the full 84-player 3D `.sdo`/portrait pack and Grand Slams locally is done with the Python scripts in `tools/`.
 
 ---
 
@@ -114,26 +118,43 @@
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Quick Start &amp; How to Play
 
-### For Players (Windows &amp; Android)
+> **Prerequisites**: A legitimate unpacked PC copy of *Virtua Tennis 4* (`VT4.exe` PC v1.0, `5,059,400` B, `vt4.dll`, `resource.bin`, `resource.1.bin`).
 
-1. **Prerequisites**:
-   - A legitimate PC installation of *Virtua Tennis 4* (`VT4.exe`, `vt4.dll`, `resource.bin`, `resource.1.bin`).
-   - On Android: **GameHub (GameFusion)** or **Winlator CMod / Frost** (Turnip on Adreno, Vortek on Mali).
-2. **On PC (Windows)**:
-   - Download the release package (no SEGA binaries included) or compile `xlive.dll` (see below).
-   - Copy `xlive.dll`, `PLAY_VT4_LEGENDS.exe`, `vt4_settings.ini`, and `archive/` files into your `game/` folder alongside `VT4.exe`.
-   - Launch **`VT4.exe`** (or **`PLAY_VT4_LEGENDS.exe`**) and configure graphics/mod options in **Options -> Gráficos HD y Legends (`F2`)**.
-3. **On Android (1-Tap Launch)**:
-   - Export a clean standalone bundle to `dist/android/VT4_Legends_Android/`:
-     ```powershell
-     py -u tools/export_android_bundle.py
-     ```
-   - Copy `VT4_Legends_Android/` to a short internal storage path (e.g. `/storage/emulated/0/Games/VT4_Legends_Android/`).
-   - **GameHub**: *Import PC Game* -> select **`PLAY_VT4_LEGENDS.exe`**.
-   - **Winlator CMod/Frost**: right-click **`PLAY_VT4_LEGENDS.exe`** -> *Create Shortcut* -> in *Shortcuts* tap `⋮` -> *Add to Home Screen*.
-   - Full DXVK/Turnip tuning and netplay guides: [ANDROID_SETUP_GUIDE.md](ANDROID_SETUP_GUIDE.md) and [ONLINE_NETPLAY_GUIDE.md](ONLINE_NETPLAY_GUIDE.md).
+### 🪟 Windows (PC)
+1. Download **`VT4_Legends-v1.0.1-Windows-x86.zip`** from Releases (contains **0 `.exe` files** + `SHA256SUMS.txt` so browsers won't flag it).
+2. Extract its contents directly next to `VT4.exe` (and optionally run the generators in `tools/` to populate `archive/HIGH/` with all 84 players & Grand Slams).
+3. Double-click **`VT4.exe`**: `xlive.dll` verifies the PE signature, auto-creates portable `save\Config.txt`, sets `Locale=auto` to match your Windows language, and boots in **16:9**, **16:10**, or **4:3 Arcade** (`F2` -> *GRÁFICOS HD Y LEGENDS*).
+
+### 🐧 Linux
+- **Option 1 (Automatic script)**: Copy `launch_linux.sh` into your VT4 folder and run `chmod +x launch_linux.sh && ./launch_linux.sh` (auto-detects `umu-run`, Steam Proton, or Wine and sets `WINEDLLOVERRIDES="xlive,d3dx9_43=n,b"`).
+- **Option 2 (Lutris / Bottles / Wine)**: Set executable to `VT4.exe` and add DLL override **`xlive,d3dx9_43=n,b`** (let Wine use its builtin `msvcr90` and FAudio `xaudio2_7`). Our `xlive.dll` automatically bypasses Wine's `IGameExplorer` privilege error (`0x00404f20`) and `SM_REMOTESESSION` (`0x0040533a`).
+
+### 🎮 Steam Deck (SteamOS)
+1. Copy the mod files into your VT4 folder and add **`VT4.exe`** in Steam as a **Non-Steam Game**.
+2. Open *Properties -> Compatibility* -> check **Force the use of a specific Steam Play compatibility tool** -> select **Proton Experimental**.
+3. In *Properties -> General -> Launch Options*, paste:
+   ```text
+   WINEDLLOVERRIDES="xlive,d3dx9_43=n,b" %command%
+   ```
+   *(Or run `./launch_linux.sh --deck` in Desktop Mode for native **`1280x800` (16:10)** + `PerfProfile=1`.)* Full guide: [LINUX_STEAMDECK_GUIDE.md](LINUX_STEAMDECK_GUIDE.md).
+
+### 📱 Android (Winlator &amp; GameHub)
+1. On PC, export a clean standalone mobile folder (or zip) from your modded PC copy:
+   ```powershell
+   py -u tools/export_android_bundle.py --zip
+   ```
+   *(Or grab `VT4_Legends-v1.0.1-Android-Launcher.zip` from Releases to add **`PLAY_VT4_LEGENDS.exe`**, which includes the embedded crest icon and sets `WINEDLLOVERRIDES`, `PULSE_LATENCY_MSEC=90`, and `DXVK_STATE_CACHE=1` automatically.)*
+2. Copy `VT4_Legends_Android/` to a short internal storage path (e.g. `/storage/emulated/0/Games/VT4_Legends_Android/`).
+3. **Winlator (Official / CMod / Frost)**:
+   - Open your container file explorer -> navigate to `VT4_Legends_Android/` -> tap **`PLAY_VT4_LEGENDS.exe`** with **two fingers** *(right-click)* -> **Create Shortcut**.
+   - **Official Winlator** does not include *Add to Home Screen*: exit the container and launch in 1 tap from Winlator's **Shortcuts** tab (`⋮ -> Settings` lets you pin *Virtual Gamepad*, `960x540`, and `ALSA` audio per game). **Winlator CMod** adds `⋮ -> Add to Home Screen` for a direct Android launcher icon.
+   - In-game, swipe from the left edge -> **Input Controls -> Virtual Gamepad** (`TouchXboxHUD=0` keeps the screen clean for Winlator's native multi-touch controls; press `F6` if you ever want our built-in touch HUD).
+4. **GameHub (GameFusion)**: **Import PC Game** -> select **`PLAY_VT4_LEGENDS.exe`** (`Turnip + DXVK` on Snapdragon/Adreno, `Vortek + DXVK + ALSA` on MediaTek/Mali, `PerfProfile=2` + `Auto <=540p`). Full guide: [ANDROID_SETUP_GUIDE.md](ANDROID_SETUP_GUIDE.md).
+
+### 🚀 RecompLauncher
+- Ready-to-use [`recomplauncher.json`](recomplauncher.json), `vt4_recomp_prepare.bat`, and [`tools/setup_vt4_legends.py`](tools/setup_vt4_legends.py) (`--verify-only` hash check & automated `prepare`). Netplay crossplay guide: [ONLINE_NETPLAY_GUIDE.md](ONLINE_NETPLAY_GUIDE.md).
 
 ---
 
@@ -172,7 +193,8 @@ py -u tools/tests/test_options_ui.py
 | `CharaSelect` | `F` | Toggle **Agassi '91 / '06** skin |
 | `CharaSelect` | `R` | Cycle **EE-3** arcade weapon (Normal / Wood / Frying Pan / Baguette) |
 | In-match (`EE-1`) | `C` | Protest umpire call (QTE with `Z` / `Space`) |
-| Tennis (P1 keyboard) | Arrows + `Enter` / `Esc` / `Z` / `V` | Move + Topspin / Slice / Lob / Drop shot (native XInput / DirectInput supported) |
+| Tennis (P1 keyboard) | Arrows / `WASD` + `Z`/`J` (Topspin) / `X`/`L` (Slice) / `C`/`K` (Lob/Protest) / `V`/`I` (Drop) / `Space` (Pause) / `B` (Cam) | Full XInput / DirectInput / Winlator Virtual Gamepad supported (`A` Topspin, `X` Slice, `B` Lob, `Y` Drop, `START` Pause, `LB`/`RB` Pages) |
+| Custom Mod HUD & Android | `F2` (Options Overlay) / `F6` (Toggle `TouchXboxHUD`) / `F7` (Toggle `BroadcastHUD`) / `F10` (Screenshot) | Anti-double-tap/right-click menu guard enabled automatically |
 
 ---
 
@@ -194,23 +216,54 @@ Measured in live Exhibition matches (300 frames, native XAudio2 enabled, `0` cra
 ## ❓ FAQ &amp; Troubleshooting
 
 <details>
-<summary><b>The game boots with only the original 26 players instead of 84</b></summary>
-Wine / Windows did not load our custom <code>xlive.dll</code>. On Android/Wine always launch <code>PLAY_VT4_LEGENDS.exe</code> (or set <code>WINEDLLOVERRIDES="xlive,d3dx9_43,msvcr90,msvcp90,msvcm90=n,b"</code>).
+<summary><b>The game boots with only the original 26 players instead of 84 (Safe Core Mode)</b></summary>
+<ul>
+<li>If the original GFWL/LIVE interface shows up too, <code>xlive.dll</code> was not loaded. On Windows make sure <code>xlive.dll</code> sits right next to <code>VT4.exe</code>; on Linux/Steam Deck/Wine set <code>WINEDLLOVERRIDES="xlive,d3dx9_43=n,b"</code>; on Android always launch <code>PLAY_VT4_LEGENDS.exe</code>. Check <code>xlive_mod.log</code>.</li>
+<li>If the 84-player UI loads with only 26+2 characters, <i>Safe Core Mode</i> is active because the custom <code>.sdo</code> / <code>.dds</code> pack is missing from <code>archive/</code>. Copy the generated asset folders preserving exact casing (<code>HIGH/Player/Model/</code>, <code>HIGH/Frontend/VR/photo_L/</code>).</li>
+</ul>
 </details>
 
 <details>
-<summary><b>No audio or crackling sound on Winlator / GameHub</b></summary>
-Set <code>xaudio2_7=n</code> (Native) and select <b>PulseAudio</b> as your container audio driver.
+<summary><b>Error: "Fatal Error! User does not have privileges to access this application" or Remote Play block</b></summary>
+That happens in vanilla VT4 under Wine/Proton/Winlator (<code>IGameExplorer</code> parental check at <code>0x00404f20</code>) or Windows Remote Desktop/Steam Remote Play (<code>SM_REMOTESESSION</code> at <code>0x0040533a</code>). Our <code>xlive.dll</code> v1.0.1 patches both checks automatically at runtime—verify <code>xlive_mod.log</code> confirms our DLL loaded.
 </details>
 
 <details>
-<summary><b>Black screen or crashes on Mali / Exynos phones</b></summary>
-Keep <code>AntiAliasing=0</code>, <code>CleanPostFX=1</code>, <code>PerfProfile=2</code> in <code>vt4_settings.ini</code> (preconfigured by <code>export_android_bundle.py</code>) and use <b>Vortek</b> + <b>DXVK</b>.
+<summary><b>Is it safe / clean? Do I need the original VT4 PC files?</b></summary>
+Yes. This repository and its releases contain <b>zero SEGA executables, game DLLs, or proprietary binaries</b> (<code>VT4_Legends-v1.0.1-Windows-x86.zip</code> contains 0 <code>.exe</code> files, plus <code>SHA256SUMS.txt</code>). You bring your own legal PC copy of <i>Virtua Tennis 4</i> (<code>VT4.exe</code> unpacked PC v1.0, <code>5,059,400</code> bytes, <code>sha256: feae98d9...</code>).
+</details>
+
+<details>
+<summary><b>How do controls work on Android / Winlator (Virtual Gamepad vs Touch HUD)?</b></summary>
+On Android the default is <code>TouchXboxHUD=0</code> so screen stays clean for Winlator's built-in multi-touch <b>Virtual Gamepad</b> (<i>Sidebar -> Input Controls -> Virtual Gamepad</i>) or Bluetooth/USB-C controllers. All menus, return-of-serve, and custom mod menus (<code>F2</code> -> <code>GRAFICOS HD Y LEGENDS</code> / <code>EN LINEA</code>) work directly over XInput/DirectInput, with automatic anti-right-click/double-tap guard so menus do not accidentally step back. Press <code>F6</code> anytime if you want to toggle our built-in touch HUD.
+</details>
+
+<details>
+<summary><b>The game launches cropped or with a black edge at non-4:3 / handheld resolutions</b></summary>
+By design the <code>v1.0.1</code> presentation engine maintains proper 4:3 pillarboxed framing inside widescreen/portrait containers (including Steam Deck 16:10 and modern phones) and anchors fullscreen/oversized windows at <code>(0, 0)</code> without HUD stretching. See <b>OPCIONES -> GRÁFICOS HD Y LEGENDS</b> (<code>F2</code>) or <code>vt4_settings.ini</code> (<code>[Graphics]</code>) to adjust scale, MSAA, and <code>UseD3D9Ex</code>.
+</details>
+
+<details>
+<summary><b>No audio or crackling sound on Winlator / GameHub / Steam Deck</b></summary>
+Select <b>PulseAudio</b> as your container audio driver and keep <code>xaudio2_7</code> / <code>msvcr90</code> on Wine/Proton's <b>Builtin</b> FAudio/SxS implementation (default since <code>v1.0.1</code> — do not drop loose Windows <code>XAudio2_7.dll</code> or <code>msvcr90.dll</code> next to <code>VT4.exe</code>).
+</details>
+
+<details>
+<summary><b>Black screen or crashes on Mali / Exynos phones or older Mesa GPUs</b></summary>
+Keep <code>AntiAliasing=0</code>, <code>CleanPostFX=1</code>, <code>PerfProfile=2</code> in <code>vt4_settings.ini</code> (preconfigured by <code>export_android_bundle.py</code>) and use <b>Vortek</b> + <b>DXVK</b> on Mali/Exynos (or <b>Turnip</b> + <b>DXVK</b> on Snapdragon/Adreno). On Linux/Mesa, if D3D9Ex fails, set <code>UseD3D9Ex=0</code>.
+</details>
+
+<details>
+<summary><b>How do I launch on Steam Deck / Linux or via RecompLauncher?</b></summary>
+<ul>
+<li><b>Steam Deck / Linux</b>: add <code>VT4.exe</code> as Non-Steam Game with Proton Experimental and <code>WINEDLLOVERRIDES="xlive,d3dx9_43=n,b" %command%</code> (or run <code>launch_linux.sh</code>). See <a href="LINUX_STEAMDECK_GUIDE.md">LINUX_STEAMDECK_GUIDE.md</a>.</li>
+<li><b>RecompLauncher / portable setup</b>: copy the files and run <code>vt4_recomp_prepare.bat</code> (uses <code>recomplauncher.json</code> and <code>tools/setup_vt4_legends.py</code>).</li>
+</ul>
 </details>
 
 <details>
 <summary><b>How do I play online between PC and Android?</b></summary>
-Open <b>EN LÍNEA</b> from the main menu on both devices: on the same WiFi one hosts and the other clicks <b>BUSCAR SALA EN RED LOCAL (LAN)</b>; over the Internet use <b>Tailscale</b> and enter your opponent's <code>100.x.x.x</code> IP.
+Open <b>EN LÍNEA</b> from the main menu on both devices: on the same WiFi one hosts and the other clicks <b>BUSCAR SALA EN RED LOCAL (LAN)</b>; over the Internet use <b>Tailscale</b> and enter your opponent's <code>100.x.x.x</code> IP. Full guide: <a href="ONLINE_NETPLAY_GUIDE.md">ONLINE_NETPLAY_GUIDE.md</a>.
 </details>
 
 ---
@@ -221,11 +274,11 @@ Open <b>EN LÍNEA</b> from the main menu on both devices: on the same WiFi one h
 ├── docs/screenshots/                   # Curated screenshot gallery and crest
 ├── src/
 │   ├── launcher/
-│   │   └── play_vt4_legends.c          # Win32 1-tap launcher (WINEDLLOVERRIDES + WaitForSingleObject)
+│   │   └── play_vt4_legends.c          # Zero-CRT Win32 launcher for Wine/Winlator (WINEDLLOVERRIDES)
 │   └── xlive/
-│       ├── xlive.c                     # Native Mod Loader (GFWL bypass, D3D9, PlayerDB, engine hooks)
+│       ├── xlive.c                     # Native Mod Loader (GFWL/GameExplorer bypass, D3D9, PlayerDB, hooks)
 │       ├── broadcast_hud.h             # Official TV Scoreboards [F7] + km/h radar & RALLY counter
-│       ├── touch_gamepad.h             # Interactive Touch Xbox Controller HUD [F6]
+│       ├── touch_gamepad.h             # Optional Touch Xbox Controller HUD [F6] (Winlator default: Off)
 │       ├── player_stats.h              # Individualized player stats (IDs 26..83)
 │       ├── voice_packs.h               # Voice pack table (84 IDs)
 │       ├── multiverse_modes.h          # Easter Eggs EE-1..EE-5 (Ice/Mud, 3D weapons, shot trails)
@@ -242,11 +295,15 @@ Open <b>EN LÍNEA</b> from the main menu on both devices: on the same WiFi one h
 │   ├── local_identity_uv.py            # Biometric facial identity transfer to 1024x1024 UV
 │   ├── pack_colorized_bw_portraits.py  # 84/84 full-color 2D portrait packer
 │   ├── export_android_bundle.py        # Turnkey Android exporter + PLAY_VT4_LEGENDS.exe + case audit
-│   └── tests/                          # Automated QA suites (test_roster_matrix, test_options_ui)
+│   ├── package_release.py              # Clean zero-.exe PC zip + Android launcher zip + SHA256SUMS
+│   ├── setup_vt4_legends.py            # Automated installer & RecompLauncher CLI helper
+│   └── tests/                          # Automated QA suites (test_roster_matrix, test_options_ui, test_clean_portable)
+├── launch_linux.sh / recomplauncher.json / vt4_recomp_prepare.bat
 ├── README.md / README.es.md            # English & Spanish documentation
 ├── ROADMAP_ROSTER.md                   # Master 84/84 roster tracker & development phases
 ├── MODLOG.md                           # Technical session & verification log
-├── RELEASE_NOTES_v1.0.md               # Official v1.0 release notes
+├── RELEASE_NOTES_v1.0.md / v1.0.1.md   # Official v1.0 & v1.0.1 release notes
+├── LINUX_STEAMDECK_GUIDE.md            # Steam Deck & Linux Proton guide
 ├── ONLINE_NETPLAY_GUIDE.md             # P2P & LAN netplay guide
 └── ANDROID_SETUP_GUIDE.md              # Android tuning guide (GameHub / Winlator)
 ```

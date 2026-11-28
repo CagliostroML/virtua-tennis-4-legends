@@ -1,7 +1,7 @@
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 
-$game = 'c:\Users\acorr\Documents\tenis\game'
+$game = (Join-Path (Split-Path -Parent $PSScriptRoot) "game")
 $p = Start-Process -FilePath "$game\VT4.exe" -WorkingDirectory $game -PassThru
 Write-Host "VT4 started PID: $($p.Id)"
 
@@ -18,7 +18,7 @@ for ($i = 1; $i -le 15; $i++) {
         $bmp = New-Object System.Drawing.Bitmap([System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Width, [System.Windows.Forms.Screen]::PrimaryScreen.Bounds.Height)
         $g = [System.Drawing.Graphics]::FromImage($bmp)
         $g.CopyFromScreen(0, 0, 0, 0, $bmp.Size)
-        $out = "c:\Users\acorr\Documents\tenis\screenshot_${i}s.png"
+        $out = (Join-Path (Split-Path -Parent $PSScriptRoot) "screenshot_${i}s.png")
         $bmp.Save($out, [System.Drawing.Imaging.ImageFormat]::Png)
         $g.Dispose()
         $bmp.Dispose()

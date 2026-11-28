@@ -2,9 +2,10 @@ import os
 import sys
 import struct
 
-BIN0 = r"c:\Users\acorr\Documents\tenis\game\resource.bin"
-BIN1 = r"c:\Users\acorr\Documents\tenis\game\resource.1.bin"
-OUT_DIR = r"c:\Users\acorr\Documents\tenis\extracted"
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BIN0 = os.path.join(REPO_ROOT, "game", "resource.bin")
+BIN1 = os.path.join(REPO_ROOT, "game", "resource.1.bin")
+OUT_DIR = os.path.join(REPO_ROOT, "extracted")
 
 def lzss_decompress(comp_bytes):
     uncomp_size, comp_size = struct.unpack(">II", comp_bytes[:8])

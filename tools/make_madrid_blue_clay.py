@@ -211,7 +211,7 @@ def build_official_text_overrides(entries, f0, f1, cache):
 
 
 def main():
-    preview_dir = r"C:\Users\acorr\.gemini\antigravity\brain\22a1c44f-d683-498e-b4f7-f89eb5b5386f\scratch\spa2_tex"
+    preview_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scratch")
     os.makedirs(preview_dir, exist_ok=True)
     entries = load_directory()
     cache = {}

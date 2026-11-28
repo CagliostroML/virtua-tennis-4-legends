@@ -1,0 +1,211 @@
+{
+  "$schema": "https://recomplauncher.com/schema/recomplauncher.json",
+  "format": 1,
+  "name": "Virtua Tennis 4: Legends & Next-Gen Edition",
+  "repo": "CagliostroML/virtua-tennis-4-legends",
+  "inputs": [
+    {
+      "id": "game",
+      "label": "Your PC copy folder of Virtua Tennis 4 (containing VT4.exe, vt4.dll, resource.bin, and resource.1.bin).",
+      "role": "game",
+      "formats": [
+        { "type": "folder" }
+      ],
+      "check": {
+        "file": "VT4.exe"
+      }
+    }
+  ],
+  "prepare": {
+    "program": ["vt4_recomp_prepare.bat"],
+    "args": ["--game={input:game}", "--out={install}"],
+    "label": "Linking your Virtua Tennis 4 PC files",
+    "done": [
+      "{install}/VT4.exe",
+      "{install}/resource.bin",
+      "{install}/.vt4_prepared"
+    ],
+    "keeps_copy": true
+  },
+  "start": {
+    "program": ["VT4.exe"],
+    "env": {
+      "WINEDLLOVERRIDES": "xlive,d3dx9_43=n,b"
+    }
+  },
+  "config": [
+    {
+      "id": "main",
+      "format": "ini",
+      "file": [
+        { "path": "{install}/vt4_settings.ini" }
+      ]
+    }
+  ],
+  "saves": [
+    "{install}/save",
+    "{install}/vt4_settings.ini"
+  ],
+  "folders": {
+    "game": [
+      { "path": "{install}" }
+    ],
+    "saves": [
+      { "path": "{install}/save" }
+    ],
+    "logs": [
+      { "path": "{install}" }
+    ]
+  },
+  "settings": [
+    {
+      "id": "resolution",
+      "label": "Resolution",
+      "help": "Internal 3D rendering resolution (supports 16:9 HD/QHD/4K, Steam Deck 16:10, and 4:3 arcade cabinets).",
+      "group": "Graphics",
+      "choices": [
+        { "label": "1280 x 720 (HD 720p)", "set": { "Graphics/Width": "1280", "Graphics/Height": "720" } },
+        { "label": "1280 x 800 (Steam Deck 16:10)", "set": { "Graphics/Width": "1280", "Graphics/Height": "800" } },
+        { "label": "1024 x 768 (4:3 Arcade)", "set": { "Graphics/Width": "1024", "Graphics/Height": "768" } },
+        { "label": "1280 x 960 (4:3 HD)", "set": { "Graphics/Width": "1280", "Graphics/Height": "960" } },
+        { "label": "1600 x 1200 (4:3 UXGA)", "set": { "Graphics/Width": "1600", "Graphics/Height": "1200" } },
+        { "label": "1920 x 1080 (Full HD 1080p)", "set": { "Graphics/Width": "1920", "Graphics/Height": "1080" } },
+        { "label": "2560 x 1440 (2K QHD)", "set": { "Graphics/Width": "2560", "Graphics/Height": "1440" } },
+        { "label": "3440 x 1440 (21:9 Ultrawide)", "set": { "Graphics/Width": "3440", "Graphics/Height": "1440" } },
+        { "label": "3840 x 2160 (4K UHD)", "set": { "Graphics/Width": "3840", "Graphics/Height": "2160" } }
+      ],
+      "defaults": { "Graphics/Width": "1920", "Graphics/Height": "1080" }
+    },
+    {
+      "id": "window",
+      "label": "Display Mode",
+      "help": "Borderless fills your screen cleanly; Windowed centers a resizable Win32 window.",
+      "group": "Graphics",
+      "choices": [
+        { "label": "Borderless Fullscreen", "set": { "Graphics/Windowed": "0" } },
+        { "label": "Windowed", "set": { "Graphics/Windowed": "1" } }
+      ],
+      "defaults": { "Graphics/Windowed": "0" }
+    },
+    {
+      "id": "antialiasing",
+      "label": "Anti-Aliasing (MSAA)",
+      "help": "Hardware MSAA smoothing. Lower to Off on Steam Deck or low-power GPUs if needed.",
+      "group": "Graphics",
+      "choices": [
+        { "label": "Off", "set": { "Graphics/AntiAliasing": "0" } },
+        { "label": "2x MSAA", "set": { "Graphics/AntiAliasing": "2" } },
+        { "label": "4x MSAA", "set": { "Graphics/AntiAliasing": "4" } },
+        { "label": "8x MSAA", "set": { "Graphics/AntiAliasing": "8" } }
+      ],
+      "defaults": { "Graphics/AntiAliasing": "4" }
+    },
+    {
+      "id": "nextgenfx",
+      "label": "NextGenFX Shader (F8)",
+      "help": "DirectX 9 ps_3_0 adaptive CAS sharpening, micro-clarity, and ACES filmic grading.",
+      "group": "Graphics",
+      "choices": [
+        { "label": "On", "set": { "Graphics/NextGenFX": "1" } },
+        { "label": "Off", "set": { "Graphics/NextGenFX": "0" } }
+      ],
+      "defaults": { "Graphics/NextGenFX": "1" }
+    },
+    {
+      "id": "cleanpostfx",
+      "label": "Bloom & DOF Cleanup",
+      "help": "Removes SEGA's heavy bloom/DOF blur for razor-sharp court visibility.",
+      "group": "Graphics",
+      "choices": [
+        { "label": "Clean HD (No Bloom/Blur)", "set": { "Graphics/CleanPostFX": "1" } },
+        { "label": "Soft (35% Glare)", "set": { "Graphics/CleanPostFX": "2" } },
+        { "label": "Original SEGA", "set": { "Graphics/CleanPostFX": "0" } }
+      ],
+      "defaults": { "Graphics/CleanPostFX": "1" }
+    },
+    {
+      "id": "used3d9ex",
+      "label": "Direct3D 9Ex",
+      "help": "Lower latency and smoother Alt-Tab. Switch to Off if an older GPU/driver fails D3D9Ex creation.",
+      "group": "Graphics",
+      "advanced": true,
+      "choices": [
+        { "label": "On (D3D9Ex)", "set": { "Graphics/UseD3D9Ex": "1" } },
+        { "label": "Standard D3D9 Fallback", "set": { "Graphics/UseD3D9Ex": "0" } }
+      ],
+      "defaults": { "Graphics/UseD3D9Ex": "1" }
+    },
+    {
+      "id": "locale",
+      "label": "Game Language",
+      "help": "Follows your OS UI language on Auto, or forces an official VT4 localization.",
+      "group": "Gameplay",
+      "choices": [
+        { "label": "Auto (System Language)", "set": { "Menu/Locale": "auto" } },
+        { "label": "English", "set": { "Menu/Locale": "en" } },
+        { "label": "Espanol", "set": { "Menu/Locale": "es" } },
+        { "label": "Francais", "set": { "Menu/Locale": "fr" } },
+        { "label": "Deutsch", "set": { "Menu/Locale": "de" } },
+        { "label": "Italiano", "set": { "Menu/Locale": "it" } },
+        { "label": "Japanese", "set": { "Menu/Locale": "ja" } }
+      ],
+      "defaults": { "Menu/Locale": "auto" }
+    },
+    {
+      "id": "broadcasthud",
+      "label": "Broadcast TV Scoreboard (F7)",
+      "help": "Live Grand Slam / Tour TV scoreboard with IOC flags, radar km/h, and rally counter.",
+      "group": "Gameplay",
+      "choices": [
+        { "label": "On", "set": { "Gameplay/BroadcastHUD": "1" } },
+        { "label": "Off", "set": { "Gameplay/BroadcastHUD": "0" } }
+      ],
+      "defaults": { "Gameplay/BroadcastHUD": "1" }
+    },
+    {
+      "id": "prophysics",
+      "label": "Pro Ball Physics",
+      "help": "Tuned gravity and pace for realistic, less floaty rallies.",
+      "group": "Gameplay",
+      "choices": [
+        { "label": "Standard VT4", "set": { "Gameplay/ProPhysics": "0" } },
+        { "label": "Pro Simulation", "set": { "Gameplay/ProPhysics": "1" } }
+      ],
+      "defaults": { "Gameplay/ProPhysics": "0" }
+    },
+    {
+      "id": "perfprofile",
+      "label": "Performance Profile",
+      "help": "Controls shadow/bloom resolution and precision 60 FPS frame-pacer behavior.",
+      "group": "Performance",
+      "choices": [
+        { "label": "Ultra PC", "set": { "Performance/PerfProfile": "0" } },
+        { "label": "Esports / Steam Deck", "set": { "Performance/PerfProfile": "1" } },
+        { "label": "Low-Spec / Handheld", "set": { "Performance/PerfProfile": "2" } }
+      ],
+      "defaults": { "Performance/PerfProfile": "0" }
+    }
+  ],
+  "actions": [
+    {
+      "id": "saves",
+      "label": "Open Save Folder",
+      "help": "Opens your portable VT4 save folder and Config.txt.",
+      "open": "saves"
+    },
+    {
+      "id": "logs",
+      "label": "Open Game & Log Folder",
+      "help": "Opens the installation folder containing xlive_mod.log.",
+      "open": "logs"
+    }
+  ],
+  "system": {
+    "windows": {
+      "version": "10",
+      "graphics": {
+        "d3d9": "9.0"
+      }
+    }
+  }
+}

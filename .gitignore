@@ -13,7 +13,6 @@
 
 # Game executable and proprietary game data
 game/
-sr-vt4.iso
 extracted/
 
 # Third-party precompiled toolchains in tools/
@@ -70,3 +69,8 @@ assets/voices_workspace/
 *.psd
 *.webp
 *.apz
+
+# Local agent/MCP config, internal scratch guides & raw extracted textures
+.agents/plugins/rea-local/mcp_config.json
+docs/IMPLEMENTATION_GUIDE_V1_0_1_AND_BEYOND.md
+tools/extracted_mode/

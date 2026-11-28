@@ -4,25 +4,39 @@ Guía práctica para ejecutar **Virtua Tennis 4: Legends & Next-Gen Edition** co
 
 ---
 
+## ⚡ Inicio Rápido en 3 Pasos (El camino más simple)
+
+> **¿Por qué no hay archivo `.apk`?** `VT4.exe` es un binario nativo de Windows x86 (32 bits) con Direct3D 9 parcheado en memoria por `xlive.dll`. Compilarlo a un `.apk` nativo ARM64 requeriría decompilar todo el juego desde cero; en **GameHub** o **Winlator** ya corre a **60 FPS** con DXVK + Turnip usando nuestro lanzador directo de 1 toque.
+
+1. **Prepara la carpeta lista en tu PC (o con un solo `.zip`)**:
+   - Ejecuta `py -u tools/export_android_bundle.py --zip` (genera `dist/android/VT4_Legends_Android/` **y** un único archivo `dist/android/VT4_Legends_Android_Full.zip` listo para pasar por cable USB).
+   - Copia o descomprime la carpeta en una **ruta corta de la memoria interna** del móvil, por ejemplo `/storage/emulated/0/Games/VT4_Legends_Android/` *(nunca desde tarjeta SD)*.
+2. **Importa `PLAY_VT4_LEGENDS.exe`**:
+   - **En GameHub**: `Import PC Game` -> elige `PLAY_VT4_LEGENDS.exe` -> selecciona **1280x720**, **Turnip** (Adreno) o **Vortek** (Mali) y **DXVK Async**.
+   - **En Winlator CMod / Frost**: abre el contenedor -> clic derecho / pulsación larga en `PLAY_VT4_LEGENDS.exe` -> `Create Shortcut` -> desde la pestaña *Shortcuts*, `Add to Home Screen`.
+3. **¡A jugar en 1 toque!**: `PLAY_VT4_LEGENDS.exe` (Win32 puro sin UCRT) activa automáticamente `xlive,d3dx9_43=n,b` (dejando a Wine usar su `msvcr90` y `xaudio2_7` estables), omite el fallo de `IGameExplorer` / Control Parental en Wine (`0x00404f20`), activa el perfil ligero **`PerfProfile=2`** (`UseD3D9Ex=1` con fallback automático a D3D9) y deja **`TouchXboxHUD=0`** para usar limpio el **Virtual Gamepad** multitáctil de Winlator (o mando físico).
+
+---
+
 ## 0. Exportador Automático Llave en Mano (`tools/export_android_bundle.py`)
 
-Puedes generar directamente un paquete limpio y autónomo listo para copiar a tu móvil Android en **`dist/android/VT4_Legends_Android/`** (o solo la actualización ligera del mod con `--patch-only`):
+Puedes generar directamente un paquete limpio y autónomo listo para copiar a tu móvil Android en **`dist/android/VT4_Legends_Android/`** (o empaquetado en un único `.zip` con `--zip`, o solo la actualización ligera del mod con `--patch-only`):
 
 ```powershell
-# Exportación completa lista para copiar a Android (~3.5 GB, compila PLAY_VT4_LEGENDS.exe, incluye d3dx9_43.dll, dxvk.conf, vt4_settings.ini móvil y auditoría case-sensitive)
-py -u tools/export_android_bundle.py
+# Exportación completa + ZIP único listo para pasar al móvil (~3.6 GB, compila PLAY_VT4_LEGENDS.exe, incluye d3dx9_43.dll, dxvk.conf, vt4_settings.ini móvil y auditoría case-sensitive)
+py -u tools/export_android_bundle.py --zip
 
-# Solo actualización de archivos del mod (sin copiar VT4.exe / resource*.bin)
-py -u tools/export_android_bundle.py --patch-only
+# Solo actualización ligera de archivos del mod (sin copiar VT4.exe / resource*.bin)
+py -u tools/export_android_bundle.py --patch-only --zip
 ```
 
-El exportador limpia archivos de depuración (`.pdb`, `.png` temporales, instaladores `.msi`), compila el lanzador nativo Win32 **`PLAY_VT4_LEGENDS.exe`**, incluye `d3dx9_43.dll` (x86), `LAUNCH_ANDROID.bat` (síncrono), `dxvk.conf`, `LEEME_ANDROID.txt`, carpeta `save/` portátil y configura automáticamente **`TouchXboxHUD=1`** (Auto: activa en pantalla el display interactivo de mando Xbox al detectar Android/Wine).
+El exportador limpia archivos de depuración (`.pdb`, `.png` temporales, instaladores `.msi`), compila el lanzador nativo Win32 puro **`PLAY_VT4_LEGENDS.exe`** con **icono escudo incrustado** (log `launcher_android.log`, `PULSE_LATENCY_MSEC=90`, `DXVK_STATE_CACHE=1`), incluye `d3dx9_43.dll` (x86), `LAUNCH_ANDROID.bat`, `dxvk.conf`, `vt4_legends_icon.png`, `VT4_Legends_Winlator.desktop`, `LEEME_ANDROID.txt`, carpeta `save/` portátil y configura **`TouchXboxHUD=0`**, **`Width=0` / `Height=0` (Auto <= 540p)** y **`Windowed=0`** para aprovechar todo el ancho sin botones duplicados.
 
 ---
 
 ## 0.5. Arranque en 1 Toque en Pantalla de Inicio (`PLAY_VT4_LEGENDS.exe`)
 
-El paquete exportado incluye **`PLAY_VT4_LEGENDS.exe`** (compilado desde `src/launcher/play_vt4_legends.c`), un lanzador nativo Win32 (~195 KB) que fija automáticamente `WINEDLLOVERRIDES=xlive,d3dx9_43,msvcr90,msvcp90,msvcm90=n,b` y ejecuta `VT4.exe` de forma **síncrona** (`WaitForSingleObject`), evitando que GameHub o Winlator cierren la sesión antes de tiempo.
+El paquete exportado incluye **`PLAY_VT4_LEGENDS.exe`** (compilado desde `src/launcher/play_vt4_legends.c`, Win32 puro sin dependencias UCRT y con icono oficial embebido) que fija automáticamente `WINEDLLOVERRIDES=xlive,d3dx9_43=n,b`, `PULSE_LATENCY_MSEC=90` y `DXVK_STATE_CACHE=1` dentro de la propia carpeta, escribe `launcher_android.log` y ejecuta `VT4.exe` de forma **síncrona** (`WaitForSingleObject`), evitando que GameHub o Winlator cierren la sesión antes de tiempo.
 
 ### En GameHub (GameFusion)
 1. Copia `VT4_Legends_Android/` a una ruta corta de tu memoria interna (p. ej. `/storage/emulated/0/Games/VT4_Legends_Android/`).
@@ -30,11 +44,12 @@ El paquete exportado incluye **`PLAY_VT4_LEGENDS.exe`** (compilado desde `src/la
 3. Ajusta el perfil a **1280x720**, **Turnip** (Adreno) o **Vortek** (Mali), **DXVK 2.3+/2.4+ Async** y **PulseAudio**.
 4. Lanza el juego con **1 toque** desde tu biblioteca de GameHub (puedes fijar el acceso directo en el launcher de Android si tu versión lo permite).
 
-### En Winlator CMod / Frost
-1. Dentro del contenedor de Winlator, abre el explorador de archivos y navega a `VT4_Legends_Android/`.
-2. Haz clic derecho (o pulsación larga / dos dedos) sobre **`PLAY_VT4_LEGENDS.exe`** -> **Create Shortcut**.
-3. Cierra el contenedor, ve a la pestaña **Shortcuts** de Winlator, pulsa **`⋮`** en el acceso directo creado -> **Add to Home Screen**.
-4. Tendrás un icono directo de **1 toque** en la pantalla de inicio de Android que arranca directamente *Virtua Tennis 4: Legends & Next-Gen Edition* con `xlive.dll` y los 84 tenistas activos.
+### En Winlator (Oficial / CMod / Frost)
+1. Dentro del contenedor de Winlator, abre el explorador de archivos y navega a `VT4_Legends_Android/` (desactiva un momento *Virtual Gamepad* si quieres usar toque directo).
+2. Toca con **dos dedos a la vez** *(clic derecho)* sobre **`PLAY_VT4_LEGENDS.exe`** -> **Create Shortcut**.
+3. Sal del contenedor y abre la pestaña **`☰ -> Shortcuts`** de Winlator:
+   - En **Winlator Oficial**, ya puedes lanzar en 1 toque desde esa pestaña (no incluye *Add to Home Screen*; en `⋮ -> Settings` puedes dejar fijos **Input Controls -> Virtual Gamepad**, `960x540` y Audio **ALSA**).
+   - En **Winlator CMod** (fork compatible), pulsa **`⋮ -> Add to Home Screen`** para crear el icono directo del escudo en tu escritorio de Android.
 
 *(Si prefieres ejecutar mediante batch, `LAUNCH_ANDROID.bat` también llama a `VT4.exe` de forma síncrona con los mismos overrides.)*
 
@@ -60,51 +75,38 @@ El paquete exportado incluye **`PLAY_VT4_LEGENDS.exe`** (compilado desde `src/la
 - **Windows Components / DLL Overrides**:
   - `xlive` -> **Native (Windows)** *(imprescindible para que cargue nuestro `xlive.dll` con los **84 tenistas**, Grand Slams, Marcadores TV, Netplay LAN y controles táctiles)*.
   - `d3dx9_43` -> **Native (Windows)** *(ya incluida en el paquete exportado para fuentes y sprites D3D9)*.
-  - `xaudio2_7` -> **Native (Windows)** *(garantiza el sonido nativo sin cortes; evita el fallback lento de Wine)*.
-  - `winmm` -> **Builtin, Native** *(para reproducir packs de voces personalizadas de `archive/voices/` sin stutter)*.
+  - `xaudio2_7` / `msvcr90` -> **Builtin (Wine)** *(Winlator ya incluye FAudio y VC90 SxS nativos; evitar copias sueltas evita errores `R6034` y bloqueos de audio)*.
 
-### B. Mali / Dimensity / Exynos / Tensor
-- **Resolución**: `1280x720` (o `960x540` en gama baja).
-- **Graphics Driver**: **Vortek** (Winlator 9+/Cmod) o **VirGL** / **WineD3D** según compatibilidad de tu versión.
-- **DX Wrapper**: **DXVK** (con Vortek) o **WineD3D** (con VirGL).
-- **Box64 Preset**: **Performance**.
+### B. Mali / Dimensity / Exynos / Tensor (Vortek + DXVK — Redmi Note / Poco / Realme)
+- **Resolución del Contenedor**: `960x540` (16:9) o `1280x576` (20:9 pantalla completa). En `vt4_settings.ini`, **`Width=0` y `Height=0` (Auto)** adaptan el juego exactamente al aspecto del contenedor sin recortar el marcador ni desperdigar fill-rate.
+- **Graphics Driver**: **Vortek (Universal / Vulkan Mali)** (en Winlator 9+ / CMod / Frost).
+- **DX Wrapper**: **DXVK 1.10.3** o **DXVK 2.x Async** *(nuestro `dxvk.conf` activa `enableAsync`, `enableGraphicsPipelineLibrary`, `maxFrameLatency = 2`, `deferSurfaceCreation = True` y `supportDFFormats = False`)*.
+- **Audio Driver**: **ALSA** *(menor latencia en MediaTek/Mali)* o **PulseAudio** (`PLAY_VT4_LEGENDS.exe` fija automáticamente `PULSE_LATENCY_MSEC=90`).
+- **Box64 Preset & CPU**: **Performance** (o **Intermediate / Stability** si notas micro-tirones al acumular shaders); si tu procesador tiene núcleos grandes + pequeños, activa solo los núcleos rápidos en *Processor Affinity*.
 
 ---
 
 ## 3. Configuración óptima de `game/vt4_settings.ini` para Android / PC modesto
 
-Abre `game/vt4_settings.ini` antes de lanzar `VT4.exe` y usa este perfil ligero optimizado:
+Abre `vt4_settings.ini` (en `VT4_Legends_Android/` ya viene preconfigurado así):
 
 ```ini
 [Graphics]
-Width=1280
-Height=720
+Width=0
+Height=0
 Windowed=0
+UseD3D9Ex=1
 AntiAliasing=0
 VSync=0
 AnisotropicFiltering=0
 CleanPostFX=1
-
-[Performance]
-PerfProfile=2
-UnlockFPS=0
-BenchLog=0
-
-[Menu]
-RemoveLiveMode=1
-
-[Gameplay]
-ClassicTVCamera=0
-MatchSpeedMode=0
-ExhibitionRules=0
-MultiverseMode=0
 ```
 
 ### Claves de `[Performance]` en `vt4_settings.ini`
 - **`PerfProfile=0|1|2`**:
   - `0` (**Ultra PC**): Calidad completa + frame pacer híbrido de precisión a 60.000 FPS + caché I/O en memoria (0 syscalls de disco).
   - `1` (**Esports / Medio**): `CleanPostFX=1`, MSAA <= 2x, Aniso <= 8x, sombras 1024x1024, bloom 1024x512.
-  - `2` (**Android / Winlator / DXVK / Turnip — Recomendado en móvil**): VSync OFF, MSAA=0, Aniso=0, `CleanPostFX=1`, sombras **512x512**, bloom **256x128**, `BackBufferCount=1`, `D3DSWAPEFFECT_DISCARD`, caché I/O en memoria (elimina miles de `stat()` lentos en FUSE de Android) y margen de `Sleep` ampliado para reducir temperatura y consumo de batería.
+  - `2` (**Android / Winlator / Vortek & Turnip — Recomendado en móvil**): VSync OFF, MSAA=0, Aniso=0, `CleanPostFX=1`, sombras **256x256**, bloom **128x64**, `BackBufferCount=2` (triple buffering), `D3DSWAPEFFECT_DISCARD`, caché I/O en memoria (0 syscalls FUSE), fuentes D3DX escaladas a la altura real y frame pacer con `Sleep` limpio **sin bucle spin-wait en Box64**.
 - **`UnlockFPS=0|1`**: `0` por defecto (mantiene la física a velocidad exacta `1.00x` a 60.000 FPS con frame-pacing de precisión); `1` desbloquea FPS para benchmarks/turbo.
 - **`BenchLog=0|1`**: `1` activa el registro de telemetría de rendimiento (`QueryPerformanceCounter`: FPS medios, 1% low, p99 frame time y tiempo I/O) en `xlive_mod.log`.
 
@@ -115,13 +117,14 @@ MultiverseMode=0
 
 ---
 
-## 4. Mapeo de Mando (Bluetooth / USB-C / Backbone / Display Xbox Táctil)
+## 4. Mapeo de Mando y Controles en Winlator
 
-- **Display Interactivo de Mando Xbox en Pantalla (`TouchXboxHUD`)**:
-  - En **`OPCIONES -> GRÁFICOS HD Y LEGENDS`** (fila `MANDO XBOX TACTIL (ANDROID)`) o en `vt4_settings.ini`:
-    - `TouchXboxHUD=1` *(Auto — activado por defecto en el paquete Android)*: detecta Android/Wine automáticamente y dibuja el mando Xbox translúcido interactivo (Stick izquierdo, `A/B/X/Y` con leyenda de golpes, `LB/RB` para cambiar las 4 páginas del roster de **84 tenistas**, y `START`).
-    - `TouchXboxHUD=2`: siempre visible (puedes probarlo en PC pulsando **`F6`** en cualquier momento).
-- En Winlator / GameHub también puedes conectar un mando físico Bluetooth/USB-C (**XInput**) en paralelo; ambos funcionan al instante.
+- **Virtual Gamepad nativo de Winlator o mando físico Bluetooth/USB-C (Recomendado y por defecto, `TouchXboxHUD=0`)**:
+  1. Abre el menú lateral de Winlator (desliza desde el borde izquierdo o pulsa Atrás en Android) -> **Input Controls** -> elige **Virtual Gamepad** (mando XInput virtual con soporte multitáctil real para moverte y golpear a la vez).
+  2. La pantalla queda limpia sin botones duplicados, con lectura completa en menús, partidos (incluido resto de saque) y menú personalizado (`OPCIONES` vía `F2` o toque), además de protección anti-click-derecho/doble-toque para evitar retrocesos accidentales en menús.
+- **Overlay integrado opcional (`[F6]`)**:
+  - Si alguna vez quieres probar nuestro overlay en pantalla, pulsa **`F6`** (o activa `TouchXboxHUD=1|2` en **`OPCIONES -> GRÁFICOS HD Y LEGENDS`**). Con `1` (Auto) se oculta al detectar cualquier pulsación de Virtual Gamepad o mando físico.
+- Mapeo XInput / Táctil:
   - **Stick izquierdo / Cruceta**: Mover tenista y apuntar golpe/saque.
   - **A**: Golpe plano / Topspin (y confirmar menús).
   - **B**: Globo (Lob) / Atrás en menús.
@@ -136,8 +139,8 @@ MultiverseMode=0
 
 | Síntoma | Causa más probable | Solución |
 |---|---|---|
-| El juego arranca sin los 84 tenistas (solo 26 originales) | Wine no cargó `xlive.dll` | Lanza desde **`PLAY_VT4_LEGENDS.exe`** (fija los overrides automáticamente) o añade `WINEDLLOVERRIDES="xlive,d3dx9_43,msvcr90,msvcp90,msvcm90=n,b"` en variables de entorno del contenedor |
-| Sin sonido o sonido entrecortado | `xaudio2_7` builtin en Wine | Activa `xaudio2_7=n` (Native) y usa `PulseAudio` en el contenedor |
+| El juego arranca sin los 84 tenistas (solo 26 originales) | Wine no cargó `xlive.dll` | Lanza desde **`PLAY_VT4_LEGENDS.exe`** (fija los overrides automáticamente) o añade `WINEDLLOVERRIDES="xlive,d3dx9_43=n,b"` en variables de entorno del contenedor |
+| Sin sonido o bloqueos al iniciar | `xaudio2_7` / `msvcr90` sueltos | Usa **PulseAudio** y deja `xaudio2_7` / `msvcr90` en **Builtin (Wine)** (`export_android_bundle.py` ya lo deja limpio así) |
 | Tirones al cargar partidos | FUSE lento en `/sdcard/Download` | Mueve `game/` a una ruta corta dentro del almacenamiento interno y mantén `PerfProfile=2` |
 | Pantalla negra al iniciar partido | Driver incompatible con MSAA | Pon `AntiAliasing=0` y `CleanPostFX=1` en `vt4_settings.ini` |
 

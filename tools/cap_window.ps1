@@ -57,4 +57,4 @@ public class WinCap {
 }
 "@ -ReferencedAssemblies System.Drawing, System.Windows.Forms
 
-[WinCap]::CapturePid(14052, "c:\Users\acorr\Documents\tenis\vt4_window.png")
+[WinCap]::CapturePid(14052, (Join-Path (Split-Path -Parent $PSScriptRoot) "vt4_window.png"))

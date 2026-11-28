@@ -1,5 +1,5 @@
 Add-Type -AssemblyName System.Windows.Forms
-$game = 'c:\Users\acorr\Documents\tenis\game'
+$game = (Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) "game")
 Remove-Item "$game\xlive_mod.log" -ErrorAction SilentlyContinue
 Remove-Item "$game\vt4_present_*.png" -ErrorAction SilentlyContinue
 

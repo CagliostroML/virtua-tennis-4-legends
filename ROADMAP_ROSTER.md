@@ -5,7 +5,7 @@ Este documento es nuestra hoja de ruta viva. Iremos marcando con `[x]` cada elem
 ---
 
 ## 📦 Fase 1: Preparación, Reconocimiento e Ingeniería Inversa Base
-- [x] Extraer contenido de `sr-vt4.iso` e instalar el cliente base en el entorno de laboratorio (`game/`).
+- [x] Extraer los archivos legítimos de la copia PC v1.0 en `game/`.
 - [x] Aplicar ejecutable desempaquetado (`VT4.exe`) y emulador de `xlive.dll` (GFWL-free) y verificar que el juego arranca en modo ventana (1280x720 windowed, D3D9Ex).
 - [x] Escanear la instalación y crear herramientas de modding (`tools/vt4_archive.py`, `tools/make_config.py`).
 - [x] Analizar `VT4.exe` con **REA + Ghidra 12.1.4** (`binary_overview`, `search_strings`, `list_procedures`, `decompile`) para localizar:
@@ -125,7 +125,7 @@ Objetivo: garantizar que *Virtua Tennis 4: Legends & Next-Gen Edition* sea **exp
 - [x] **ANDROID-2: Preparación de compatibilidad en `xlive.dll` y el motor para Wine / Box64 / DXVK**
   - Perfil móvil `PerfProfile=2` (sombras 512x512, bloom 256x128, caché I/O en RAM 0 syscalls), `d3dx9_43.dll` auto-incluido, `dxvk.conf` y auditoría automática case-sensitive de `game/archive/` (`0` mismatches).
 - [x] **ANDROID-3: Controles y UX móvil**
-  - Soporte plug-and-play XInput + **Display de Mando Xbox Táctil Interactivo** (`src/xlive/touch_gamepad.h`) con stick analógico virtual, botones `A/B/X/Y`, `LB/RB` y `START`, configurable en `OPCIONES -> GRÁFICOS HD Y LEGENDS` (`TouchXboxHUD=0|1|2`, Auto en Android/Wine) o tecla `[F6]`.
+  - Soporte plug-and-play XInput + `winmm.dll!joyGetPosEx` (compatible con **Virtual Gamepad** multitáctil de Winlator y mandos Bluetooth/USB-C, bloqueo `0x00835ee8` resuelto, resto de saque vía `0x008232d1`, menú personalizado navegable con stick/A/B y guarda anti-click-derecho/doble-toque). Por defecto en Android `TouchXboxHUD=0` para pantalla limpia con Virtual Gamepad, manteniendo nuestro overlay interactivo opcional (`[F6]`, `TouchXboxHUD=0|1|2`).
 - [x] **ANDROID-4: Pipeline automatizado de exportación (`tools/export_android_bundle.py`)**
   - Script reproducible que compila el lanzador nativo Win32 **`PLAY_VT4_LEGENDS.exe`** (`src/launcher/play_vt4_legends.c`, ejecución síncrona con `WINEDLLOVERRIDES` para 1 toque en GameHub/Winlator), genera `LAUNCH_ANDROID.bat` síncrono y exporta el paquete autónomo en `dist/android/VT4_Legends_Android/` (`0` fallos case-sensitive, `--patch-only` y `--verify-only` incluidos), sin basura de compilación/depuración ni subida de binarios SEGA a GitHub.
 - [ ] **ANDROID-5: Pruebas en dispositivo real y ajuste térmico/FPS**
@@ -200,4 +200,38 @@ Workspace con muestras descriptivas y listas de archivos generadas por `tools/pr
   - **HUD Broadcast TV** en esquina superior izquierda (`BroadcastHUD`, conmutable con `[F7]` y fila de Opciones): muestra torneo/superficie, emparejamiento, velocidad en vivo (`km/h` calibrado con el radar nativo) y contador de `RALLY`.
   - **Stats individuales** (`player_stats.h`) aplicados en tiempo real para todos los jugadores personalizados `26..83` vía `PlayStyle::LoadInner` + `ServeMax`.
   - **Rebote/velocidad por superficie** diferenciados en `fwDataDB_Stage.txt` (`Fra1` arcilla `0.95/0.70`, `Eng1` hierba `0.58/0.90`, `Aus1` `0.84/0.83`, `Usa1` `0.86/0.84`, `Spa2` `0.86/0.80`) y modo opcional `ProPhysics` (`vt4_settings.ini`) en la simulación de trayectoria de bola.
+
+---
+
+## 🔥 Fase 6: Hotfix `v1.0.1` & Feedback de Comunidad (`r/decomps`)
+
+### P0 — Crítico / Bloqueante (`v1.0.1` Hotfix de arranque universal en PC, Linux y Android)
+- [x] **P0.1 — Portabilidad total de rutas + arranque limpio (`src/xlive/xlive.c`)**:
+  - Añadir `init_portable_paths()` al inicio de `apply_vt4_patches()` (antes de cualquier `log_msg()`) resolviendo dinámicamente `g_game_dir`, `g_save_path` (`<game_dir>\save\`), `g_log_path` (`<game_dir>\xlive_mod.log`) y `g_config_txt_path` (`<game_dir>\save\Config.txt`) vía `GetModuleFileNameW` / `GetModuleFileNameA`.
+  - Eliminar las 3 rutas hardcodeadas del entorno local (`L14`, `L21`, `L452`), crear `<game_dir>\save\` automáticamente (`CreateDirectoryW`) y generar un `save\Config.txt` UTF-16LE válido con BOM (`0xFEFF`) si no existe *(causa raíz del crash al ~1 s tras el logo verde en otros PCs)*.
+- [x] **P0.2 — Guard de firma PE de `VT4.exe` + diagnóstico claro**:
+  - Verificar antes de parchear que `GetModuleHandleA(NULL) == 0x00400000` y que los bytes en `0x00402694`, `0x0042FE2E`, `0x00407380`, `0x005DFE90` y `0x00668FA0` coinciden con la build PC soportada (`sha256: feae98d9...`). Si es un `VT4.exe` SecuROM empaquetado u otra versión, mostrar `MessageBoxA` explicativo + loguear y mantener solo los stubs GFWL seguros sin corromper `.text`.
+- [x] **P0.3 — Safe Core Mode si faltan assets custom (`archive/HIGH/Player/Model/*.sdo`)**:
+  - Detectar `detect_custom_roster_assets()` (`P_M_ALC_NG.sdo` + `photo_L\26.dds`) en arranque; si el usuario copió solo `xlive.dll` sin haber generado aún los `.sdo` / `photo_L` con `tools/`, arrancar en modo seguro con los 26 tenistas originales + jefes (`EXTRA-1`), 60 FPS, NextGenFX, BroadcastHUD y Netplay sin crashear al intentar cargar `.sdo` inexistentes.
+- [x] **P0.4 — `Locale=auto|en|es|...`, DPI Awareness y fallback D3D9 (Windows 11 / RTX 40xx)**:
+  - Reemplazar `0x0c0a` fijo por `Locale=auto` en `vt4_settings.ini` (detecta `GetUserDefaultUILanguage()` mapeado a idiomas de VT4, con override `en`/`es`/`fr`/`de`/`it`/`ja`).
+  - Invocar `SetProcessDPIAware()` antes de crear la ventana/dispositivo, añadir `[Graphics] UseD3D9Ex=1` con fallback automático `Direct3DCreate9Ex -> Direct3DCreate9` si `CreateDevice` falla, centralizar `get_d3dx9_43()` en un solo intento y suprimir volcados PNG automáticos (frames 1/60) cuando `DebugLog=0`.
+- [x] **P0.5 — Release `v1.0.1` sin falso positivo de Chrome (`u/DmitryChernov`)**:
+  - Separar el paquete PC (`VT4_Legends-v1.0.1-Windows-x86.zip`: solo `xlive.dll`, `vt4_settings.ini`, `dxvk.conf`, `launch_linux.sh`, `recomplauncher.json`, overlays PNG propios y guías, **0 `.exe`**) del paquete Android (`VT4_Legends-v1.0.1-Android-Launcher.zip` con `PLAY_VT4_LEGENDS.exe`) y adjuntar `SHA256SUMS.txt`.
+- [x] **P0.6 — Verificación en entorno limpio fuera del workspace (`%LOCALAPPDATA%\Temp\VT4_CleanTest\`)**:
+  - Probar arranque sin `Config.txt` previo en ruta ajena tanto en *Safe Core Mode* (sin `.sdo` custom) como en *Modo Completo 84*, comprobando `xlive_mod.log`, `save\Config.txt` y `ps=0 ex=0 exc=0`.
+
+### P1 — Multiplataforma, RecompLauncher & Peticiones Populares (`v1.0.2` / `v1.1`)
+- [x] **P1.1 — Soporte Linux / Steam Deck (`u/MisterCrowIey`, `u/laytblu`, `u/Hendawg623`, `u/radhif`)**: creado `tools/launch_linux.sh` (autodetección `umu-run`/`Proton`/`Wine` + preset `--deck` `1280x800` y `WINEDLLOVERRIDES="xlive,d3dx9_43=n,b"`), guía `LINUX_STEAMDECK_GUIDE.md` y resolución `1280x800 (Steam Deck 16:10)` en `src/xlive/xlive.c`.
+- [x] **P1.2 — Soporte `4:3` Arcade Cabinet (`u/nstern2`)**: añadidos presets `1024x768 (4:3 Arcade)`, `1280x960 (4:3 HD)` y `1600x1200 (4:3 UXGA)`, escalado 1:1 en `BroadcastHUD` / `Multiverse` / escudo, y alineado uniforme centrado por `sy` en `CharaSelect` verificado visualmente en `scratch/verify_4x3.py` (`ps=0 ex=0 exc=0`).
+- [ ] **P1.3 — Integración con RecompLauncher (`u/cxmachi`)**:
+  - *Implementado y verificado*: `recomplauncher.json` (conforme a `recomplauncher.schema.json`: `inputs`, `prepare`, `start`, `config`, `settings`, `saves`, `folders`, `actions`, `system`), `tools/vt4_recomp_prepare.bat` (probado en `Test C`), y `tools/setup_vt4_legends.py` (`--verify-only` SHA-256 OK / `--prepare`). *Pendiente*: envío final en `recomplauncher.com/submit?platform=pc` tras publicar `v1.0.1`.
+- [ ] **P1.4 — Instalación Android más simple (`u/Punisher071` + `ANDROID-5`)**:
+  - *Listo*: `PLAY_VT4_LEGENDS.exe` Win32 puro sin UCRT (`WINEDLLOVERRIDES="xlive,d3dx9_43=n,b"`, `UseD3D9Ex=1` con fallback D3D9, `Windowed=0`, log `launcher_android.log`), bypass `IGameExplorer` (`0x00404f20`) + `SM_REMOTESESSION` (`0x0040533a`), controles XInput/Virtual Gamepad de Winlator con `TouchXboxHUD=0` por defecto, `tools/export_android_bundle.py --zip` y guía en 3 pasos en `ANDROID_SETUP_GUIDE.md`. *En validación final*: confirmación de partida completa en REDMI Note 15 (`ANDROID-5`).
+
+### P2 — Pulido de Contenido (`v1.1+`, próximas iteraciones)
+- [ ] **P2.1 — Pulido de caras UV 3D y retratos 2D**: mejora progresiva de las caras 3D y retratos que quedaron más flojos en la primera tanda *(próximamente)*.
+- [ ] **P2.2 — Skins Alternativos `[F]`**: crear primero los kits piloto en `assets/skins_alt_workspace/` (p. ej. Alcaraz US Open, Sinner Roma Negro, Nadal RG '08, Federer Wimbledon '07) y generalizar el selector `[F]` mediante tabla dinámica que compruebe en disco si el `.sdo` alternativo existe antes de habilitar `[F]`.
+- [ ] **P2.3 — Packs de voces en partido (`assets/voices_workspace/` -> `game/archive/voices/`)**: grabar/importar gritos, saques y celebraciones por jugador *(próximamente)*.
+
 

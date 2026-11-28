@@ -1,5 +1,6 @@
+import os
 ﻿from PIL import Image
-p = r'C:\Users\acorr\.gemini\antigravity\brain\7c182518-c9a1-46dc-99da-0db8c5f95ff5\.user_uploaded\media_1794246622958_f665e666.jpg'
+p = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scratch")
 im = Image.open(p)
 w, h = im.size
 print(f"Image dimensions: {w}x{h}")

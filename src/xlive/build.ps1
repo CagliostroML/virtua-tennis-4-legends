@@ -1,5 +1,5 @@
 $ErrorActionPreference = 'Stop'
-$root = 'c:\Users\acorr\Documents\tenis'
+$root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 & "$root\tools\zig\zig.exe" cc -target x86-windows-gnu -shared -O2 `
     "$root\src\xlive\xlive.c" "$root\src\xlive\xlive.def" `
     -o "$root\game\xlive.dll" -lws2_32 -lgdi32 -luser32 -lkernel32

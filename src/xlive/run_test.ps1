@@ -1,5 +1,5 @@
 param([int]$Seconds = 10)
-$game = 'c:\Users\acorr\Documents\tenis\game'
+$game = (Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) "game")
 Remove-Item "$game\xlive_mod.log" -ErrorAction SilentlyContinue
 $start = Get-Date
 $p = Start-Process -FilePath "$game\VT4.exe" -WorkingDirectory $game -PassThru

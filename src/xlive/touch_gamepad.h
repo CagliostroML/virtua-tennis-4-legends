@@ -33,7 +33,13 @@ typedef struct {
 static TgPointer g_tg_ptrs[TG_MAX_POINTERS] = { { 0 } };
 static int       g_tg_wine_checked = 0;
 static int       g_tg_is_wine = 0;
-static uint32_t  g_tg_start_pulse_frames = 0;
+static uint8_t   g_tg_btn_pulse[9] = { 0 }; /* roles 2..8: A, B, X, Y, LB, RB, START */
+static uint8_t   g_tg_stick_pulse_frames = 0;
+static float     g_tg_stick_pulse_ax = 0.0f;
+static float     g_tg_stick_pulse_ay = 0.0f;
+static int       g_tg_auto_hidden_by_xinput = 0;
+static int       g_tg_poll_active = 0;
+static uint32_t  g_tg_diag_logs = 0;
 
 static inline int touch_gamepad_is_wine(void) {
     if (!g_tg_wine_checked) {
@@ -48,8 +54,26 @@ static inline int touch_gamepad_is_wine(void) {
 
 static inline int touch_gamepad_should_show(uint32_t mode) {
     if (mode == 2u) return 1;
-    if (mode == 1u) return touch_gamepad_is_wine();
+    if (mode == 1u) return touch_gamepad_is_wine() && !g_tg_auto_hidden_by_xinput;
     return 0;
+}
+
+static inline void tg_clear_all_pointers(void);
+
+static inline void touch_gamepad_notify_real_xinput(float ax, float ay, WORD btns, uint32_t cfg_mode) {
+    if (cfg_mode == 1u && !g_tg_auto_hidden_by_xinput &&
+        (btns != 0 || fabsf(ax) > 0.35f || fabsf(ay) > 0.35f)) {
+        g_tg_auto_hidden_by_xinput = 1;
+        g_tg_poll_active = 0;
+        tg_clear_all_pointers();
+        memset(g_tg_btn_pulse, 0, sizeof(g_tg_btn_pulse));
+        g_tg_stick_pulse_frames = 0;
+        log_msg("[VT4-Mod] [TOUCHHUD] Real/Winlator XInput input detected -> auto-hiding software overlay (press F6 to restore)");
+    }
+}
+
+static void touch_gamepad_reset_autohide(void) {
+    g_tg_auto_hidden_by_xinput = 0;
 }
 
 /* Virtual 1280x720 geometry constants (symmetric bottom-left stick & bottom-right diamond) */
@@ -122,8 +146,26 @@ static void tg_upsert_pointer(DWORD id, float vx, float vy, int is_down) {
     }
     g_tg_ptrs[slot].vx = vx;
     g_tg_ptrs[slot].vy = vy;
-    if (is_down && g_tg_ptrs[slot].role == 8) {
-        g_tg_start_pulse_frames = 8u;
+    if (is_down) {
+        int role = g_tg_ptrs[slot].role;
+        if (role >= 2 && role <= 8) {
+            g_tg_btn_pulse[role] = 6u;
+        } else if (role == 1) {
+            float dx = (vx - TG_STICK_CX) / TG_STICK_R;
+            float dy = (vy - TG_STICK_CY) / TG_STICK_R;
+            float mag = sqrtf(dx * dx + dy * dy);
+            if (mag > 1.0f) { dx /= mag; dy /= mag; }
+            if (mag > 0.25f) {
+                g_tg_stick_pulse_frames = 4u;
+                g_tg_stick_pulse_ax = dx;
+                g_tg_stick_pulse_ay = dy;
+            }
+        }
+        if (g_tg_diag_logs < 16u) {
+            g_tg_diag_logs++;
+            log_msg("[VT4-Mod] [TOUCHHUD] press id=%lu role=%d vx=%.1f vy=%.1f",
+                    (unsigned long)id, role, vx, vy);
+        }
     }
 }
 
@@ -136,7 +178,7 @@ static void tg_release_pointer(DWORD id) {
     }
 }
 
-static void tg_clear_all_pointers(void) {
+static inline void tg_clear_all_pointers(void) {
     memset(g_tg_ptrs, 0, sizeof(g_tg_ptrs));
 }
 
@@ -222,13 +264,56 @@ static int touch_gamepad_on_wndmsg(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM l
     return 0;
 }
 
+static void touch_gamepad_poll_mouse(HWND hwnd, uint32_t cfg_mode) {
+    if (!touch_gamepad_should_show(cfg_mode) || !hwnd) {
+        if (g_tg_poll_active) {
+            g_tg_poll_active = 0;
+            tg_release_pointer(0xFFFEu);
+        }
+        return;
+    }
+    for (int i = 0; i < TG_MAX_POINTERS; i++) {
+        if (g_tg_ptrs[i].active && g_tg_ptrs[i].id == 0u) return;
+    }
+    SHORT st = GetAsyncKeyState(VK_LBUTTON);
+    int held = (st & 0x8000) != 0;
+    int tapped = (st & 0x0001) != 0;
+    if (held || tapped) {
+        POINT pt;
+        if (GetCursorPos(&pt) && ScreenToClient(hwnd, &pt)) {
+            float vx = 0.0f, vy = 0.0f;
+            if (tg_client_to_virtual(hwnd, pt.x, pt.y, &vx, &vy)) {
+                int role = tg_hit_test_role(vx, vy);
+                if (role != 0 || g_tg_poll_active) {
+                    tg_upsert_pointer(0xFFFEu, vx, vy, (!g_tg_poll_active || tapped));
+                    g_tg_poll_active = held ? 1 : 0;
+                    if (!held) tg_release_pointer(0xFFFEu);
+                }
+            }
+        }
+    } else if (g_tg_poll_active) {
+        g_tg_poll_active = 0;
+        tg_release_pointer(0xFFFEu);
+    }
+}
+
 static int touch_gamepad_get_p1(float *out_ax, float *out_ay, WORD *out_btns) {
     float ax = 0.0f, ay = 0.0f;
     WORD btns = 0;
     int any = 0;
 
-    if (g_tg_start_pulse_frames > 0) {
-        btns |= 0x0010;
+    static const WORD k_role_masks[9] = {
+        0, 0, 0x1000, 0x2000, 0x4000, 0x8000, 0x0100, 0x0200, 0x0010
+    };
+    for (int r = 2; r <= 8; r++) {
+        if (g_tg_btn_pulse[r] > 0) {
+            btns |= k_role_masks[r];
+            any = 1;
+        }
+    }
+    if (g_tg_stick_pulse_frames > 0) {
+        ax = g_tg_stick_pulse_ax;
+        ay = g_tg_stick_pulse_ay;
         any = 1;
     }
 
@@ -333,8 +418,13 @@ static void tg_draw_pill(void *dev, float x1, float y1, float x2, float y2, DWOR
 
 static void render_touch_gamepad_hud(void *dev, uint32_t cfg_mode, uint32_t win_w, uint32_t win_h,
                                      int in_match, int in_char_sel, float vis_ax, float vis_ay, WORD vis_btns) {
-    if (g_tg_start_pulse_frames > 0) g_tg_start_pulse_frames--;
-    if (!touch_gamepad_should_show(cfg_mode)) return;
+    if (!touch_gamepad_should_show(cfg_mode)) {
+        for (int r = 2; r <= 8; r++) {
+            if (g_tg_btn_pulse[r] > 0) g_tg_btn_pulse[r]--;
+        }
+        if (g_tg_stick_pulse_frames > 0) g_tg_stick_pulse_frames--;
+        return;
+    }
     if (!dev || !*(void ***)dev) return;
     if (!g_pFont || !g_pFontTitle || !g_pSprite) init_menu_fonts(dev);
     if (!begin_overlay_state(dev)) return;
@@ -448,6 +538,11 @@ static void render_touch_gamepad_hud(void *dev, uint32_t cfg_mode, uint32_t win_
 
     end_overlay_state(dev);
     ensure_d3d9_device_hooks(dev);
+
+    for (int r = 2; r <= 8; r++) {
+        if (g_tg_btn_pulse[r] > 0) g_tg_btn_pulse[r]--;
+    }
+    if (g_tg_stick_pulse_frames > 0) g_tg_stick_pulse_frames--;
 }
 
 #endif /* VT4_TOUCH_GAMEPAD_H */

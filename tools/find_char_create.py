@@ -1,6 +1,7 @@
+import os
 import pefile
 
-pe = pefile.PE("c:/Users/acorr/Documents/tenis/game/VT4.exe")
+pe = pefile.PE(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'game', 'VT4.exe'))
 for section in pe.sections:
     data = section.get_data()
     for needle in [b"PlayerCreate", b"CharacterCreate", b"WorldTour", b"DiffSelect", b"Difficulty", b"SPT_Edit", b"EditPlayer"]:

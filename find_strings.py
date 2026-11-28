@@ -1,8 +1,8 @@
 import pefile
 import struct
 
-pe = pefile.PE('c:/Users/acorr/Documents/tenis/game/VT4.exe')
-with open('c:/Users/acorr/Documents/tenis/game/VT4.exe', 'rb') as f:
+pe = pefile.PE('game/VT4.exe')
+with open('game/VT4.exe', 'rb') as f:
     data = f.read()
 
 off_start = pe.get_offset_from_rva(0x0044DA00 - pe.OPTIONAL_HEADER.ImageBase)

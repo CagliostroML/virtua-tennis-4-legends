@@ -20,6 +20,7 @@ import os
 import shutil
 import subprocess
 import sys
+import zipfile
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 REPO_ROOT = os.path.dirname(SCRIPT_DIR)
@@ -43,9 +44,20 @@ CORE_BASE_FILES = [
 
 CORE_MOD_AND_CRT_FILES = [
     "xlive.dll",
+]
+
+# Wine/Winlator handles SxS VC90 CRT and FAudio xaudio2_7 natively via its builtins;
+# loose copies without a WinSxS activation context trigger R6034 or COM init hangs under Wine.
+STALE_WINE_INCOMPAT_DLLS = (
     "msvcr90.dll",
     "msvcp90.dll",
     "msvcm90.dll",
+    "XAudio2_7.dll",
+)
+
+OPTIONAL_RUNTIME_FILES = [
+    "ui_arrow_left.png",
+    "ui_arrow_right.png",
 ]
 
 # Top-level loose dirs inside game/archive/ added purely by xlive.dll mod systems (not in base archive)
@@ -62,10 +74,12 @@ SKIP_ARCHIVE_NAMES = {".ds_store", "thumbs.db", "desktop.ini"}
 
 ANDROID_INI_CONTENT = """\
 [Graphics]
-; Preset optimizado Android / Winlator / GameHub / Mobox (DXVK + Turnip/Vortek)
-Width=1280
-Height=720
-Windowed=1
+; Preset optimizado Android / Winlator / GameHub / Mobox (Vortek & Turnip + DXVK)
+; 0=Auto: detecta la pantalla del contenedor y escala hasta 540p en PerfProfile=2 (ahorra ~44% GPU vs 720p)
+Width=0
+Height=0
+Windowed=0
+UseD3D9Ex=1
 AntiAliasing=0
 VSync=0
 AnisotropicFiltering=0
@@ -76,6 +90,7 @@ NextGenFilmic=0
 
 [Menu]
 RemoveLiveMode=1
+Locale=auto
 
 [Gameplay]
 ClassicTVCamera=0
@@ -85,8 +100,8 @@ MultiverseMode=0
 WeaponMode=0
 BroadcastHUD=1
 ProPhysics=0
-; 0=Off, 1=Auto (se activa automaticamente en Android/Wine), 2=Siempre Visible [F6]
-TouchXboxHUD=1
+; 0=Off (usa Virtual Gamepad nativo de Winlator), 1=Auto, 2=Siempre Visible [F6]
+TouchXboxHUD=0
 
 [Performance]
 ; PerfProfile=2: sombras 512x512, bloom 256x128, 0 syscalls FUSE (cache I/O en RAM)
@@ -107,19 +122,28 @@ DebugLog=0
 """
 
 DXVK_CONF_CONTENT = """\
-# Virtua Tennis 4: Legends & Next-Gen Edition — Android / DXVK preset
+# Virtua Tennis 4: Legends & Next-Gen Edition — Android / DXVK (Vortek & Turnip) preset
 d3d9.samplerAnisotropy = 0
-d3d9.maxFrameLatency = 1
+d3d9.maxFrameLatency = 2
 d3d9.presentInterval = 0
+d3d9.deferSurfaceCreation = True
+d3d9.supportDFFormats = False
 dxvk.enableAsync = True
+dxvk.enableGraphicsPipelineLibrary = True
 dxvk.numCompilerThreads = 2
 """
 
 LAUNCH_BAT_CONTENT = """\
 @echo off
 cd /d "%~dp0"
-set WINEDLLOVERRIDES=xlive,d3dx9_43,msvcr90,msvcp90,msvcm90=n,b
+set WINEDLLOVERRIDES=xlive,d3dx9_43=n,b
 VT4.exe
+if errorlevel 1 (
+    echo.
+    echo [VT4-Android] VT4.exe exited with error code %errorlevel%.
+    echo Check xlive_mod.log in this folder for details.
+    pause
+)
 """
 
 LEEME_ANDROID_CONTENT = """\
@@ -127,42 +151,70 @@ LEEME_ANDROID_CONTENT = """\
   VIRTUA TENIS 4: LEGENDS & NEXT-GEN EDITION (84 Tenistas) — ANDROID
 ======================================================================
 
+--- INICIO RAPIDO EN 3 PASOS ---
+1) Copia esta carpeta entera (~3.6 GB) a una ruta corta de tu memoria interna:
+   /storage/emulated/0/Games/VT4_Legends_Android/
+2) En GameHub / Winlator, selecciona PLAY_VT4_LEGENDS.exe
+   (compilado Win32 puro sin UCRT; fija xlive,d3dx9_43=n,b y deja a Wine
+    usar su propio msvcr90/xaudio2_7 estable, ademas de generar launcher_android.log).
+3) Pulsa Play: en Winlator abre Menu lateral -> Input Controls -> Virtual Gamepad
+   (o usa mando Bluetooth/USB-C) para multitactil real con la pantalla limpia.
+   El rendimiento movil PerfProfile=2 y pantalla completa se activan solos.
+
+NOTA SOBRE .APK: No existe APK nativo ARM64 porque VT4.exe es un binario
+x86 Win32 de SEGA parcheado en memoria por xlive.dll. Winlator / GameHub
+lo ejecuta a 60 FPS gracias a Turnip + DXVK Async.
+
 1. COPIA EN MEMORIA INTERNA
    Copia toda esta carpeta a una ruta corta de tu memoria interna, p.ej.:
-   /storage/emulated/0/Download/VT4_Legends_Android/
+   /storage/emulated/0/Games/VT4_Legends_Android/
    (En Winlator / GameHub, copia a C:\\Games\\VT4\\ o usa ruta directa corta).
 
 2. LANZAMIENTO RAPIDO EN 1 TOQUE (PLAY_VT4_LEGENDS.exe)
    Esta carpeta incluye PLAY_VT4_LEGENDS.exe, un lanzador nativo Win32 que
-   fija automaticamente WINEDLLOVERRIDES (xlive, d3dx9_43, CRT v90 = Native)
+   fija automaticamente WINEDLLOVERRIDES=xlive,d3dx9_43=n,b
    y ejecuta VT4.exe de forma sincrona para que GameHub/Winlator no cierren
    el contenedor antes de tiempo:
    - En GameHub (GameFusion): Import PC Game -> elige PLAY_VT4_LEGENDS.exe.
      GameHub creara la caratula/icono directo de 1 toque en tu biblioteca
      (y puedes anclar su acceso directo en la pantalla de inicio Android).
-   - En Winlator CMod / Frost: abre el contenedor, haz clic derecho sobre
-     PLAY_VT4_LEGENDS.exe -> Create Shortcut; luego ve a Shortcuts en la app
-     y pulsa el menu (tres puntos) -> Add to Home Screen para tener el icono
-     directo de 1 toque en el escritorio de Android.
-   - Si prefieres lanzar por script, LAUNCH_ANDROID.bat tambien ejecuta VT4.exe
-     de forma sincrona con los mismos overrides.
+   - En Winlator (Oficial / CMod / Frost): abre el contenedor, haz clic derecho
+     (toque con DOS DEDOS a la vez) sobre PLAY_VT4_LEGENDS.exe (lleva el icono
+     escudo incrustado) -> Create Shortcut.
+     * En Winlator Oficial lanzas en 1 toque desde Menu -> Shortcuts (el oficial
+       solo muestra Settings/Copy/Cut/Remove, sin Add to Home Screen).
+     * En Winlator CMod puedes pulsar tres puntos -> Add to Home Screen para
+       anclarlo en tu escritorio de Android.
+     * En Shortcuts -> tres puntos -> Settings puedes fijar Virtual Gamepad,
+       resolucion 960x540 y Audio ALSA solo para este acceso directo.
+     Tambien incluimos vt4_legends_icon.png y VT4_Legends_Winlator.desktop.
+   - Si algo falla al abrir, revisa launcher_android.log y xlive_mod.log
+     en esta carpeta (LAUNCH_ANDROID.bat tambien hara pause si falla).
 
 3. AJUSTES RECOMENDADOS EN WINLATOR / GAMEHUB / MOBOX
-   - Resolucion: 1280x720
-   - Driver grafico: Turnip (Adreno) o Vortek / VirGL (Mali / Exynos)
-   - Wrapper DX: DXVK 2.3+ / 2.4+ (Async)
-   - Box64 Preset: Performance
-   - Audio: PulseAudio (xaudio2_7=n recomendado)
+   - Resolucion del contenedor: 960x540 (16:9) o 1280x576 (20:9 pantalla completa);
+     vt4_settings.ini usa Width=0 / Height=0 (Auto) + PerfProfile=2.
+   - Driver grafico: Turnip (Adreno) o Vortek (MediaTek / Mali / universal)
+   - Wrapper DX: DXVK 1.10.3 o 2.x Async (PLAY_VT4_LEGENDS.exe activa
+     DXVK_STATE_CACHE=1 para eliminar tirones al compilar shaders en el segundo partido)
+   - Audio Driver: ALSA (recomendado en MediaTek/Mali) o PulseAudio (con
+     PULSE_LATENCY_MSEC=90 automatico para evitar chasquidos)
+   - Box64 Preset: Performance o Stability/Intermediate si notas tirones en Mali;
+     marca solo los nucleos CPU grandes en CPU Affinity si tu movil tiene nucleos MIX.
    - DLL Overrides (automaticos al usar PLAY_VT4_LEGENDS.exe / LAUNCH_ANDROID.bat):
-       WINEDLLOVERRIDES=xlive,d3dx9_43,msvcr90,msvcp90,msvcm90=n,b
+       WINEDLLOVERRIDES=xlive,d3dx9_43=n,b
 
-4. MANDO XBOX TACTIL INTERACTIVO (RECOMP STYLE)
-   - Con TouchXboxHUD=1 (Auto, activado por defecto aqui), al detectarse
-     Wine/Android aparece automaticamente en pantalla un mando Xbox tactil
-     con stick izquierdo analogico + A (Topspin/OK) / B (Globo/Atras) /
-     X (Cortado) / Y (Dejada) + LB/RB (cambiar pagina del roster) + START.
-   - Si usas mando fisico Bluetooth/USB-C, funciona en paralelo; puedes
-     ocultarlo/mostrarlo en directo con [F6] o en OPCIONES -> GRAFICOS HD.
+4. CONTROLES EN PANTALLA EN WINLATOR / ANDROID
+   - OPCION PRINCIPAL — VIRTUAL GAMEPAD NATIVO DE WINLATOR (RECOMENDADO):
+     * Desliza desde el borde izquierdo (o pulsa Atras en Android) para abrir el
+       menu lateral de Winlator -> Input Controls -> selecciona Virtual Gamepad.
+     * Soporta multitactil real (mover con stick y pulsar A/B/X/Y a la vez).
+     * Por defecto TouchXboxHUD=0 para dejar la pantalla limpia sin duplicar botones.
+     * La proteccion anti-click-derecho/doble-toque evita que toques accidentales
+       retrocedan en los menus.
+   - OPCION ALTERNATIVA — OVERLAY XBOX INTEGRADO (TouchXboxHUD=0|1|2, tecla [F6]):
+     * Si en alguna sesion prefieres probar nuestro overlay integrado, pulsa [F6]
+       en cualquier momento o cambialo en OPCIONES -> GRAFICOS HD Y LEGENDS.
 
 5. ONLINE P2P CROSSPLAY (PC <-> ANDROID)
    - Entra en EN LINEA desde el menu principal:
@@ -217,6 +269,74 @@ def format_size(num_bytes: int) -> str:
     return f"{num_bytes / 1024.0:.1f} KB"
 
 
+def _compile_launcher_icon_res(res_tmp_dir: str) -> str | None:
+    """Build multi-size ICO + Win32 .res from vt4_legends_crest.png if Pillow + zig rc succeed."""
+    crest_png = os.path.join(GAME_DIR, "archive", "vt4_legends_crest.png")
+    if not os.path.isfile(crest_png):
+        return None
+    try:
+        from PIL import Image
+    except Exception:
+        return None
+
+    os.makedirs(res_tmp_dir, exist_ok=True)
+    ico_path = os.path.join(res_tmp_dir, "vt4_legends.ico")
+    rc_path = os.path.join(res_tmp_dir, "icon.rc")
+    res_path = os.path.join(res_tmp_dir, "icon.res")
+    try:
+        with Image.open(crest_png) as img:
+            rgba = img.convert("RGBA")
+            rgba.save(
+                ico_path,
+                format="ICO",
+                sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
+            )
+        with open(rc_path, "w", encoding="ascii") as f:
+            f.write('1 ICON "vt4_legends.ico"\n')
+        rc_cmd = [ZIG_EXE, "rc", "/fo", res_path, rc_path]
+        r = subprocess.run(rc_cmd, cwd=res_tmp_dir, capture_output=True, text=True)
+        if r.returncode == 0 and os.path.isfile(res_path):
+            return res_path
+    except Exception:
+        return None
+    return None
+
+
+def _write_winlator_icon_and_desktop(out_dir: str) -> list[tuple[str, int]]:
+    """Export 256x256 PNG crest icon and Winlator .desktop template into <out_dir>."""
+    written: list[tuple[str, int]] = []
+    crest_png = os.path.join(GAME_DIR, "archive", "vt4_legends_crest.png")
+    icon_png_path = os.path.join(out_dir, "vt4_legends_icon.png")
+    if os.path.isfile(crest_png):
+        try:
+            from PIL import Image
+
+            with Image.open(crest_png) as img:
+                img.convert("RGBA").resize((256, 256), Image.Resampling.LANCZOS).save(
+                    icon_png_path, format="PNG", optimize=True
+                )
+        except Exception:
+            shutil.copy2(crest_png, icon_png_path)
+        written.append((icon_png_path, os.path.getsize(icon_png_path)))
+
+    desktop_body = (
+        "[Desktop Entry]\n"
+        "Name=VT4 Legends & Next-Gen\n"
+        "Exec=env WINEDLLOVERRIDES=\"xlive,d3dx9_43=n,b\" "
+        "PULSE_LATENCY_MSEC=90 DXVK_STATE_CACHE=1 "
+        "wine D:\\\\VT4_Legends_Android\\\\PLAY_VT4_LEGENDS.exe\n"
+        "Path=D:\\\\VT4_Legends_Android\n"
+        "Type=Application\n"
+        "StartupNotify=true\n"
+        "Icon=vt4_legends_icon\n"
+    )
+    desktop_path = os.path.join(out_dir, "VT4_Legends_Winlator.desktop")
+    with open(desktop_path, "wb") as f:
+        f.write(desktop_body.encode("utf-8"))
+    written.append((desktop_path, os.path.getsize(desktop_path)))
+    return written
+
+
 def build_android_launcher(out_dir: str) -> tuple[str, int]:
     """Compile src/launcher/play_vt4_legends.c into <out_dir>/PLAY_VT4_LEGENDS.exe."""
     if not os.path.isfile(ZIG_EXE):
@@ -225,26 +345,81 @@ def build_android_launcher(out_dir: str) -> tuple[str, int]:
         raise FileNotFoundError(f"Launcher source missing: {LAUNCHER_SRC}")
 
     dst_exe = os.path.join(out_dir, "PLAY_VT4_LEGENDS.exe")
-    cmd = [
+    obj_path = os.path.join(out_dir, "play_vt4_legends.obj")
+    res_tmp_dir = os.path.join(out_dir, "_icon_res_tmp")
+    res_path = _compile_launcher_icon_res(res_tmp_dir)
+    cmd_compile = [
         ZIG_EXE,
         "cc",
         "-target",
         "x86-windows-gnu",
-        "-O2",
-        "-Wl,--subsystem,windows",
+        "-Os",
+        "-fno-stack-protector",
+        "-mno-stack-arg-probe",
+        "-c",
         LAUNCHER_SRC,
         "-o",
-        dst_exe,
-        "-luser32",
-        "-lkernel32",
+        obj_path,
     ]
-    res = subprocess.run(cmd, cwd=REPO_ROOT, capture_output=True, text=True)
-    if res.returncode != 0 or not os.path.isfile(dst_exe):
+    res1 = subprocess.run(cmd_compile, cwd=REPO_ROOT, capture_output=True, text=True)
+    if res1.returncode != 0 or not os.path.isfile(obj_path):
+        shutil.rmtree(res_tmp_dir, ignore_errors=True)
         raise RuntimeError(
-            f"Failed to compile PLAY_VT4_LEGENDS.exe (rc={res.returncode}):\n"
-            f"{res.stdout}\n{res.stderr}"
+            f"Failed to compile play_vt4_legends.obj (rc={res1.returncode}):\n"
+            f"{res1.stdout}\n{res1.stderr}"
         )
+
+    link_inputs = [obj_path] + ([res_path] if res_path else [])
+    cmd_link = [
+        ZIG_EXE,
+        "cc",
+        "-target",
+        "x86-windows-gnu",
+        "-nostdlib",
+        "-Wl,--subsystem,windows",
+        "-Wl,-e,WinMainCRTStartup",
+        *link_inputs,
+        "-o",
+        dst_exe,
+        "-lkernel32",
+        "-luser32",
+    ]
+    res2 = subprocess.run(cmd_link, cwd=REPO_ROOT, capture_output=True, text=True)
+    if os.path.isfile(obj_path):
+        os.remove(obj_path)
+    shutil.rmtree(res_tmp_dir, ignore_errors=True)
+    if res2.returncode != 0 or not os.path.isfile(dst_exe):
+        raise RuntimeError(
+            f"Failed to link PLAY_VT4_LEGENDS.exe (rc={res2.returncode}):\n"
+            f"{res2.stdout}\n{res2.stderr}"
+        )
+    pdb_path = os.path.join(out_dir, "PLAY_VT4_LEGENDS.pdb")
+    if os.path.isfile(pdb_path):
+        os.remove(pdb_path)
     return dst_exe, os.path.getsize(dst_exe)
+
+
+def create_android_zip(out_dir: str, patch_only: bool) -> str:
+    parent = os.path.dirname(os.path.abspath(out_dir))
+    suffix = "PatchOnly" if patch_only else "Full"
+    zip_path = os.path.join(parent, f"VT4_Legends_Android_{suffix}.zip")
+    stored_exts = {".bin", ".sdo", ".dds", ".png", ".zml", ".apz", ".ogg", ".mp3", ".wav"}
+    skip_base = {x.lower() for x in CORE_BASE_FILES} if patch_only else set()
+    root_name = os.path.basename(os.path.abspath(out_dir))
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        for root, _ds, fs in os.walk(out_dir):
+            for fn in sorted(fs):
+                full = os.path.join(root, fn)
+                rel = os.path.relpath(full, out_dir).replace("\\", "/")
+                if rel.lower() in skip_base:
+                    continue
+                arc = f"{root_name}/{rel}"
+                ext = os.path.splitext(fn)[1].lower()
+                if ext in stored_exts:
+                    zf.write(full, arc, compress_type=zipfile.ZIP_STORED)
+                else:
+                    zf.write(full, arc, compress_type=zipfile.ZIP_DEFLATED, compresslevel=6)
+    return zip_path
 
 
 def export_bundle(out_dir: str, patch_only: bool, allow_missing_d3dx: bool) -> None:
@@ -259,6 +434,12 @@ def export_bundle(out_dir: str, patch_only: bool, allow_missing_d3dx: bool) -> N
         total_files += 1
         total_bytes += os.path.getsize(dst)
 
+    # Remove stale loose VC90 CRT / XAudio2 DLLs if left over from an older export
+    for stale in STALE_WINE_INCOMPAT_DLLS:
+        stale_path = os.path.join(out_dir, stale)
+        if os.path.isfile(stale_path):
+            os.remove(stale_path)
+
     # 1. Core runtime binaries
     root_list = list(CORE_MOD_AND_CRT_FILES)
     if not patch_only:
@@ -269,6 +450,11 @@ def export_bundle(out_dir: str, patch_only: bool, allow_missing_d3dx: bool) -> N
         if not os.path.exists(src):
             raise FileNotFoundError(f"Required runtime file missing: {src}")
         copy_file(src, os.path.join(out_dir, fn))
+
+    for fn in OPTIONAL_RUNTIME_FILES:
+        src = os.path.join(GAME_DIR, fn)
+        if os.path.isfile(src):
+            copy_file(src, os.path.join(out_dir, fn))
 
     # 2. Auto-bundle d3dx9_43.dll from Windows SysWOW64 so Wine/Android always has native D3DX9
     if os.path.exists(SYSWOW64_D3DX):
@@ -300,10 +486,13 @@ def export_bundle(out_dir: str, patch_only: bool, allow_missing_d3dx: bool) -> N
                 continue
             copy_file(full, os.path.join(dst_arch, rel))
 
-    # 4. Native Win32 1-tap launcher (PLAY_VT4_LEGENDS.exe)
+    # 4. Native Win32 1-tap launcher (PLAY_VT4_LEGENDS.exe with embedded crest icon) + shortcut assets
     launcher_path, launcher_bytes = build_android_launcher(out_dir)
     total_files += 1
     total_bytes += launcher_bytes
+    for _extra_p, extra_sz in _write_winlator_icon_and_desktop(out_dir):
+        total_files += 1
+        total_bytes += extra_sz
 
     # 5. Portable empty save directory + Android config / launcher files
     save_dir = os.path.join(out_dir, "save")
@@ -337,6 +526,7 @@ def main() -> None:
     parser.add_argument("--patch-only", action="store_true", help="Skip VT4.exe and resource*.bin")
     parser.add_argument("--verify-only", action="store_true", help="Only run archive case-sensitivity audit")
     parser.add_argument("--allow-missing-d3dx", action="store_true", help="Warn instead of failing if d3dx9_43.dll missing")
+    parser.add_argument("--zip", action="store_true", help="Also build a single transferable ZIP next to output dir")
     args = parser.parse_args()
 
     checked, mismatches = audit_archive_case_sensitivity()
@@ -349,7 +539,11 @@ def main() -> None:
     if args.verify_only:
         return
 
-    export_bundle(os.path.abspath(args.output), args.patch_only, args.allow_missing_d3dx)
+    abs_out = os.path.abspath(args.output)
+    export_bundle(abs_out, args.patch_only, args.allow_missing_d3dx)
+    if args.zip:
+        zp = create_android_zip(abs_out, args.patch_only)
+        print(f"  Transfer ZIP:   {zp} ({format_size(os.path.getsize(zp))})")
 
 
 if __name__ == "__main__":

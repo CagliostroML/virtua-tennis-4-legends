@@ -31,7 +31,7 @@ PHOTO_L_DIR = os.path.join(REPO_ROOT, "game", "archive", "HIGH", "Frontend", "VR
 PHOTO_S_DIR = os.path.join(REPO_ROOT, "game", "archive", "HIGH", "Frontend", "VR", "photo_S")
 PHOTO_EYE_DIR = os.path.join(REPO_ROOT, "game", "archive", "HIGH", "Frontend", "VR", "photo_eye")
 MODEL_DIR = os.path.join(REPO_ROOT, "game", "archive", "HIGH", "Player", "Model")
-SCRATCH_DIR = r"C:\Users\acorr\.gemini\antigravity\brain\b7dada32-9382-44f8-87e7-4bcc74c92a1c\scratch"
+SCRATCH_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scratch")
 
 
 def fix_wawrinka_portrait():

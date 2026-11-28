@@ -1,4 +1,4 @@
-$p = Start-Process 'c:\Users\acorr\Documents\tenis\game\VT4.exe' -WorkingDirectory 'c:\Users\acorr\Documents\tenis\game' -PassThru
+$p = Start-Process (Join-Path (Split-Path -Parent $PSScriptRoot) "game\VT4.exe") -WorkingDirectory (Join-Path (Split-Path -Parent $PSScriptRoot) "game") -PassThru
 Write-Host "VT4 PID: $($p.Id)"
 Start-Sleep -Seconds 3
 

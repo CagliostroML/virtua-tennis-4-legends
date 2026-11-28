@@ -1,7 +1,7 @@
 param([int]$WaitSec = 16)
 
 Add-Type -AssemblyName System.Windows.Forms
-$game = 'c:\Users\acorr\Documents\tenis\game'
+$game = (Join-Path (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)) "game")
 Remove-Item "$game\xlive_mod.log" -ErrorAction SilentlyContinue
 
 $p = Start-Process -FilePath "$game\VT4.exe" -WorkingDirectory $game -PassThru

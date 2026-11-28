@@ -1,7 +1,8 @@
+import os
 import struct
 import re
 
-with open(r'c:\Users\acorr\Documents\tenis\game\VT4.exe', 'rb') as f:
+with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'game', 'VT4.exe'), 'rb') as f:
     data = f.read()
 
 sections = [
